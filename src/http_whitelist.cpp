@@ -41,7 +41,7 @@ extern "C" {
 namespace libtorrent
 {
 	// TODO: get rid of these dependencies
-	using lt::split_path;
+	using lt::lsplit_path;
 
 	http_whitelist::http_whitelist() {}
 	http_whitelist::~http_whitelist() {}
@@ -55,8 +55,8 @@ namespace libtorrent
 		, mg_request_info const* request_info)
 	{
 		std::string request = request_info->uri;
-		request = split_path(request);
-		std::string first_element(request.c_str());
+		const auto split = lsplit_path(request);
+		std::string first_element(split.first);
 
 		if (m_whitelist.count(first_element) == 0)
 		{

@@ -44,7 +44,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/extensions.hpp" // for plugin
 #include "libtorrent/time.hpp" // for time_point
 
-using libtorrent::sha1_hash;
+using lt::sha1_hash;
 using std::mutex;
 
 namespace libtorrent {
@@ -58,13 +58,16 @@ struct piece_entry
 
 // this is a session plugin which wraps the concept of reading pieces
 // from torrents, returning futures for when those pieces are complete
-struct file_requests : libtorrent::plugin
+struct file_requests : lt::plugin
 {
 	file_requests();
-	void on_alert(libtorrent::alert const* a);
-	void on_tick();
-	std::shared_future<piece_entry> read_piece(libtorrent::torrent_handle const& h
+	void on_alert(lt::alert const* a) override;
+	void on_tick() override;
+	std::shared_future<piece_entry> read_piece(lt::torrent_handle const& h
 		, lt::piece_index_t piece, lt::clock_type::duration timeout_ms);
+
+	feature_flags_t implemented_features() override
+	{ return lt::plugin::alert_feature | lt::plugin::tick_feature; }
 
 private:
 

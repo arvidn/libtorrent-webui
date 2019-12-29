@@ -48,57 +48,15 @@ namespace libtorrent
 std::string escape_json(string_view input)
 {
 	if (input.empty()) return "";
-
-	std::vector<std::uint32_t> wide;
-	wide.resize(input.size());
-
-	static std::mutex iconv_mutex;
-	// only one thread can use this handle at a time
-	std::unique_lock<std::mutex> l(iconv_mutex);
-
-	static iconv_t iconv_handle = iconv_open("UTF-32", "UTF-8");
-	if (iconv_handle == iconv_t(-1)) return "(iconv error)";
-
-	size_t insize = input.size();
-	size_t outsize = insize * sizeof(std::uint32_t);
-	char const* in = input.data();
-	char* out = reinterpret_cast<char*>(wide.data());
-	size_t retval = iconv(iconv_handle, (char**)&in, &insize
-		, &out, &outsize);
-	l.unlock();
-
-	if (retval == (size_t)-1) return "(iconv error)";
-	if (insize != 0) return "(iconv error)";
-	if (outsize > input.size() * 4) return "(iconv error)";
-	TORRENT_ASSERT(wide.size() >= outsize);
-	wide.resize(wide.size() - outsize / sizeof(std::uint32_t));
-
 	std::string ret;
-	for (std::vector<std::uint32_t>::const_iterator s = wide.begin(); s != wide.end(); ++s)
+	for (auto const c : input)
 	{
-		if (*s > 0x1f && *s < 0x80 && *s != '"' && *s != '\\')
+		switch(c)
 		{
-			ret += *s;
-		}
-		else
-		{
-			ret += '\\';
-			switch(*s)
-			{
-				case '"': ret += '"'; break;
-				case '\\': ret += '\\'; break;
-				case '\n': ret += 'n'; break;
-				case '\r': ret += 'r'; break;
-				case '\t': ret += 't'; break;
-				case '\b': ret += 'b'; break;
-				case '\f': ret += 'f'; break;
-				default:
-				{
-					char buf[20];
-					snprintf(buf, sizeof(buf), "u%04x", std::uint16_t(*s));
-					ret += buf;
-				}
-			}
+			case '"': ret += "\\\""; break;
+			case '\\': ret += "\\\\"; break;
+			case '\n': ret += "\\n"; break;
+			default: ret += c; break;
 		}
 	}
 	return ret;
