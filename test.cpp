@@ -1,7 +1,5 @@
-#include "utorrent_webui.hpp"
 #include "libtorrent_webui.hpp"
 #include "file_downloader.hpp"
-#include "auto_load.hpp"
 #include "save_settings.hpp"
 #include "save_resume.hpp"
 #include "torrent_history.hpp"
@@ -113,16 +111,12 @@ int main(int argc, char *const argv[])
 
 //	external_ip_observer eip(ses, &alerts);
 
-	auto_load al(ses, &sett);
-
-	utorrent_webui ut_handler(ses, &sett, &al, &hist, &authorizer);
 	file_downloader file_handler(ses, &authorizer);
 	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
 	stats_logging log(ses, &alerts);
 
 	webui_base webport;
 	webport.add_handler(&lt_handler);
-	webport.add_handler(&ut_handler);
 	webport.add_handler(&file_handler);
 	webport.start(8090, "server.pem");
 	if (!webport.is_running())
