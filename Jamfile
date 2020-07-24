@@ -75,6 +75,7 @@ lib pam : : <name>pam <search>/usr/local/lib ;
 lib dynamic-linker : : <name>dl <link>shared ;
 
 exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent ;
+install stage_webui_test : webui_test : <location>. ;
 
 exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent ;
 exe snmp_test : snmp.cpp
