@@ -35,57 +35,82 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <vector>
 #include <string>
+#include <thread>
+#include <map>
+
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
+
 #include "libtorrent/fwd.hpp"
 
-struct mg_context;
-struct mg_connection;
-struct mg_request_info;
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace ssl = boost::asio::ssl;
+using tcp = boost::asio::ip::tcp;
 
 struct http_handler
 {
-	virtual bool handle_http(mg_connection* conn,
-		mg_request_info const* request_info) { return false; }
-	virtual bool handle_websocket_connect(mg_connection* conn,
-		mg_request_info const* request_info) { return false; }
-	virtual bool handle_websocket_data(mg_connection* conn
-		, int bits, char* data, size_t length) { return false; }
-	virtual void handle_end_request(mg_connection* conn) {}
+	// this must return the same string every time. This determines which
+	// request paths are routed to this handler
+	virtual std::string path_prefix() = 0;
+
+	// called for each HTTP request. Once the response has been sent, the done()
+	// function must be called, to read another request from the client.
+	virtual void handle_http(http::request<http::string_body> request
+		, beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done) = 0;
 };
+
+struct listener;
 
 namespace libtorrent
 {
+	template<typename Body, typename Fields>
+	void send_http(beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done
+		, http::response<Body, Fields>&& msg)
+	{
+		msg.prepare_payload();
+		auto sp = std::make_shared<http::message<false, Body, Fields>>(std::move(msg));
+		auto& req = *sp;
+
+		http::async_write(socket, req
+			, [response = std::move(sp), d = std::move(done)]
+			(beast::error_code const& ec, std::size_t)
+			{
+				d(ec || response->need_eof());
+			});
+	}
+
+	inline http::response<http::empty_body> http_error(http::request<http::string_body> const& req
+		, http::status status)
+	{
+		http::response<http::empty_body> res{status, req.version()};
+		res.keep_alive(req.keep_alive());
+		return res;
+	};
+
 	struct webui_base
 	{
-		webui_base();
+		webui_base(int port, char const* cert_path = nullptr, int num_threads = 4);
+		webui_base(webui_base const&) = delete;
+		webui_base(webui_base&&) = delete;
+		webui_base& operator=(webui_base const&) = delete;
+		webui_base& operator=(webui_base&&) = delete;
 		~webui_base();
 
-		void add_handler(http_handler* h)
-		{ m_handlers.push_back(h); }
-
+		void add_handler(http_handler* h);
 		void remove_handler(http_handler* h);
-
-		void start(int port, char const* cert_path = 0, int num_threads = 10);
-		void stop();
-		bool is_running() const;
-
-		bool handle_http(mg_connection* conn
-			, mg_request_info const* request_info);
-		bool handle_websocket_connect(mg_connection* conn
-			, mg_request_info const* request_info);
-		bool handle_websocket_data(mg_connection* conn, int bits, char* data, size_t length);
-		void handle_end_request(mg_connection* conn);
-
-		void set_document_root(std::string r) { m_document_root = r; }
-
-		int listen_port() const { return m_listen_port; }
 
 	private:
 
-		std::vector<http_handler*> m_handlers;
-		std::string m_document_root = ".";
+		std::vector<std::pair<std::string, http_handler*>> m_handlers;
+		std::vector<std::thread> m_threads;
+		std::shared_ptr<listener> m_listener;
 
-		mg_context* m_ctx = nullptr;
-		int m_listen_port;
+		boost::asio::io_context m_ioc;
+		ssl::context m_ctx;
 	};
 
 }

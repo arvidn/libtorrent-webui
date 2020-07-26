@@ -34,10 +34,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/http_parser.hpp" // for http_parser
 #include "libtorrent/torrent_info.hpp"
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 using namespace libtorrent;
 
 bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_code& ec)

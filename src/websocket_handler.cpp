@@ -32,7 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "websocket_handler.hpp"
 #include "libtorrent/aux_/io_bytes.hpp"
-#include "local_mongoose.h"
+#include "libtorrent/io.hpp"
 
 namespace libtorrent
 {

@@ -33,10 +33,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "http_whitelist.hpp"
 #include "libtorrent/aux_/path.hpp"
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 namespace libtorrent
 {
 	// TODO: get rid of these dependencies

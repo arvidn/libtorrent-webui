@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,33 +30,29 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_WEBSOCKET_HPP
-#define TORRENT_WEBSOCKET_HPP
+#include <string_view>
+#include <string>
 
-#include "webui.hpp"
-#include <mutex>
-#include <map>
-#include <memory>
-#include <cstdint>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/http.hpp>
 
-namespace libtorrent
+#include "webui.hpp" // for http_handler
+
+namespace libtorrent {
+
+struct serve_files : http_handler
 {
-	struct websocket_handler : http_handler
-	{
-		bool send_packet(mg_connection* conn, int type, char const* buffer, int len);
-		virtual bool handle_websocket_connect(mg_connection* conn,
-			mg_request_info const* request_info);
-		virtual void handle_end_request(mg_connection* conn);
+	serve_files(std::string_view prefix, std::string_view root_directory);
 
-	private:
+	std::string path_prefix() override;
 
-		// all currently alive web sockets
-		std::map<mg_connection*, std::unique_ptr<std::mutex>> m_open_sockets;
+	void handle_http(http::request<http::string_body> request
+		, beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done) override;
 
-		// serialize access to the map itself
-		std::mutex m_mutex;
-	};
+private:
+	std::string m_root;
+	std::string m_prefix;
+};
+
 }
-
-#endif
-

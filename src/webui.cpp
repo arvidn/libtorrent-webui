@@ -30,158 +30,297 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include <deque>
 #include <getopt.h> // for getopt_long
 #include <stdlib.h> // for daemon()
 #include <syslog.h>
-#include <boost/unordered_map.hpp>
+
+#include <memory> // for shared_ptr
+#include <algorithm>
+#include <cstdlib>
+#include <functional>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <vector>
+#include <deque>
+#include <chrono>
+#include <string_view>
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/alert_types.hpp"
 #include "webui.hpp"
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 using namespace libtorrent;
+using namespace std::literals::chrono_literals;
 
-static int handle_http_request(mg_connection* conn)
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/version.hpp>
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/strand.hpp>
+#include <boost/config.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+
+using boost::algorithm::starts_with;
+namespace ssl = boost::asio::ssl;
+
+template <typename Container, typename StringView>
+auto find_longest_prefix(Container const& c, StringView const path)
 {
-	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == nullptr) return 0;
-
-	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_http(
-		conn, request_info);
+	auto best = c.end();
+	int length = -1;
+	for (auto it = c.begin(); it != c.end(); ++it)
+	{
+		if (int(it->first.size()) <= length || !starts_with(path, it->first))
+			continue;
+		
+		best = it;
+		length = int(it->first.size());
+	}
+	return best;
 }
 
-static int log_message(const mg_connection*, const char* msg)
+// Report a failure
+void fail(beast::error_code ec, char const* what)
 {
-	fprintf(stderr, "%s\n", msg);
-	return 1;
+	// ssl::error::stream_truncated, also known as an SSL "short read",
+	// indicates the peer closed the connection without performing the
+	// required closing handshake (for example, Google does this to
+	// improve performance). Generally this can be a security issue,
+	// but if your communication protocol is self-terminated (as
+	// it is with both HTTP and WebSocket) then you may simply
+	// ignore the lack of close_notify.
+	//
+	// https://github.com/boostorg/beast/issues/38
+	//
+	// https://security.stackexchange.com/questions/91435/how-to-handle-a-malicious-ssl-tls-shutdown
+	//
+	// When a short read would cut off the end of an HTTP message,
+	// Beast returns the error beast::http::error::partial_message.
+	// Therefore, if we see a short read here, it has occurred
+	// after the message has been completed, so it is safe to ignore it.
+
+	if (ec == boost::asio::ssl::error::stream_truncated)
+		return;
+
+	std::cerr << what << ": " << ec.message() << "\n";
 }
 
-// return 1 to disconnect
-static int websocket_connect(mg_connection const* c)
+struct http_connection : std::enable_shared_from_this<http_connection>
 {
-	mg_connection* conn = const_cast<mg_connection*>(c);
-	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == nullptr)
-		return 1;
+	explicit http_connection(tcp::socket&& socket, ssl::context& ctx
+		, std::vector<std::pair<std::string, http_handler*>>& handlers)
+		: m_stream(std::move(socket), ctx)
+		, m_handlers(handlers)
+	{}
 
-	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_websocket_connect(
-		conn, request_info) ? 0 : 1;
-}
+	// Start the asynchronous operation
+	void run()
+	{
+		boost::asio::dispatch(m_stream.get_executor(),
+			beast::bind_front_handler(&http_connection::on_run, shared_from_this()));
+	}
 
-// return 0 to disconnect
-static int websocket_data(mg_connection* conn, int bits
-	, char *data, size_t data_len)
+private:
+
+	void on_run()
+	{
+		// Set the timeout.
+		beast::get_lowest_layer(m_stream).expires_after(30s);
+
+		// Perform the SSL handshake
+		m_stream.async_handshake(ssl::stream_base::server
+			, beast::bind_front_handler(&http_connection::on_handshake, shared_from_this()));
+	}
+
+	void on_handshake(beast::error_code ec)
+	{
+		if (ec) return fail(ec, "handshake");
+		do_read();
+	}
+
+	void do_read()
+	{
+		// Make the request empty before reading,
+		// otherwise the operation behavior is undefined.
+		m_req = {};
+
+		// Set the timeout.
+		beast::get_lowest_layer(m_stream).expires_after(30s);
+
+		// Read a request
+		http::async_read(m_stream, m_buffer, m_req,
+			beast::bind_front_handler(&http_connection::on_read, shared_from_this()));
+	}
+
+	void on_read(beast::error_code ec, std::size_t)
+	{
+		// This means they closed the connection
+		if (ec == http::error::end_of_stream)
+			return do_close();
+
+		if (ec) return fail(ec, "read");
+
+		auto const req_path = m_req.target();
+
+		auto it = find_longest_prefix(m_handlers, req_path);
+		if (it == m_handlers.end())
+			return send_http(m_stream, done_function{*this}, http_error(m_req, http::status::not_found));
+
+		it->second->handle_http(std::move(m_req), m_stream, done_function{*this});
+	}
+
+	void on_write(bool close, beast::error_code ec, std::size_t)
+	{
+		if (ec) return fail(ec, "write");
+
+		if (close)
+		{
+			// This means we should close the connection, usually because
+			// the response indicated the "Connection: close" semantic.
+			return do_close();
+		}
+	}
+
+	void do_close()
+	{
+		// Set the timeout.
+		beast::get_lowest_layer(m_stream).expires_after(30s);
+
+		// Perform the SSL shutdown
+		m_stream.async_shutdown(
+			beast::bind_front_handler(&http_connection::on_shutdown, shared_from_this()));
+	}
+
+	void on_shutdown(beast::error_code ec)
+	{
+		if (ec) return fail(ec, "shutdown");
+	}
+
+	struct done_function
+	{
+		std::shared_ptr<http_connection> m_self;
+		explicit done_function(http_connection& self) : m_self(self.shared_from_this()) {}
+		void operator()(bool close) const
+		{
+			if (close) m_self->do_close();
+			else m_self->do_read();
+		}
+	};
+
+	beast::ssl_stream<beast::tcp_stream> m_stream;
+	beast::flat_buffer m_buffer;
+	http::request<http::string_body> m_req;
+	std::vector<std::pair<std::string, http_handler*>>& m_handlers;
+};
+
+struct listener : std::enable_shared_from_this<listener>
 {
-	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == nullptr)
-		return 0;
+	listener(boost::asio::io_context& ioc
+		, ssl::context& ctx
+		, tcp::endpoint endpoint
+		, std::vector<std::pair<std::string, http_handler*>>& handlers)
+		: m_ioc(ioc)
+		, m_ctx(ctx)
+		, m_acceptor(ioc)
+		, m_handlers(handlers)
+	{
+		m_acceptor.open(endpoint.protocol());
+		m_acceptor.set_option(boost::asio::socket_base::reuse_address(true));
+		m_acceptor.bind(endpoint);
+		m_acceptor.listen();
+	}
 
-	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_websocket_data(
-		conn, bits, data, data_len) ? 1 : 0;
-}
+	void run() { do_accept(); }
+	void stop()
+	{
+		m_stopped = true;
+		m_acceptor.close();
+	}
 
-static void end_request(mg_connection const* c, int reply_status_code)
+private:
+	void do_accept()
+	{
+		if (m_stopped) return;
+
+		// The new connection gets its own strand
+		m_acceptor.async_accept(
+			boost::asio::make_strand(m_ioc)
+			, beast::bind_front_handler(&listener::on_accept, shared_from_this()));
+	}
+
+	void on_accept(beast::error_code ec, tcp::socket socket)
+	{
+		if (ec)
+		{
+			fail(ec, "accept");
+		}
+		else
+		{
+			std::make_shared<http_connection>(std::move(socket), m_ctx, m_handlers)->run();
+		}
+
+		// Accept another connection
+		do_accept();
+	}
+
+	boost::asio::io_context& m_ioc;
+	ssl::context& m_ctx;
+	tcp::acceptor m_acceptor;
+	std::vector<std::pair<std::string, http_handler*>>& m_handlers;
+	bool m_stopped = false;
+};
+
+webui_base::~webui_base()
 {
-	mg_connection* conn = const_cast<mg_connection*>(c);
-	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == nullptr) return;
+	m_listener->stop();
+//	m_ioc.run_for(2s);
+//	m_ioc.stop();
 
-	reinterpret_cast<webui_base*>(request_info->user_data)->handle_end_request(conn);
+	// TODO: long lived websocket connections aren't closed here
+
+	for (auto& t : m_threads)
+		t.join();
 }
-
-webui_base::webui_base() {}
-webui_base::~webui_base() {}
 
 void webui_base::remove_handler(http_handler* h)
 {
-	auto i = std::find(m_handlers.begin(), m_handlers.end(), h);
+	auto const i = std::find_if(m_handlers.begin(), m_handlers.end()
+		, [h](std::pair<std::string, http_handler*> v)
+		{ return v.second == h; });
 	if (i != m_handlers.end()) m_handlers.erase(i);
 }
 
-bool webui_base::handle_http(mg_connection* conn
-	, mg_request_info const* request_info)
+void webui_base::add_handler(http_handler* h)
 {
-	for (auto* h : m_handlers)
-		if (h->handle_http(conn, request_info)) return true;
-	return false;
+	std::string prefix = h->path_prefix();
+	m_handlers.emplace_back(std::move(prefix), h);
 }
 
-bool webui_base::handle_websocket_connect(mg_connection* conn
-	, mg_request_info const* request_info)
+webui_base::webui_base(int const port, char const* cert_path, int const num_threads)
+	: m_ioc(num_threads)
+	, m_ctx(ssl::context::tls)
 {
-	for (auto* h : m_handlers)
-		if (h->handle_websocket_connect(conn, request_info)) return true;
-	return false;
-}
+	m_ctx.use_certificate_file(cert_path, ssl::context::pem);
+	m_ctx.set_password_callback([] (std::size_t max_length, ssl::context::password_purpose p)
+		{ return "test"; });
+	m_ctx.use_private_key_file("key.pem", ssl::context::pem);
 
-bool webui_base::handle_websocket_data(mg_connection* conn
-	, int bits, char* data, size_t data_len)
-{
-	for (auto* h : m_handlers)
-		if (h->handle_websocket_data(conn, bits, data, data_len)) return true;
-	return false;
-}
+//#error set password callback
 
-void webui_base::handle_end_request(mg_connection* conn)
-{
-	for (auto* h : m_handlers)
-		h->handle_end_request(conn);
-}
+	// Create and launch a listening port
+	m_listener = std::make_shared<listener>(m_ioc, m_ctx
+		, tcp::endpoint{address{}, std::uint16_t(port)}, m_handlers);
+	m_listener->run();
 
-bool webui_base::is_running() const
-{
-	return m_ctx;
-}
-
-void webui_base::start(int port, char const* cert_path, int num_threads)
-{
-	if (m_ctx) mg_stop(m_ctx);
-
-	m_listen_port = port;
-
-	// start web interface
-	char port_str[20];
-	snprintf(port_str, sizeof(port_str), "%d%s", port, cert_path ? "s" : "");
-	const char *options[20];
-	memset(options, 0, sizeof(options));
-	int i = 0;
-	options[i++] = "document_root";
-	options[i++] = m_document_root.c_str();
-	options[i++] = "enable_keep_alive";
-	options[i++] = "yes";
-	if (cert_path)
+	m_threads.reserve(num_threads);
+	for(auto i = num_threads; i > 0; --i)
 	{
-		options[i++] = "ssl_certificate";
-		options[i++] = cert_path;
+		m_threads.emplace_back([this] {
+			m_ioc.run();
+		});
 	}
-	options[i++] = "listening_ports";
-	options[i++] = port_str;
 
-	char threads_str[20];
-	snprintf(threads_str, sizeof(threads_str), "%d", num_threads);
-	options[i++] = "num_threads";
-	options[i++] = threads_str;
-	options[i++] = nullptr;
-
-	mg_callbacks cb;
-	memset(&cb, 0, sizeof(cb));
-	cb.begin_request = &handle_http_request;
-	cb.log_message = &log_message;
-	cb.websocket_connect = &websocket_connect;
-	cb.websocket_data = &websocket_data;
-	cb.end_request = &end_request;
-
-	m_ctx = mg_start(&cb, this, options);
-}
-
-void webui_base::stop()
-{
-	if (m_ctx) mg_stop(m_ctx);
-	m_ctx = nullptr;
 }
 

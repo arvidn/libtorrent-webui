@@ -50,10 +50,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <condition_variable>
 #include <cinttypes>
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 namespace {
 	lt::string_view::size_type find(lt::string_view haystack, lt::string_view needle, lt::string_view::size_type pos)
 	{
@@ -273,18 +269,12 @@ namespace libtorrent
 	file_downloader::file_downloader(session& s, auth_interface const* auth)
 		: m_ses(s)
 		, m_auth(auth)
-		, m_dispatch(new piece_alert_dispatch())
+		, m_dispatch(std::make_shared<piece_alert_dispatch>())
 // TODO: this number needs to be proportional to the rate at which a file
 // is downloaded
 		, m_queue_size(20 * 1024 * 1024)
 		, m_attachment(true)
 	{
-		if (m_auth == nullptr)
-		{
-			const static no_auth n;
-			m_auth = &n;
-		}
-
 		m_ses.add_extension(std::static_pointer_cast<libtorrent::plugin>(m_dispatch));
 	}
 

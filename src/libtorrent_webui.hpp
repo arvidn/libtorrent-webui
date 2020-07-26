@@ -33,14 +33,21 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef TORRENT_LIBTORRENT_WEBUI_HPP
 #define TORRENT_LIBTORRENT_WEBUI_HPP
 
-#include "websocket_handler.hpp"
 #include "torrent_history.hpp" // for frame_t
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
 #include "alert_observer.hpp"
+#include "webui.hpp"
+
+#include "libtorrent/torrent_handle.hpp"
+#include "libtorrent/add_torrent_params.hpp"
+
+#include "libtorrent/fwd.hpp"
+
 #include <atomic>
 
-struct mg_connection;
+#include <boost/beast/websocket/stream.hpp>
+#include <boost/beast/http.hpp>
 
 namespace libtorrent
 {
@@ -48,30 +55,26 @@ namespace libtorrent
 	struct torrent_history;
 	struct auth_interface;
 	struct alert_handler;
+	struct conn_state;
 
-	struct libtorrent_webui : websocket_handler, alert_observer
+	struct libtorrent_webui : http_handler, alert_observer
 	{
-		libtorrent_webui(session& ses, torrent_history const* hist
+		libtorrent_webui(lt::session& ses, torrent_history const* hist
 			, auth_interface const* auth, alert_handler* alerts);
 		~libtorrent_webui();
 
-		virtual bool handle_websocket_connect(mg_connection* conn,
-			mg_request_info const* request_info);
-		virtual bool handle_websocket_data(mg_connection* conn
-			, int bits, char* data, size_t length);
+		std::string path_prefix() override;
 
-		struct conn_state
-		{
-			mg_connection* conn;
-			int function_id;
-			std::uint16_t transaction_id;
-			char* data;
-			int len;
-			permissions_interface const* perms;
-		};
+		void handle_http(http::request<http::string_body> request
+			, beast::ssl_stream<beast::tcp_stream>& socket
+			, std::function<void(bool)> done) override;
 
 		void handle_alert(alert const* a) override;
 
+		void set_params_model(add_torrent_params const& p)
+		{ m_params_model = p; }
+
+		// internal
 		bool get_torrent_updates(conn_state* st);
 		bool start(conn_state* st);
 		bool stop(conn_state* st);
@@ -86,17 +89,19 @@ namespace libtorrent
 		bool force_recheck(conn_state* st);
 		bool set_sequential_download(conn_state* st);
 		bool clear_sequential_download(conn_state* st);
-
 		bool list_settings(conn_state* st);
 		bool set_settings(conn_state* st);
 		bool get_settings(conn_state* st);
-
 		bool list_stats(conn_state* st);
 		bool get_stats(conn_state* st);
-
 		bool get_file_updates(conn_state* st);
+		bool add_torrent(conn_state* st);
 
-		bool call_rpc(mg_connection* conn, int function, char const* data, int len);
+		bool on_websocket_read(conn_state* st, char const* data, size_t length);
+
+	private:
+
+//		bool call_rpc(conn_state* st, int function, char const* data, int len);
 
 		bool respond(conn_state* st, int error, int val);
 
@@ -111,10 +116,11 @@ namespace libtorrent
 			invalid_argument_type,
 			invalid_argument,
 			truncated_message,
-			resource_not_found
+			resource_not_found,
+			parse_error,
+			permission_denied,
+			failed,
 		};
-
-	private:
 
 		// parse the arguments to the simple torrent commands
 		template <typename Fun>
@@ -124,7 +130,6 @@ namespace libtorrent
 		torrent_history const* m_hist;
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
-		std::atomic<int> m_transaction_id;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class
@@ -134,6 +139,7 @@ namespace libtorrent
 		// are requested
 		frame_t m_stats_frame = 0;
 
+		add_torrent_params m_params_model;
 	};
 }
 

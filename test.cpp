@@ -1,11 +1,13 @@
 #include "libtorrent_webui.hpp"
-#include "file_downloader.hpp"
+//#include "file_downloader.hpp"
 #include "save_settings.hpp"
 #include "save_resume.hpp"
 #include "torrent_history.hpp"
 #include "auth.hpp"
 #include "pam_auth.hpp"
-//#include "text_ui.hpp"
+#include "serve_files.hpp"
+#include "webui.hpp"
+#include "no_auth.hpp"
 
 #include "libtorrent/session.hpp"
 #include "alert_handler.hpp"
@@ -15,6 +17,8 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+
+using namespace std::literals::chrono_literals;
 
 bool quit = false;
 bool force_quit = false;
@@ -50,12 +54,13 @@ int main(int argc, char *const argv[])
 	save_settings sett(ses, s.settings, "settings.dat");
 
 	torrent_history hist(&alerts);
-	auth authorizer;
-	ec.clear();
-	authorizer.load_accounts("users.conf", ec);
-	if (ec)
-		authorizer.add_account("admin", "test", 0);
-	ec.clear();
+	no_auth authorizer;
+//	auth authorizer;
+//	ec.clear();
+//	authorizer.load_accounts("users.conf", ec);
+//	if (ec)
+//		authorizer.add_account("admin", "test", 0);
+//	ec.clear();
 //	pam_auth authorizer("bittorrent");
 
 	save_resume resume(ses, "resume.dat", &alerts);
@@ -63,19 +68,21 @@ int main(int argc, char *const argv[])
 	p.save_path = sett.get_str("save_path", ".");
 	resume.load(ec, p);
 
-	file_downloader file_handler(ses, &authorizer);
-	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
+//	file_downloader file_handler(ses, &authorizer);
 	stats_logging log(ses, &alerts);
 
-	webui_base webport;
+	webui_base webport(8090, "server.pem");
+
+	// this serves static files from directory "bt" exposed at HTTP path /bt/
+	serve_files static_files("/bt/", "bt");
+	webport.add_handler(&static_files);
+
+	// websocket access to controlling the bittorrent client exposed at HTTP
+	// path /bt/control
+	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
 	webport.add_handler(&lt_handler);
-	webport.add_handler(&file_handler);
-	webport.start(8090, "server.pem");
-	if (!webport.is_running())
-	{
-		fprintf(stderr, "failed to start web server\n");
-		return 1;
-	}
+
+//	webport.add_handler(&file_handler);
 
 	signal(SIGTERM, &sighandler);
 	signal(SIGINT, &sighandler);
@@ -83,7 +90,7 @@ int main(int argc, char *const argv[])
 	bool shutting_down = false;
 	while (!quit || !resume.ok_to_quit())
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		std::this_thread::sleep_for(500ms);
 		alerts.dispatch_alerts();
 		if (!shutting_down) ses.post_torrent_updates();
 		if (quit && !shutting_down)
@@ -108,8 +115,6 @@ int main(int argc, char *const argv[])
 	// for alerts. Those alerts aren't likely to ever arrive at
 	// this point.
 	alerts.abort();
-	fprintf(stderr, "closing web server\n");
-	webport.stop();
 
 	fprintf(stderr, "saving settings\n");
 	sett.save(ec);

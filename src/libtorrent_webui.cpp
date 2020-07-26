@@ -30,6 +30,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#include <cstring>
+#include <memory>
+#include <chrono>
+#include <string_view>
+
 #include "libtorrent_webui.hpp"
 #include "libtorrent/aux_/buffer.hpp"
 #include "libtorrent/session.hpp"
@@ -38,14 +43,19 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/alert_types.hpp"
 #include "libtorrent/aux_/io_bytes.hpp"
 #include "libtorrent/aux_/escape_string.hpp"
-#include "local_mongoose.h"
+#include "libtorrent/magnet_uri.hpp"
+
 #include "auth.hpp"
 #include "torrent_history.hpp"
 
-#include <cstring>
-#include <memory>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/core/multi_buffer.hpp>
 
 #include "alert_handler.hpp"
+
+namespace ws = boost::beast::websocket;
+
+using namespace std::literals::chrono_literals;
 
 namespace libtorrent {
 namespace {
@@ -55,10 +65,10 @@ namespace {
 	struct rpc_entry
 	{
 		char const* name;
-		bool (libtorrent_webui::*handler)(libtorrent_webui::conn_state*);
+		bool (libtorrent_webui::*handler)(conn_state*);
 	};
 
-	std::array<rpc_entry, 20> const functions =
+	static std::array<rpc_entry, 21> const functions =
 	{{
 		{ "get-torrent-updates", &libtorrent_webui::get_torrent_updates },
 		{ "start", &libtorrent_webui::start },
@@ -80,6 +90,7 @@ namespace {
 		{ "list-stats", &libtorrent_webui::list_stats },
 		{ "get-stats", &libtorrent_webui::get_stats },
 		{ "get-file-updates", &libtorrent_webui::get_file_updates },
+		{ "add-torrent", &libtorrent_webui::add_torrent },
 	}};
 
 	// maps torrent field to RPC field. These fields are the ones defined in
@@ -151,7 +162,150 @@ namespace {
 		0, // announcing_to_dht,
 	}};
 
+	struct add_torrent_user_data
+	{
+		std::shared_ptr<conn_state> st;
+		int function_id;
+		std::uint16_t transaction_id;
+	};
+
 } // anonymous namespace
+
+	// TODO: rename this to websocket_connection and move it out to its own
+	// header/cpp file pair. the libtorrent_webui* could be virtual interface
+	struct conn_state : std::enable_shared_from_this<conn_state>
+	{
+		conn_state(libtorrent_webui* parent, permissions_interface const* perms
+			, ws::stream<beast::ssl_stream<beast::tcp_stream>>&& conn
+			, std::function<void(bool)>&& done)
+			: m_conn(std::move(conn))
+			, m_done(std::move(done))
+			, m_parent(parent)
+			, m_perms(perms)
+		{}
+
+		~conn_state()
+		{
+			assert(m_stopping);
+		}
+
+		bool send_packet(char const* buffer, int len)
+		{
+			if (m_stopping) return false;
+
+			m_send_buffer.emplace_back(buffer, buffer + len);
+			if (m_send_buffer.size() == 1) do_send();
+			return true;
+		}
+
+		void start_accept(http::request<http::string_body> const& request)
+		{
+			m_conn.async_accept(request, beast::bind_front_handler(&conn_state::on_accept, shared_from_this()));
+		}
+
+		permissions_interface const* perms() const { return m_perms; }
+
+		// TODO: these should not be here. They are just here now to keep the
+		// function signatures simple
+		int function_id;
+		std::uint16_t transaction_id;
+		char const* data;
+		int len;
+
+	private:
+
+		void on_accept(beast::error_code const& ec)
+		{
+			if (ec) return close();
+			if (m_stopping) return;
+			do_read();
+		}
+
+		void do_send()
+		{
+			m_conn.async_write(boost::asio::buffer(m_send_buffer.front())
+				, beast::bind_front_handler(&conn_state::on_send, shared_from_this()));
+		}
+
+		void on_send(beast::error_code const& ec, std::size_t)
+		{
+			if (ec)
+			{
+				m_send_buffer.clear();
+				return close();
+			}
+			assert(m_send_buffer.size() >= 1);
+			m_send_buffer.pop_front();
+
+			if (!m_send_buffer.empty()) do_send();
+			else if (m_stopping) do_close();
+		}
+
+		void do_read()
+		{
+			m_read_buffer.clear();
+			m_conn.async_read(m_read_buffer, beast::bind_front_handler(
+				&conn_state::on_read, shared_from_this()));
+		}
+
+		void on_read(beast::error_code const& ec, std::size_t num_bytes)
+		{
+			if (ec) return close();
+			if (m_stopping) return;
+
+			beast::get_lowest_layer(m_conn).expires_after(60s);
+
+			if (!m_parent->on_websocket_read(this
+				, static_cast<char const*>(m_read_buffer.cdata().data())
+				, m_read_buffer.cdata().size()))
+			{
+				return close();
+			}
+
+			do_read();
+		}
+
+		void close()
+		{
+			if (m_stopping) return;
+			m_stopping = true;
+
+			if (!m_send_buffer.empty()) return;
+			do_close();
+		}
+
+		void do_close()
+		{
+			// we can't actually call done here, because we've stolen the
+			// socket from the http connection. We have to shut it down
+			// ourselves
+
+			beast::get_lowest_layer(m_conn).expires_after(30s);
+
+			m_conn.async_close(ws::close_reason{}
+				, beast::bind_front_handler(&conn_state::on_close, shared_from_this()));
+		}
+
+		void on_close(beast::error_code const& ec)
+		{
+			m_conn.next_layer().async_shutdown(
+				beast::bind_front_handler(&conn_state::on_shutdown, shared_from_this()));
+		}
+
+		void on_shutdown(beast::error_code const& ec)
+		{
+			beast::get_lowest_layer(m_conn).close();
+			m_done = nullptr;
+		}
+
+		ws::stream<beast::ssl_stream<beast::tcp_stream>> m_conn;
+		std::deque<std::vector<char>> m_send_buffer;
+		std::function<void(bool)> m_done;
+		beast::flat_buffer m_read_buffer;
+		libtorrent_webui* m_parent;
+		permissions_interface const* m_perms;
+		bool m_stopping = false;
+	};
 
 	libtorrent_webui::libtorrent_webui(session& ses, torrent_history const* hist
 		, auth_interface const* auth, alert_handler* alert)
@@ -160,11 +314,15 @@ namespace {
 		, m_auth(auth)
 		, m_alert(alert)
 	{
+		m_params_model.save_path = ".";
+
 		if (m_stats.size() < counters::num_counters)
 			m_stats.resize(counters::num_counters
 				, std::pair<std::int64_t, frame_t>(0, 0));
 
-		m_alert->subscribe(this, 0, session_stats_alert::alert_type, 0);
+		m_alert->subscribe(this, 0
+			, session_stats_alert::alert_type
+			, add_torrent_alert::alert_type);
 	}
 
 	libtorrent_webui::~libtorrent_webui()
@@ -172,23 +330,31 @@ namespace {
 		m_alert->unsubscribe(this);
 	}
 
-	bool libtorrent_webui::handle_websocket_connect(mg_connection* conn,
-		mg_request_info const* request_info)
+	std::string libtorrent_webui::path_prefix()
 	{
-		// we only provide access to /bt/control
-		if ("/bt/control"_sv != request_info->uri) return false;
+		return "/bt/control";
+	}
 
+	void libtorrent_webui::handle_http(http::request<http::string_body> request
+		, beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done)
+	{
 		// authenticate
-/*		permissions_interface const* perms = parse_http_auth(conn, m_auth);
+		permissions_interface const* perms = parse_http_auth(request, m_auth);
 		if (!perms)
-		{
-			mg_printf(conn, "HTTP/1.1 401 Unauthorized\r\n"
-				"WWW-Authenticate: Basic realm=\"BitTorrent\"\r\n"
-				"Content-Length: 0\r\n\r\n");
-			return true;
-		}
-*/
-		return websocket_handler::handle_websocket_connect(conn, request_info);
+			return send_http(socket, std::move(done), http_error(request, http::status::unauthorized));
+
+		// we only provide access to /bt/control
+		if (request.target() != "/bt/control"_sv)
+			return send_http(socket, std::move(done), http_error(request, http::status::not_found));
+
+		if (!ws::is_upgrade(request))
+			return send_http(socket, std::move(done), http_error(request, http::status::bad_request));
+
+		ws::stream<beast::ssl_stream<beast::tcp_stream>> conn(std::move(socket));
+		conn.binary(true);
+		auto st = std::make_shared<conn_state>(this, perms, std::move(conn), std::move(done));
+		st->start_accept(request);
 	}
 
 	// this is one of the key functions in the interface. It goes to
@@ -196,6 +362,9 @@ namespace {
 	// and in a compact format
 	bool libtorrent_webui::get_torrent_updates(conn_state* st)
 	{
+		if (!st->perms()->allow_list())
+			return error(st, permission_denied);
+
 		if (st->len < 12) return error(st, truncated_message);
 
 		frame_t const frame = io::read_uint32(st->data);
@@ -406,13 +575,13 @@ namespace {
 			std::copy(i->begin(), i->end(), ptr);
 		}
 
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
 	}
 
 	template <typename Fun>
 	bool libtorrent_webui::apply_torrent_fun(conn_state* st, Fun const& f)
 	{
-		char* ptr = st->data;
+		char const* ptr = st->data;
 		int num_torrents = io::read_uint16(ptr);
 
 		// there are only supposed to be one ore more info-hashes as arguments. Each info-hash is
@@ -436,6 +605,9 @@ namespace {
 
 	bool libtorrent_webui::start(conn_state* st)
 	{
+		if (!st->perms()->allow_start())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.set_flags(torrent_flags::auto_managed);
 			ts.handle.clear_error();
@@ -445,6 +617,9 @@ namespace {
 
 	bool libtorrent_webui::stop(conn_state* st)
 	{
+		if (!st->perms()->allow_stop())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.unset_flags(torrent_flags::auto_managed);
 			ts.handle.pause();
@@ -453,66 +628,96 @@ namespace {
 
 	bool libtorrent_webui::set_auto_managed(conn_state* st)
 	{
+		if (!st->perms()->allow_stop())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.set_flags(torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::clear_auto_managed(conn_state* st)
 	{
+		if (!st->perms()->allow_start())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.unset_flags(torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::queue_up(conn_state* st)
 	{
+		if (!st->perms()->allow_queue_change())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.queue_position_up();
 		});
 	}
 	bool libtorrent_webui::queue_down(conn_state* st)
 	{
+		if (!st->perms()->allow_queue_change())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.queue_position_down();
 		});
 	}
 	bool libtorrent_webui::queue_top(conn_state* st)
 	{
+		if (!st->perms()->allow_queue_change())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.queue_position_top();
 		});
 	}
 	bool libtorrent_webui::queue_bottom(conn_state* st)
 	{
+		if (!st->perms()->allow_queue_change())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.queue_position_bottom();
 		});
 	}
 	bool libtorrent_webui::remove(conn_state* st)
 	{
+		if (!st->perms()->allow_remove())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [this](torrent_status const& ts) {
 			m_ses.remove_torrent(ts.handle);
 		});
 	}
 	bool libtorrent_webui::remove_and_data(conn_state* st)
 	{
+		if (!st->perms()->allow_remove()
+			|| !st->perms()->allow_remove_data())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [this](torrent_status const& ts) {
 			m_ses.remove_torrent(ts.handle, session::delete_files);
 		});
 	}
 	bool libtorrent_webui::force_recheck(conn_state* st)
 	{
+		if (!st->perms()->allow_recheck())
+			return error(st, permission_denied);
+
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.force_recheck();
 		});
 	}
 	bool libtorrent_webui::set_sequential_download(conn_state* st)
 	{
+		// TODO: permissions
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.set_flags(torrent_flags::sequential_download);
 		});
 	}
 	bool libtorrent_webui::clear_sequential_download(conn_state* st)
 	{
+		// TODO: permissions
 		return apply_torrent_fun(st, [](torrent_status const& ts) {
 			ts.handle.unset_flags(torrent_flags::sequential_download);
 		});
@@ -534,6 +739,9 @@ namespace {
 		for (int i = settings_pack::string_type_base;
 			i < settings_pack::max_string_setting_internal; ++i)
 		{
+			if (!st->perms()->allow_get_settings(i))
+				continue;
+
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
@@ -546,6 +754,9 @@ namespace {
 		for (int i = settings_pack::int_type_base;
 			i < settings_pack::max_int_setting_internal; ++i)
 		{
+			if (!st->perms()->allow_get_settings(i))
+				continue;
+
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
@@ -558,6 +769,9 @@ namespace {
 		for (int i = settings_pack::bool_type_base;
 			i < settings_pack::max_bool_setting_internal; ++i)
 		{
+			if (!st->perms()->allow_get_settings(i))
+				continue;
+
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
@@ -566,12 +780,12 @@ namespace {
 			TORRENT_ASSERT(i < 65536);
 			io::write_uint16(i, ptr);
 		}
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
 	}
 
 	bool libtorrent_webui::set_settings(conn_state* st)
 	{
-		char* ptr = st->data;
+		char const* ptr = st->data;
 		if (st->len < 2) return error(st, invalid_number_of_args);
 
 		int num_settings = io::read_uint16(ptr);
@@ -584,6 +798,9 @@ namespace {
 			if (st->len < 2) return error(st, invalid_number_of_args);
 			int sett = io::read_uint16(ptr);
 			st->len -= 2;
+
+			if (!st->perms()->allow_set_settings(sett))
+				return error(st, permission_denied);
 
 			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
 			{
@@ -622,7 +839,7 @@ namespace {
 
 	bool libtorrent_webui::get_settings(conn_state* st)
 	{
-		char* iptr = st->data;
+		char const* iptr = st->data;
 		if (st->len < 2) return error(st, invalid_number_of_args);
 		int num_settings = io::read_uint16(iptr);
 		st->len -= 2;
@@ -642,7 +859,11 @@ namespace {
 
 		for (int i = 0; i < num_settings; ++i)
 		{
-			int sett = io::read_uint16(iptr);
+			int const sett = io::read_uint16(iptr);
+
+			if (!st->perms()->allow_get_settings(sett))
+				return error(st, permission_denied);
+
 			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
 			{
 				std::string const& v = s.get_str(sett);
@@ -663,11 +884,14 @@ namespace {
 			}
 		}
 
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
 	}
 
 	bool libtorrent_webui::list_stats(conn_state* st)
 	{
+		if (!st->perms()->allow_session_status())
+			return error(st, permission_denied);
+
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
@@ -678,18 +902,17 @@ namespace {
 		std::vector<stats_metric> stats = session_stats_metrics();
 		io::write_uint16(stats.size(), ptr);
 
-		for (std::vector<stats_metric>::iterator i = stats.begin()
-			, end(stats.end()); i != end; ++i)
+		for (auto const& s : stats)
 		{
-			io::write_uint16(i->value_index, ptr);
-			io::write_uint8(i->type, ptr);
-			int len = strlen(i->name);
+			io::write_uint16(s.value_index, ptr);
+			io::write_uint8(s.type, ptr);
+			int len = strlen(s.name);
 			TORRENT_ASSERT(len < 256);
 			io::write_uint8(len, ptr);
-			std::copy(i->name, i->name + len, ptr);
+			std::copy(s.name, s.name + len, ptr);
 		}
 
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
 	}
 
 	void libtorrent_webui::handle_alert(alert const* a)
@@ -697,10 +920,10 @@ namespace {
 		if (auto* ss = alert_cast<session_stats_alert>(a))
 		{
 			std::unique_lock<std::mutex> l(m_stats_mutex);
-    
+
 			++m_stats_frame;
 			span<std::int64_t const> stats = ss->counters();
-    
+
 			// first update our copy of the stats, and update their frame counters
 			for (int i = 0; i < counters::num_counters; ++i)
 			{
@@ -710,14 +933,33 @@ namespace {
 					m_stats[i].first = stats[i];
 				}
 			}
-    
+
 			// TODO: notify handler?
+		}
+		else if (auto* at = alert_cast<add_torrent_alert>(a))
+		{
+			auto* ud = static_cast<add_torrent_user_data*>(at->params.userdata);
+			std::unique_ptr<add_torrent_user_data> deleter(ud);
+
+			char rpc[4];
+			char* ptr = &rpc[0];
+			io::write_uint8(ud->function_id | 0x80, ptr);
+			io::write_uint16(ud->transaction_id, ptr);
+			if (at->error)
+				io::write_uint8(failed, ptr);
+			else
+				io::write_uint8(no_error, ptr);
+
+			ud->st->send_packet(rpc, sizeof(rpc));
 		}
 	}
 
 	bool libtorrent_webui::get_stats(conn_state* st)
 	{
-		char* iptr = st->data;
+		if (!st->perms()->allow_session_status())
+			return error(st, permission_denied);
+
+		char const* iptr = st->data;
 		if (st->len < 6) return error(st, invalid_number_of_args);
 		frame_t const frame = io::read_uint32(iptr);
 		int num_stats = io::read_uint16(iptr);
@@ -726,6 +968,10 @@ namespace {
 		if (st->len < num_stats * 2) return error(st, invalid_number_of_args);
 
 		m_ses.post_session_stats();
+
+		// TODO: have a queue of calls to be made the next time we receive a
+		// session_stats_alert (that holds owning conn_state pointers). Don't
+		// respond right now, but when we actually get fresh numbers
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -754,16 +1000,21 @@ namespace {
 			++num_updates;
 		}
 
+		// TODO: wait for the alert and respond later
+
 		// now that we know what the number of updates is, fill it in
 		char* counter_ptr = &response[counter_pos];
 		io::write_uint16(num_updates, counter_ptr);
 
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
 	}
 
 	bool libtorrent_webui::get_file_updates(conn_state* st)
 	{
-		char* iptr = st->data;
+		if (!st->perms()->allow_list())
+			return error(st, permission_denied);
+
+		char const* iptr = st->data;
 		if (st->len != 24) return error(st, invalid_number_of_args);
 		sha1_hash ih(iptr);
 		iptr += 20;
@@ -828,7 +1079,42 @@ namespace {
 			io::write_uint64(fp[static_cast<int>(fi)], ptr);
 		}
 
-		return send_packet(st->conn, 0x2, &response[0], response.size());
+		return st->send_packet(&response[0], response.size());
+	}
+
+	bool libtorrent_webui::add_torrent(conn_state* st)
+	{
+		char const* iptr = st->data;
+		int len = st->len;
+
+		if (!st->perms()->allow_add())
+			return error(st, permission_denied);
+
+		// 2 bytes length-prefix
+		// magnet:?xt=urn:btih:<40 bytes info-hash>
+		if (len < 62) return error(st, truncated_message);
+
+		int magnet_len = io::read_uint16(iptr);
+		len -= 2;
+		if (len < magnet_len)
+			return error(st, truncated_message);
+
+		lt::string_view magnet_link(iptr, magnet_len);
+
+		add_torrent_params atp = m_params_model;
+
+		lt::error_code ec;
+		parse_magnet_uri(magnet_link, atp, ec);
+		if (ec) return error(st, parse_error);
+
+		atp.save_path = m_params_model.save_path;
+		atp.flags |= torrent_flags::duplicate_is_error;
+
+		atp.userdata = new add_torrent_user_data{st->shared_from_this()
+			, st->function_id
+			, st->transaction_id};
+		m_ses.async_add_torrent(atp);
+		return true;
 	}
 
 	char const* fun_name(int const function_id)
@@ -841,25 +1127,9 @@ namespace {
 		return functions[function_id].name;
 	}
 
-	bool libtorrent_webui::handle_websocket_data(mg_connection* conn
-		, int bits, char* data, size_t length)
+	// TODO: this should take a span
+	bool libtorrent_webui::on_websocket_read(conn_state* st, char const* data, size_t length)
 	{
-		// TODO: this should really be handled at one layer below
-		// ping
-		if ((bits & 0xf) == 0x9)
-		{
-			// send pong
-			fprintf(stderr, "PING\n");
-			return send_packet(conn, 0xa, NULL, 0);
-		}
-
-		// only support binary, non-fragmented frames
-		if ((bits & 0xf) != 0x2)
-		{
-			fprintf(stderr, "ERROR: received packet that's not in binary mode\n");
-			return false;
-		}
-
 		// parse RPC message
 
 		// RPC call is always at least 3 bytes.
@@ -869,14 +1139,13 @@ namespace {
 			return false;
 		}
 
-		conn_state st;
-		st.conn = conn;
+		// TODO: this is not the rigth place for this. There should be another
+		// object to hold these for the functions
+		st->data = data;
+		st->function_id = io::read_uint8(st->data);
+		st->transaction_id = io::read_uint16(st->data);
 
-		st.data = data;
-		st.function_id = io::read_uint8(st.data);
-		st.transaction_id = io::read_uint16(st.data);
-
-		if (st.function_id & 0x80)
+		if (st->function_id & 0x80)
 		{
 			// RPC responses is at least 4 bytes
 			if (length < 4)
@@ -884,25 +1153,23 @@ namespace {
 				fprintf(stderr, "ERROR: received RPC response that's smaller than 4 bytes (%d)\n", int(length));
 				return false;
 			}
-			int status = io::read_uint8(st.data);
+			int status = io::read_uint8(st->data);
 			// this is a response to a function call
-			fprintf(stderr, "RETURNED: %s (status: %d)\n", fun_name(st.function_id & 0x7f), status);
+			fprintf(stderr, "RETURNED: %s (status: %d)\n", fun_name(st->function_id & 0x7f), status);
 		}
 		else
 		{
-			st.len = data + length - st.data;
-			// TOOD: parse this out of the request_info
-			st.perms = NULL;
+			st->len = data + length - st->data;
 
-//			fprintf(stderr, "CALL: %s (%d bytes arguments)\n", fun_name(st.function_id), st.len);
-			if (st.function_id >= 0 && st.function_id < int(functions.size()))
+			fprintf(stderr, "CALL: %s (%d bytes arguments)\n", fun_name(st->function_id), st->len);
+			if (st->function_id >= 0 && st->function_id < int(functions.size()))
 			{
-				return (this->*functions[st.function_id].handler)(&st);
+				return (this->*functions[st->function_id].handler)(st);
 			}
 			else
 			{
-				fprintf(stderr, " ID: %d\n", st.function_id);
-				return error(&st, no_such_function);
+				fprintf(stderr, " ID: %d\n", st->function_id);
+				return error(st, no_such_function);
 			}
 		}
 		return true;
@@ -918,7 +1185,7 @@ namespace {
 		io::write_uint8(no_error, ptr);
 		io::write_uint16(val, ptr);
 
-		return send_packet(st->conn, 0x2, rpc, 8);
+		return st->send_packet(rpc, sizeof(rpc));
 	}
 
 	bool libtorrent_webui::error(conn_state* st, int error)
@@ -929,10 +1196,10 @@ namespace {
 		io::write_uint16(st->transaction_id, ptr);
 		io::write_uint8(error, ptr);
 
-		return send_packet(st->conn, 0x2, rpc, 4);
+		return st->send_packet(rpc, sizeof(rpc));
 	}
-
-	bool libtorrent_webui::call_rpc(mg_connection* conn, int function, char const* data, int len)
+/*
+	bool libtorrent_webui::call_rpc(conn_state* st, int function, char const* data, int len)
 	{
 		lt::aux::buffer buf(len + 3);
 		char* ptr = &buf[0];
@@ -947,8 +1214,8 @@ namespace {
 
 		if (len > 0) memcpy(ptr, data, len);
 
-		return send_packet(conn, 0x2, &buf[0], buf.size());
+		return st->send_packet(buf.data(), buf.size());
 	}
-
+*/
 }
 

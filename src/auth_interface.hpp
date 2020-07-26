@@ -57,6 +57,7 @@ namespace libtorrent
 		virtual bool allow_set_file_prio() const = 0;
 
 		/// If returning true, the user may list torrents
+		// TODO: separate this out to listing torrents and listing files
 		virtual bool allow_list() const = 0;
 
 		/// If returning true, the user may add torrents
@@ -108,19 +109,19 @@ namespace libtorrent
 	struct no_permissions : permissions_interface
 	{
 		no_permissions() {}
-		bool allow_start() const { return false; }
-		bool allow_stop() const { return false; }
-		bool allow_recheck() const { return false; }
-		bool allow_set_file_prio() const { return false; }
-		bool allow_list() const { return false; }
-		bool allow_add() const { return false; }
-		bool allow_remove() const { return false; }
-		bool allow_remove_data() const { return false; }
-		bool allow_queue_change() const { return false; }
-		bool allow_get_settings(int) const { return false; }
-		bool allow_set_settings(int) const { return false; }
-		bool allow_get_data() const { return false; }
-		bool allow_session_status() const { return false; }
+		bool allow_start() const override { return false; }
+		bool allow_stop() const override { return false; }
+		bool allow_recheck() const override { return false; }
+		bool allow_set_file_prio() const override { return false; }
+		bool allow_list() const override { return false; }
+		bool allow_add() const override { return false; }
+		bool allow_remove() const override { return false; }
+		bool allow_remove_data() const override { return false; }
+		bool allow_queue_change() const override { return false; }
+		bool allow_get_settings(int) const override { return false; }
+		bool allow_set_settings(int) const override { return false; }
+		bool allow_get_data() const override { return false; }
+		bool allow_session_status() const override { return false; }
 	};
 
 	/// an implementation of permissions_interface that only allow inspecting
@@ -129,38 +130,38 @@ namespace libtorrent
 	struct read_only_permissions : permissions_interface
 	{
 		read_only_permissions() {}
-		bool allow_start() const { return false; }
-		bool allow_stop() const { return false; }
-		bool allow_recheck() const { return false; }
-		bool allow_set_file_prio() const { return false; }
-		bool allow_list() const { return true; }
-		bool allow_add() const { return false; }
-		bool allow_remove() const { return false; }
-		bool allow_remove_data() const { return false; }
-		bool allow_queue_change() const { return false; }
-		bool allow_get_settings(int) const { return true; }
-		bool allow_set_settings(int) const { return false; }
-		bool allow_get_data() const { return true; }
-		bool allow_session_status() const { return true; }
+		bool allow_start() const override { return false; }
+		bool allow_stop() const override { return false; }
+		bool allow_recheck() const override { return false; }
+		bool allow_set_file_prio() const override { return false; }
+		bool allow_list() const override { return true; }
+		bool allow_add() const override { return false; }
+		bool allow_remove() const override { return false; }
+		bool allow_remove_data() const override { return false; }
+		bool allow_queue_change() const override { return false; }
+		bool allow_get_settings(int) const override { return true; }
+		bool allow_set_settings(int) const override { return false; }
+		bool allow_get_data() const override { return true; }
+		bool allow_session_status() const override { return true; }
 	};
 
 	/// an implementation of permissions_interface that permit all access.
 	struct full_permissions : permissions_interface
 	{
 		full_permissions() {}
-		bool allow_start() const { return true; }
-		bool allow_stop() const { return true; }
-		bool allow_recheck() const { return true; }
-		bool allow_set_file_prio() const { return true; }
-		bool allow_list() const { return true; }
-		bool allow_add() const { return true; }
-		bool allow_remove() const { return true; }
-		bool allow_remove_data() const { return true; }
-		bool allow_queue_change() const { return true; }
-		bool allow_get_settings(int) const { return true; }
-		bool allow_set_settings(int) const { return true; }
-		bool allow_get_data() const { return true; }
-		bool allow_session_status() const { return true; }
+		bool allow_start() const override { return true; }
+		bool allow_stop() const override { return true; }
+		bool allow_recheck() const override { return true; }
+		bool allow_set_file_prio() const override { return true; }
+		bool allow_list() const override { return true; }
+		bool allow_add() const override { return true; }
+		bool allow_remove() const override { return true; }
+		bool allow_remove_data() const override { return true; }
+		bool allow_queue_change() const override { return true; }
+		bool allow_get_settings(int) const override { return true; }
+		bool allow_set_settings(int) const override { return true; }
+		bool allow_get_data() const override { return true; }
+		bool allow_session_status() const override { return true; }
 	};
 
 }

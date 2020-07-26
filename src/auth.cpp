@@ -37,14 +37,14 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "base64.hpp"
 #include "hex.hpp"
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 #include <vector>
 #include <string.h> // for strcmp() 
 #include <stdio.h>
 #include <sys/time.h>
+
+#include <boost/algorithm/string/predicate.hpp>
+
+using boost::algorithm::starts_with;
 
 namespace libtorrent
 {
@@ -256,31 +256,31 @@ void auth::load_accounts(std::string const& filename, error_code& ec)
 	\param auth the auth_interface object
 	\return the permission object appropriate for the user, or nullptr in case authentication failed.
 */
-permissions_interface const* parse_http_auth(mg_connection* conn, auth_interface const* auth)
+permissions_interface const* parse_http_auth(http::request<http::string_body> const& request
+	, auth_interface const* auth)
 {
 	std::string user;
 	std::string pwd;
-	char const* authorization = mg_get_header(conn, "authorization");
-	if (authorization)
+	auto const it = request.find(http::field::authorization);
+	if (it != request.end() && starts_with(it->value(), "basic "))
 	{
-		authorization = strcasestr(authorization, "basic ");
-		if (authorization)
-		{
-			authorization += 6;
-			// skip whiltespace
-			while (*authorization == ' '
-				|| *authorization == '\t')
-				++authorization;
+		auto authorization = it->value().substr(6);
+		while (!authorization.empty()
+			&& (authorization.front() == ' '
+				|| authorization.front() == '\t'))
+			authorization.remove_prefix(1);
 
-			std::string cred = base64decode(authorization);
-			user = cred.substr(0, cred.find_first_of(':'));
-			pwd = cred.substr(user.size()+1);
-		}
+		while (!authorization.empty()
+			&& (authorization.back() == ' '
+				|| authorization.back() == '\t'))
+			authorization.remove_suffix(1);
+
+		std::string cred = base64decode(std::string(authorization));
+		user = cred.substr(0, cred.find_first_of(':'));
+		pwd = cred.substr(user.size()+1);
 	}
 
-	permissions_interface const* perms = auth->find_user(user, pwd);
-	if (perms == nullptr) return NULL;
-	return perms;
+	return auth->find_user(user, pwd);
 }
 
 }

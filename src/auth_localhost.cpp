@@ -32,10 +32,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "auth_localhost.hpp"
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 #include <stdio.h>
 
 namespace libtorrent

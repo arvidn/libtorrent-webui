@@ -529,6 +529,25 @@ The fields on files, in bitmask bit-order (LSB is bit 0), are:
 | 3        | uint64_t            | ``downloaded`` (number of bytes)         |
 +----------+---------------------+------------------------------------------+
 
+add-torrent
+...........
+
+function id 20.
+
+This function adds a torrent from a magnet link.
+
++----------+---------------------+------------------------------------------+
+| offset   | type                | name                                     |
++==========+=====================+==========================================+
+| 3        | uint16_t, uint8_t[] | Magnet link to add. 16 bit string length |
+|          |                     | followed by the string itself.           |
++----------+---------------------+------------------------------------------+
+
+ERROR, more options from add_torrent_params
+
+The standard response indicates whether adding the torrent was successful or
+not. If the torrent already exists in the session, the call will fail.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -583,6 +602,8 @@ Function IDs
 +-----+---------------------------+-----------------------------------------+
 |  19 | get-file-updates          | info-hash, frame-number                 |
 +-----+---------------------------+-----------------------------------------+
+|  20 | add-torrent               | uint16_t, char[]                        |
++-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
 
@@ -612,5 +633,12 @@ Error codes used in RPC response messages.
 +------+------------------------------------------------+
 |    6 | resource not found. e.g. torrent may have been |
 |      | removed.                                       |
++------+------------------------------------------------+
+|    7 | parse error. An argument failed to be parsed   |
++------+------------------------------------------------+
+|    8 | permission denied. The user does not have      |
+|      | credentials to perform the operation.          |
++------+------------------------------------------------+
+|    9 | operation failed to complete successfully.     |
 +------+------------------------------------------------+
 
