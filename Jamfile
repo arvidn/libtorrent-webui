@@ -37,7 +37,7 @@ SOURCES =
 	load_config
 #	http_whitelist
 	error_logger
-#	websocket_handler
+	websocket_conn
 	alert_handler
 	file_requests
 	stats_logging

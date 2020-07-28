@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2013, 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "auth.hpp"
 #include "torrent_history.hpp"
+#include "websocket_conn.hpp"
 
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/core/multi_buffer.hpp>
@@ -65,7 +66,7 @@ namespace {
 	struct rpc_entry
 	{
 		char const* name;
-		bool (libtorrent_webui::*handler)(conn_state*, function_call);
+		bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 	};
 
 	static std::array<rpc_entry, 21> const functions =
@@ -164,7 +165,7 @@ namespace {
 
 	struct add_torrent_user_data
 	{
-		std::shared_ptr<conn_state> st;
+		std::shared_ptr<websocket_conn> st;
 		int function_id;
 		std::uint16_t transaction_id;
 	};
@@ -184,135 +185,6 @@ namespace {
 	};
 
 } // anonymous namespace
-
-	// TODO: rename this to websocket_connection and move it out to its own
-	// header/cpp file pair. the libtorrent_webui* could be virtual interface
-	struct conn_state : std::enable_shared_from_this<conn_state>
-	{
-		conn_state(libtorrent_webui* parent, permissions_interface const* perms
-			, ws::stream<beast::ssl_stream<beast::tcp_stream>>&& conn
-			, std::function<void(bool)>&& done)
-			: m_conn(std::move(conn))
-			, m_done(std::move(done))
-			, m_parent(parent)
-			, m_perms(perms)
-		{}
-
-		~conn_state()
-		{
-			assert(m_stopping);
-		}
-
-		bool send_packet(char const* buffer, int len)
-		{
-			if (m_stopping) return false;
-
-			m_send_buffer.emplace_back(buffer, buffer + len);
-			if (m_send_buffer.size() == 1) do_send();
-			return true;
-		}
-
-		void start_accept(http::request<http::string_body> const& request)
-		{
-			m_conn.async_accept(request, beast::bind_front_handler(&conn_state::on_accept, shared_from_this()));
-		}
-
-		permissions_interface const* perms() const { return m_perms; }
-
-	private:
-
-		void on_accept(beast::error_code const& ec)
-		{
-			if (ec) return close();
-			if (m_stopping) return;
-			do_read();
-		}
-
-		void do_send()
-		{
-			m_conn.async_write(boost::asio::buffer(m_send_buffer.front())
-				, beast::bind_front_handler(&conn_state::on_send, shared_from_this()));
-		}
-
-		void on_send(beast::error_code const& ec, std::size_t)
-		{
-			if (ec)
-			{
-				m_send_buffer.clear();
-				return close();
-			}
-			assert(m_send_buffer.size() >= 1);
-			m_send_buffer.pop_front();
-
-			if (!m_send_buffer.empty()) do_send();
-			else if (m_stopping) do_close();
-		}
-
-		void do_read()
-		{
-			m_read_buffer.clear();
-			m_conn.async_read(m_read_buffer, beast::bind_front_handler(
-				&conn_state::on_read, shared_from_this()));
-		}
-
-		void on_read(beast::error_code const& ec, std::size_t num_bytes)
-		{
-			if (ec) return close();
-			if (m_stopping) return;
-
-			beast::get_lowest_layer(m_conn).expires_after(60s);
-
-			if (!m_parent->on_websocket_read(this
-				, static_cast<char const*>(m_read_buffer.cdata().data())
-				, m_read_buffer.cdata().size()))
-			{
-				return close();
-			}
-
-			do_read();
-		}
-
-		void close()
-		{
-			if (m_stopping) return;
-			m_stopping = true;
-
-			if (!m_send_buffer.empty()) return;
-			do_close();
-		}
-
-		void do_close()
-		{
-			// we can't actually call done here, because we've stolen the
-			// socket from the http connection. We have to shut it down
-			// ourselves
-
-			beast::get_lowest_layer(m_conn).expires_after(30s);
-
-			m_conn.async_close(ws::close_reason{}
-				, beast::bind_front_handler(&conn_state::on_close, shared_from_this()));
-		}
-
-		void on_close(beast::error_code const& ec)
-		{
-			m_conn.next_layer().async_shutdown(
-				beast::bind_front_handler(&conn_state::on_shutdown, shared_from_this()));
-		}
-
-		void on_shutdown(beast::error_code const& ec)
-		{
-			beast::get_lowest_layer(m_conn).close();
-			m_done = nullptr;
-		}
-
-		ws::stream<beast::ssl_stream<beast::tcp_stream>> m_conn;
-		std::deque<std::vector<char>> m_send_buffer;
-		std::function<void(bool)> m_done;
-		beast::flat_buffer m_read_buffer;
-		libtorrent_webui* m_parent;
-		permissions_interface const* m_perms;
-		bool m_stopping = false;
-	};
 
 	struct function_call
 	{
@@ -370,14 +242,14 @@ namespace {
 
 		ws::stream<beast::ssl_stream<beast::tcp_stream>> conn(std::move(socket));
 		conn.binary(true);
-		auto st = std::make_shared<conn_state>(this, perms, std::move(conn), std::move(done));
+		auto st = std::make_shared<websocket_conn>(this, perms, std::move(conn), std::move(done));
 		st->start_accept(request);
 	}
 
 	// this is one of the key functions in the interface. It goes to
 	// some length to ensure we only send relevant information back,
 	// and in a compact format
-	bool libtorrent_webui::get_torrent_updates(conn_state* st, function_call f)
+	bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_list())
 			return error(st, f, permission_denied);
@@ -596,7 +468,7 @@ namespace {
 	}
 
 	template <typename Fun>
-	bool libtorrent_webui::apply_torrent_fun(conn_state* st, function_call f, Fun const& fun)
+	bool libtorrent_webui::apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun)
 	{
 		char const* ptr = f.data;
 		int num_torrents = io::read_uint16(ptr);
@@ -622,7 +494,7 @@ namespace {
 		return respond(st, f, 0, counter);
 	}
 
-	bool libtorrent_webui::start(conn_state* st, function_call f)
+	bool libtorrent_webui::start(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_start())
 			return error(st, f, permission_denied);
@@ -634,7 +506,7 @@ namespace {
 		});
 	}
 
-	bool libtorrent_webui::stop(conn_state* st, function_call f)
+	bool libtorrent_webui::stop(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_stop())
 			return error(st, f, permission_denied);
@@ -645,7 +517,7 @@ namespace {
 		});
 	}
 
-	bool libtorrent_webui::set_auto_managed(conn_state* st, function_call f)
+	bool libtorrent_webui::set_auto_managed(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_stop())
 			return error(st, f, permission_denied);
@@ -654,7 +526,7 @@ namespace {
 			handle.set_flags(torrent_flags::auto_managed);
 		});
 	}
-	bool libtorrent_webui::clear_auto_managed(conn_state* st, function_call f)
+	bool libtorrent_webui::clear_auto_managed(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_start())
 			return error(st, f, permission_denied);
@@ -663,7 +535,7 @@ namespace {
 			handle.unset_flags(torrent_flags::auto_managed);
 		});
 	}
-	bool libtorrent_webui::queue_up(conn_state* st, function_call f)
+	bool libtorrent_webui::queue_up(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
@@ -672,7 +544,7 @@ namespace {
 			handle.queue_position_up();
 		});
 	}
-	bool libtorrent_webui::queue_down(conn_state* st, function_call f)
+	bool libtorrent_webui::queue_down(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
@@ -681,7 +553,7 @@ namespace {
 			handle.queue_position_down();
 		});
 	}
-	bool libtorrent_webui::queue_top(conn_state* st, function_call f)
+	bool libtorrent_webui::queue_top(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
@@ -690,7 +562,7 @@ namespace {
 			handle.queue_position_top();
 		});
 	}
-	bool libtorrent_webui::queue_bottom(conn_state* st, function_call f)
+	bool libtorrent_webui::queue_bottom(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
@@ -699,7 +571,7 @@ namespace {
 			handle.queue_position_bottom();
 		});
 	}
-	bool libtorrent_webui::remove(conn_state* st, function_call f)
+	bool libtorrent_webui::remove(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_remove())
 			return error(st, f, permission_denied);
@@ -708,7 +580,7 @@ namespace {
 			m_ses.remove_torrent(handle);
 		});
 	}
-	bool libtorrent_webui::remove_and_data(conn_state* st, function_call f)
+	bool libtorrent_webui::remove_and_data(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_remove()
 			|| !st->perms()->allow_remove_data())
@@ -718,7 +590,7 @@ namespace {
 			m_ses.remove_torrent(handle, session::delete_files);
 		});
 	}
-	bool libtorrent_webui::force_recheck(conn_state* st, function_call f)
+	bool libtorrent_webui::force_recheck(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_recheck())
 			return error(st, f, permission_denied);
@@ -727,14 +599,14 @@ namespace {
 			handle.force_recheck();
 		});
 	}
-	bool libtorrent_webui::set_sequential_download(conn_state* st, function_call f)
+	bool libtorrent_webui::set_sequential_download(websocket_conn* st, function_call f)
 	{
 		// TODO: permissions
 		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
 			handle.set_flags(torrent_flags::sequential_download);
 		});
 	}
-	bool libtorrent_webui::clear_sequential_download(conn_state* st, function_call f)
+	bool libtorrent_webui::clear_sequential_download(websocket_conn* st, function_call f)
 	{
 		// TODO: permissions
 		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
@@ -742,7 +614,7 @@ namespace {
 		});
 	}
 
-	bool libtorrent_webui::list_settings(conn_state* st, function_call f)
+	bool libtorrent_webui::list_settings(websocket_conn* st, function_call f)
 	{
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -802,7 +674,7 @@ namespace {
 		return st->send_packet(&response[0], response.size());
 	}
 
-	bool libtorrent_webui::set_settings(conn_state* st, function_call f)
+	bool libtorrent_webui::set_settings(websocket_conn* st, function_call f)
 	{
 		char const* ptr = f.data;
 		if (f.len < 2) return error(st, f, invalid_number_of_args);
@@ -856,7 +728,7 @@ namespace {
 		return error(st, f, no_error);
 	}
 
-	bool libtorrent_webui::get_settings(conn_state* st, function_call f)
+	bool libtorrent_webui::get_settings(websocket_conn* st, function_call f)
 	{
 		char const* iptr = f.data;
 		if (f.len < 2) return error(st, f, invalid_number_of_args);
@@ -906,7 +778,7 @@ namespace {
 		return st->send_packet(&response[0], response.size());
 	}
 
-	bool libtorrent_webui::list_stats(conn_state* st, function_call f)
+	bool libtorrent_webui::list_stats(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_session_status())
 			return error(st, f, permission_denied);
@@ -975,7 +847,7 @@ namespace {
 		}
 	}
 
-	bool libtorrent_webui::get_stats(conn_state* st, function_call f)
+	bool libtorrent_webui::get_stats(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_session_status())
 			return error(st, f, permission_denied);
@@ -991,7 +863,7 @@ namespace {
 		m_ses.post_session_stats();
 
 		// TODO: have a queue of calls to be made the next time we receive a
-		// session_stats_alert (that holds owning conn_state pointers). Don't
+		// session_stats_alert (that holds owning websocket_conn pointers). Don't
 		// respond right now, but when we actually get fresh numbers
 
 		std::vector<char> response;
@@ -1030,7 +902,7 @@ namespace {
 		return st->send_packet(&response[0], response.size());
 	}
 
-	bool libtorrent_webui::get_file_updates(conn_state* st, function_call f)
+	bool libtorrent_webui::get_file_updates(websocket_conn* st, function_call f)
 	{
 		if (!st->perms()->allow_list())
 			return error(st, f, permission_denied);
@@ -1103,7 +975,7 @@ namespace {
 		return st->send_packet(&response[0], response.size());
 	}
 
-	bool libtorrent_webui::add_torrent(conn_state* st, function_call f)
+	bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
 	{
 		char const* iptr = f.data;
 		int len = f.len;
@@ -1149,7 +1021,7 @@ namespace {
 	}
 
 	// TODO: this should take a span
-	bool libtorrent_webui::on_websocket_read(conn_state* st, char const* data, size_t length)
+	bool libtorrent_webui::on_websocket_read(websocket_conn* st, char const* data, size_t length)
 	{
 		// parse RPC message
 
@@ -1197,7 +1069,7 @@ namespace {
 		return true;
 	}
 
-	bool libtorrent_webui::respond(conn_state* st, function_call f, int error, int val)
+	bool libtorrent_webui::respond(websocket_conn* st, function_call f, int error, int val)
 	{
 		char rpc[6];
 		char* ptr = rpc;
@@ -1210,7 +1082,7 @@ namespace {
 		return st->send_packet(rpc, sizeof(rpc));
 	}
 
-	bool libtorrent_webui::error(conn_state* st, function_call f, int error)
+	bool libtorrent_webui::error(websocket_conn* st, function_call f, int error)
 	{
 		char rpc[4];
 		char* ptr = &rpc[0];
@@ -1221,7 +1093,7 @@ namespace {
 		return st->send_packet(rpc, sizeof(rpc));
 	}
 /*
-	bool libtorrent_webui::call_rpc(conn_state* st, int function, char const* data, int len)
+	bool libtorrent_webui::call_rpc(websocket_conn* st, int function, char const* data, int len)
 	{
 		lt::aux::buffer buf(len + 3);
 		char* ptr = &buf[0];
