@@ -57,6 +57,8 @@ namespace libtorrent
 	struct alert_handler;
 	struct conn_state;
 
+	struct function_call;
+
 	struct libtorrent_webui : http_handler, alert_observer
 	{
 		libtorrent_webui(lt::session& ses, torrent_history const* hist
@@ -75,27 +77,27 @@ namespace libtorrent
 		{ m_params_model = p; }
 
 		// internal
-		bool get_torrent_updates(conn_state* st);
-		bool start(conn_state* st);
-		bool stop(conn_state* st);
-		bool set_auto_managed(conn_state* st);
-		bool clear_auto_managed(conn_state* st);
-		bool queue_up(conn_state* st);
-		bool queue_down(conn_state* st);
-		bool queue_top(conn_state* st);
-		bool queue_bottom(conn_state* st);
-		bool remove(conn_state* st);
-		bool remove_and_data(conn_state* st);
-		bool force_recheck(conn_state* st);
-		bool set_sequential_download(conn_state* st);
-		bool clear_sequential_download(conn_state* st);
-		bool list_settings(conn_state* st);
-		bool set_settings(conn_state* st);
-		bool get_settings(conn_state* st);
-		bool list_stats(conn_state* st);
-		bool get_stats(conn_state* st);
-		bool get_file_updates(conn_state* st);
-		bool add_torrent(conn_state* st);
+		bool get_torrent_updates(conn_state* st, function_call f);
+		bool start(conn_state* st, function_call f);
+		bool stop(conn_state* st, function_call f);
+		bool set_auto_managed(conn_state* st, function_call f);
+		bool clear_auto_managed(conn_state* st, function_call f);
+		bool queue_up(conn_state* st, function_call f);
+		bool queue_down(conn_state* st, function_call f);
+		bool queue_top(conn_state* st, function_call f);
+		bool queue_bottom(conn_state* st, function_call f);
+		bool remove(conn_state* st, function_call f);
+		bool remove_and_data(conn_state* st, function_call f);
+		bool force_recheck(conn_state* st, function_call f);
+		bool set_sequential_download(conn_state* st, function_call f);
+		bool clear_sequential_download(conn_state* st, function_call f);
+		bool list_settings(conn_state* st, function_call f);
+		bool set_settings(conn_state* st, function_call f);
+		bool get_settings(conn_state* st, function_call f);
+		bool list_stats(conn_state* st, function_call f);
+		bool get_stats(conn_state* st, function_call f);
+		bool get_file_updates(conn_state* st, function_call f);
+		bool add_torrent(conn_state* st, function_call f);
 
 		bool on_websocket_read(conn_state* st, char const* data, size_t length);
 
@@ -103,11 +105,12 @@ namespace libtorrent
 
 //		bool call_rpc(conn_state* st, int function, char const* data, int len);
 
-		bool respond(conn_state* st, int error, int val);
+		bool respond(conn_state* st, function_call f, int error, int val);
 
 		// respond with an error to an RPC
-		bool error(conn_state* st, int error);
+		bool error(conn_state* st, function_call f, int error);
 
+		// TODO: move this into the cpp file
 		enum error_t
 		{
 			no_error,
@@ -124,7 +127,7 @@ namespace libtorrent
 
 		// parse the arguments to the simple torrent commands
 		template <typename Fun>
-		bool apply_torrent_fun(conn_state* st, Fun const& f);
+		bool apply_torrent_fun(conn_state* st, function_call f, Fun const& fun);
 
 		session& m_ses;
 		torrent_history const* m_hist;

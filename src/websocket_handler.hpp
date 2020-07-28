@@ -41,21 +41,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent
 {
-	struct websocket_handler : http_handler
-	{
-		bool send_packet(mg_connection* conn, int type, char const* buffer, int len);
-		virtual bool handle_websocket_connect(mg_connection* conn,
-			mg_request_info const* request_info);
-		virtual void handle_end_request(mg_connection* conn);
-
-	private:
-
-		// all currently alive web sockets
-		std::map<mg_connection*, std::unique_ptr<std::mutex>> m_open_sockets;
-
-		// serialize access to the map itself
-		std::mutex m_mutex;
-	};
 }
 
 #endif
