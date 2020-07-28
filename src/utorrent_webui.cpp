@@ -44,10 +44,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <map>
 #include <boost/cstdint.hpp>
 
-extern "C" {
-#include "local_mongoose.h"
-}
-
 #include "libtorrent/add_torrent_params.hpp"
 #include "libtorrent/aux_/parse_url.hpp"
 #include "libtorrent/torrent_info.hpp"

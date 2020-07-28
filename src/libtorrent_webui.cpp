@@ -592,12 +592,14 @@ namespace {
 		int counter = 0;
 		for (int i = 0; i < num_torrents; ++i)
 		{
-			sha1_hash h;
-			memcpy(&h[0], &ptr[i*20], 20);
+			// TODO: we should use short, 32 bit, indices for torrents, rather
+			// than the full info-hash. This would also simplify support for
+			// bittorrent-v2
+			sha1_hash const h(ptr + i*20);
 
 			torrent_status ts = m_hist->get_torrent_status(h);
 			if (!ts.handle.is_valid()) continue;
-			f(ts);
+			f(ts.handle);
 			++counter;
 		}
 		return respond(st, 0, counter);
@@ -608,10 +610,10 @@ namespace {
 		if (!st->perms()->allow_start())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.set_flags(torrent_flags::auto_managed);
-			ts.handle.clear_error();
-			ts.handle.resume();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.set_flags(torrent_flags::auto_managed);
+			handle.clear_error();
+			handle.resume();
 		});
 	}
 
@@ -620,9 +622,9 @@ namespace {
 		if (!st->perms()->allow_stop())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.unset_flags(torrent_flags::auto_managed);
-			ts.handle.pause();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.unset_flags(torrent_flags::auto_managed);
+			handle.pause();
 		});
 	}
 
@@ -631,8 +633,8 @@ namespace {
 		if (!st->perms()->allow_stop())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.set_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.set_flags(torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::clear_auto_managed(conn_state* st)
@@ -640,8 +642,8 @@ namespace {
 		if (!st->perms()->allow_start())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.unset_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.unset_flags(torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::queue_up(conn_state* st)
@@ -649,8 +651,8 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.queue_position_up();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.queue_position_up();
 		});
 	}
 	bool libtorrent_webui::queue_down(conn_state* st)
@@ -658,8 +660,8 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.queue_position_down();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.queue_position_down();
 		});
 	}
 	bool libtorrent_webui::queue_top(conn_state* st)
@@ -667,8 +669,8 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.queue_position_top();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.queue_position_top();
 		});
 	}
 	bool libtorrent_webui::queue_bottom(conn_state* st)
@@ -676,8 +678,8 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.queue_position_bottom();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.queue_position_bottom();
 		});
 	}
 	bool libtorrent_webui::remove(conn_state* st)
@@ -685,8 +687,8 @@ namespace {
 		if (!st->perms()->allow_remove())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [this](torrent_status const& ts) {
-			m_ses.remove_torrent(ts.handle);
+		return apply_torrent_fun(st, [this](torrent_handle const& handle) {
+			m_ses.remove_torrent(handle);
 		});
 	}
 	bool libtorrent_webui::remove_and_data(conn_state* st)
@@ -695,8 +697,8 @@ namespace {
 			|| !st->perms()->allow_remove_data())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [this](torrent_status const& ts) {
-			m_ses.remove_torrent(ts.handle, session::delete_files);
+		return apply_torrent_fun(st, [this](torrent_handle const& handle) {
+			m_ses.remove_torrent(handle, session::delete_files);
 		});
 	}
 	bool libtorrent_webui::force_recheck(conn_state* st)
@@ -704,22 +706,22 @@ namespace {
 		if (!st->perms()->allow_recheck())
 			return error(st, permission_denied);
 
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.force_recheck();
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.force_recheck();
 		});
 	}
 	bool libtorrent_webui::set_sequential_download(conn_state* st)
 	{
 		// TODO: permissions
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.set_flags(torrent_flags::sequential_download);
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.set_flags(torrent_flags::sequential_download);
 		});
 	}
 	bool libtorrent_webui::clear_sequential_download(conn_state* st)
 	{
 		// TODO: permissions
-		return apply_torrent_fun(st, [](torrent_status const& ts) {
-			ts.handle.unset_flags(torrent_flags::sequential_download);
+		return apply_torrent_fun(st, [](torrent_handle const& handle) {
+			handle.unset_flags(torrent_flags::sequential_download);
 		});
 	}
 
