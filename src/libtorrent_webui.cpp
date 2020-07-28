@@ -939,6 +939,8 @@ namespace {
 		else if (auto* at = alert_cast<add_torrent_alert>(a))
 		{
 			auto* ud = static_cast<add_torrent_user_data*>(at->params.userdata);
+			if (ud == nullptr) return;
+
 			std::unique_ptr<add_torrent_user_data> deleter(ud);
 
 			char rpc[4];

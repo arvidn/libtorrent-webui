@@ -812,6 +812,44 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 	this._socket.send(call);
 }
 
+libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
+{
+	const encoder = new TextEncoder();
+	const link = encoder.encode(magnet_link);
+
+	var call = new ArrayBuffer(3 + 2 + link.length);
+	var view = new DataView(call);
+
+	var tid = this._tid++;
+	if (this._tid > 65535) this._tid = 0;
+
+	// function-id
+	view.setUint8(0, 20);
+	// transaction-id
+	view.setUint16(1, tid);
+	// string length
+	view.setUint16(3, link.length);
+
+	offset = 5;
+	for (var i = 0; i < link.length; i++)
+	{
+		view.setUint8(offset, link[i]);
+		offset++;
+	}
+
+	console.log('CALL 20 ("' + magnet_link + '") tid = ' + tid);
+
+	// this is the handler of the response for this call. It first
+	// parses out the return value, the passes it on to the user
+	// supplied callback.
+	this._transactions[tid] = function(view, fun, e)
+	{
+		if (typeof(callback) !== 'undefined') callback(e);
+	};
+
+	this._socket.send(call);
+};
+
 fields =
 {
 	'flags': 1 << 0,
