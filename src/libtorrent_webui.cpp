@@ -169,6 +169,20 @@ namespace {
 		std::uint16_t transaction_id;
 	};
 
+	enum error_t
+	{
+		no_error,
+		no_such_function,
+		invalid_number_of_args,
+		invalid_argument_type,
+		invalid_argument,
+		truncated_message,
+		resource_not_found,
+		parse_error,
+		permission_denied,
+		failed,
+	};
+
 } // anonymous namespace
 
 	// TODO: rename this to websocket_connection and move it out to its own

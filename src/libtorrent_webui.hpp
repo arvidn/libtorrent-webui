@@ -110,21 +110,6 @@ namespace libtorrent
 		// respond with an error to an RPC
 		bool error(conn_state* st, function_call f, int error);
 
-		// TODO: move this into the cpp file
-		enum error_t
-		{
-			no_error,
-			no_such_function,
-			invalid_number_of_args,
-			invalid_argument_type,
-			invalid_argument,
-			truncated_message,
-			resource_not_found,
-			parse_error,
-			permission_denied,
-			failed,
-		};
-
 		// parse the arguments to the simple torrent commands
 		template <typename Fun>
 		bool apply_torrent_fun(conn_state* st, function_call f, Fun const& fun);
