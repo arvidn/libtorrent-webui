@@ -53,7 +53,8 @@ struct http_handler
 {
 	// this must return the same string every time. This determines which
 	// request paths are routed to this handler
-	virtual std::string path_prefix() = 0;
+	// TODO: this should return a std::string_view
+	virtual std::string path_prefix() const = 0;
 
 	// called for each HTTP request. Once the response has been sent, the done()
 	// function must be called, to read another request from the client.
@@ -72,14 +73,12 @@ namespace libtorrent
 		, http::response<Body, Fields>&& msg)
 	{
 		msg.prepare_payload();
-		auto sp = std::make_shared<http::message<false, Body, Fields>>(std::move(msg));
+		auto sp = std::make_shared<http::response<Body, Fields>>(std::move(msg));
 		auto& req = *sp;
 
-		http::async_write(socket, req
-			, [response = std::move(sp), d = std::move(done)]
-			(beast::error_code const& ec, std::size_t)
-			{
-				d(ec || response->need_eof());
+		http::async_write(socket, req, [response = std::move(sp), d = std::move(done)]
+			(beast::error_code const& ec, std::size_t) {
+				d(bool(ec));
 			});
 	}
 

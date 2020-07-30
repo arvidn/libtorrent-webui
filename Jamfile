@@ -22,7 +22,7 @@ SOURCES =
 	webui
 	libtorrent_webui
 	json_util
-#	file_downloader
+	file_downloader
 #	torrent_post
 	disk_space
 	base64

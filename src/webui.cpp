@@ -166,9 +166,11 @@ private:
 
 		auto it = find_longest_prefix(m_handlers, req_path);
 		if (it == m_handlers.end())
-			return send_http(m_stream, done_function{*this}, http_error(m_req, http::status::not_found));
+			return send_http(m_stream, done_function{*this, m_req.need_eof()}
+				, http_error(m_req, http::status::not_found));
 
-		it->second->handle_http(std::move(m_req), m_stream, done_function{*this});
+		it->second->handle_http(std::move(m_req), m_stream
+			, done_function{*this, m_req.need_eof()});
 	}
 
 	void on_write(bool close, beast::error_code ec, std::size_t)
@@ -201,10 +203,12 @@ private:
 	struct done_function
 	{
 		std::shared_ptr<http_connection> m_self;
-		explicit done_function(http_connection& self) : m_self(self.shared_from_this()) {}
+		bool m_need_close;
+		explicit done_function(http_connection& self, bool close)
+			: m_self(self.shared_from_this()), m_need_close(close) {}
 		void operator()(bool close) const
 		{
-			if (close) m_self->do_close();
+			if (close || m_need_close) m_self->do_close();
 			else m_self->do_read();
 		}
 	};
@@ -303,11 +307,11 @@ webui_base::webui_base(int const port, char const* cert_path, int const num_thre
 	, m_ctx(ssl::context::tls)
 {
 	m_ctx.use_certificate_file(cert_path, ssl::context::pem);
+
+	// do something better here
 	m_ctx.set_password_callback([] (std::size_t max_length, ssl::context::password_purpose p)
 		{ return "test"; });
 	m_ctx.use_private_key_file("key.pem", ssl::context::pem);
-
-//#error set password callback
 
 	// Create and launch a listening port
 	m_listener = std::make_shared<listener>(m_ioc, m_ctx

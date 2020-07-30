@@ -36,9 +36,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "save_settings.hpp"
 #include "base64.hpp"
 #include "hex.hpp"
+#include "utils.hpp"
 
 #include <vector>
-#include <string.h> // for strcmp() 
 #include <stdio.h>
 #include <sys/time.h>
 
@@ -262,22 +262,17 @@ permissions_interface const* parse_http_auth(http::request<http::string_body> co
 	std::string user;
 	std::string pwd;
 	auto const it = request.find(http::field::authorization);
-	if (it != request.end() && starts_with(it->value(), "basic "))
+	if (it != request.end())
 	{
-		auto authorization = it->value().substr(6);
-		while (!authorization.empty()
-			&& (authorization.front() == ' '
-				|| authorization.front() == '\t'))
-			authorization.remove_prefix(1);
+		auto auth = trim(it->value());
+		if (starts_with(auth, "basic "))
+		{
+			// skip "basic "
+			auth = trim(auth.substr(6));
 
-		while (!authorization.empty()
-			&& (authorization.back() == ' '
-				|| authorization.back() == '\t'))
-			authorization.remove_suffix(1);
-
-		std::string cred = base64decode(std::string(authorization));
-		user = cred.substr(0, cred.find_first_of(':'));
-		pwd = cred.substr(user.size()+1);
+			std::string cred = base64decode(std::string(auth));
+			std::tie(user, pwd) = split(std::string_view(cred), ':');
+		}
 	}
 
 	return auth->find_user(user, pwd);

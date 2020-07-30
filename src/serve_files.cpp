@@ -94,7 +94,7 @@ serve_files::serve_files(std::string_view prefix
 
 // this must return the same string every time. This determines which
 // request paths are routed to this handler
-std::string serve_files::path_prefix() { return m_prefix; }
+std::string serve_files::path_prefix() const { return m_prefix; }
 
 // called for each HTTP request. Once the response has been sent, the done()
 // function must be called, to read another request from the client.

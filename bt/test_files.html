@@ -31,7 +31,12 @@ update_file_list = function(files)
 			row = table.rows[i + 1];
 		}
 
-		if ('name' in f) row.cells[0].textContent = f['name'];
+		if ('name' in f)
+		{
+			row.cells[0].innerHTML = '<a href="/download/'
+				+ window.location.hash.substring(1) + '/' + i + '">'
+				+ escape(f['name']) + '</a>';
+		}
 		if ('size' in f) row.cells[1].textContent = f['size'];
 		if ('downloaded' in f)
 		{

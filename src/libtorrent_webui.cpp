@@ -219,7 +219,7 @@ namespace {
 		m_alert->unsubscribe(this);
 	}
 
-	std::string libtorrent_webui::path_prefix()
+	std::string libtorrent_webui::path_prefix() const
 	{
 		return "/bt/control";
 	}

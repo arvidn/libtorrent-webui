@@ -1,5 +1,5 @@
 #include "libtorrent_webui.hpp"
-//#include "file_downloader.hpp"
+#include "file_downloader.hpp"
 #include "save_settings.hpp"
 #include "save_resume.hpp"
 #include "torrent_history.hpp"
@@ -68,7 +68,6 @@ int main(int argc, char *const argv[])
 	p.save_path = sett.get_str("save_path", ".");
 	resume.load(ec, p);
 
-//	file_downloader file_handler(ses, &authorizer);
 	stats_logging log(ses, &alerts);
 
 	webui_base webport(8090, "server.pem");
@@ -82,7 +81,11 @@ int main(int argc, char *const argv[])
 	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
 	webport.add_handler(&lt_handler);
 
-//	webport.add_handler(&file_handler);
+	// allows requesting files from within torrents exposed at HTTP path
+	// /download/<info-hash>/<file-index>
+	// supports range requests
+	file_downloader file_handler(ses, &alerts, &authorizer);
+	webport.add_handler(&file_handler);
 
 	signal(SIGTERM, &sighandler);
 	signal(SIGINT, &sighandler);

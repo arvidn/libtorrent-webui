@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2012-2013, Arvid Norberg
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,54 +30,48 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_ALERT_HANDLER_HPP_INCLUDED
-#define TORRENT_ALERT_HANDLER_HPP_INCLUDED
+#ifndef TORRENT_UTILS_HPP
+#define TORRENT_UTILS_HPP
 
-#include <vector>
-#include <memory>
-#include <mutex>
-#include <deque>
-#include <future>
-#include "libtorrent/fwd.hpp"
-#include "libtorrent/alert_types.hpp" // for num_alert_types
+#include <string_view>
+#include <boost/algorithm/string/predicate.hpp>
 
-namespace libtorrent
-{
+namespace libtorrent {
 
-struct alert_observer;
+	using boost::algorithm::starts_with;
 
-// TODO: rename to alert_dispatcher
-struct TORRENT_EXPORT alert_handler
-{
-	alert_handler(lt::session& ses);
+	template <typename StringView>
+	std::pair<std::string_view, std::string_view> split(StringView input, char const delimiter)
+	{
+		typename StringView::size_type pos = 0;
+		for (auto const c : input)
+		{
+			if (c == delimiter) return
+			{
+				std::string_view(input.data(), pos)
+					, std::string_view(input.data() + pos + 1, input.size() - pos - 1)
+			};
+			++pos;
+		}
+		return {std::string_view(input.data(), input.size()), std::string_view()};
+	}
 
-	// TODO 2: move the responsibility of picking which
-	// alert types to subscribe to to the observer
-	// TODO 3: make subscriptions automatically enable
-	// the corresponding category of alerts in the session somehow
-	// TODO: 3 make this a variadic template
-	void subscribe(alert_observer* o, int flags = 0, ...);
-	void dispatch_alerts(std::vector<alert*>& alerts) const;
-	void dispatch_alerts() const;
-	void unsubscribe(alert_observer* o);
+	inline bool is_whitespace(char const c)
+	{
+		return c == ' ' || c == '\t';
+	}
 
-	void abort();
+	template <typename StringView>
+	std::string_view trim(StringView in)
+	{
+		std::string_view input(in.data(), in.size());
+		while (!input.empty() && is_whitespace(input.front()))
+			input.remove_prefix(1);
 
-private:
-
-	void subscribe_impl(int const* type_list, int num_types, alert_observer* o, int flags);
-
-	std::array<std::vector<alert_observer*>, num_alert_types> m_observers;
-
-	// when set to true, all outstanding (std::future-based) subscriptions
-	// are cancelled, and new such subscriptions are disabled, by failing
-	// immediately
-	bool m_abort;
-
-	session& m_ses;
-};
-
+		while (!input.empty() && is_whitespace(input.back()))
+			input.remove_suffix(1);
+		return input;
+	}
 }
 
-#endif // TORRENT_ALERT_HANDLER_HPP_INCLUDED
-
+#endif

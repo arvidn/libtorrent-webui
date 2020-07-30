@@ -64,14 +64,6 @@ namespace libtorrent
 			, auth_interface const* auth, alert_handler* alerts);
 		~libtorrent_webui();
 
-		std::string path_prefix() override;
-
-		void handle_http(http::request<http::string_body> request
-			, beast::ssl_stream<beast::tcp_stream>& socket
-			, std::function<void(bool)> done) override;
-
-		void handle_alert(alert const* a) override;
-
 		void set_params_model(add_torrent_params const& p)
 		{ m_params_model = p; }
 
@@ -101,6 +93,14 @@ namespace libtorrent
 		bool on_websocket_read(websocket_conn* st, char const* data, size_t length);
 
 	private:
+
+		std::string path_prefix() const override;
+
+		void handle_http(http::request<http::string_body> request
+			, beast::ssl_stream<beast::tcp_stream>& socket
+			, std::function<void(bool)> done) override;
+
+		void handle_alert(alert const* a) override;
 
 //		bool call_rpc(websocket_conn* st, int function, char const* data, int len);
 
