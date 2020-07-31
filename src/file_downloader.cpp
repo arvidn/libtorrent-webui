@@ -37,6 +37,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "hex.hpp"
 #include "alert_handler.hpp"
 #include "utils.hpp"
+#include "mime_type.hpp"
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/extensions.hpp"
@@ -52,109 +53,66 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <mutex>
 #include <condition_variable>
 #include <charconv>
-
+#include <filesystem>
 #include <iostream>
 
 namespace libtorrent {
-namespace {
 
-	struct file_request_conn : std::enable_shared_from_this<file_request_conn>
+namespace fs = std::filesystem;
+
+struct file_request_conn : std::enable_shared_from_this<file_request_conn>
+{
+	file_request_conn(
+		beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done
+		, lt::torrent_handle th
+		, piece_index_t next_piece
+		, piece_index_t end_piece
+		, int offset
+		, int piece_size
+		, std::int64_t left_to_send)
+		: m_next_piece(next_piece)
+		, m_next_priority_piece(next_piece)
+		, m_end_piece(end_piece)
+		, m_left_to_send(left_to_send)
+		, m_socket(socket)
+		, m_done(std::move(done))
+		, m_torrent(std::move(th))
+		, m_piece_size(piece_size)
+		, m_offset(offset)
+	{}
+
+	bool stopped() const { return m_stopped; }
+
+	void set_piece_deadlines()
 	{
-		file_request_conn(
-			beast::ssl_stream<beast::tcp_stream>& socket
-			, std::function<void(bool)> done
-			, lt::torrent_handle th
-			, piece_index_t next_piece
-			, piece_index_t end_piece
-			, int offset
-			, int piece_size
-			, std::int64_t left_to_send)
-			: m_next_piece(next_piece)
-			, m_next_priority_piece(next_piece)
-			, m_end_piece(end_piece)
-			, m_left_to_send(left_to_send)
-			, m_socket(socket)
-			, m_done(std::move(done))
-			, m_torrent(std::move(th))
-			, m_piece_size(piece_size)
-			, m_offset(offset)
-		{}
+		if (m_stopped) return;
 
-		bool stopped() const { return m_stopped; }
-
-		void set_piece_deadlines()
+		// this 4 MiB should be picked in a more sophisticated way
+		piece_index_t::diff_type const prefetch = std::max(1, 4 * 1024 * 1024 / m_piece_size);
+		int deadline = 1;
+		while (m_next_priority_piece - m_next_piece < prefetch
+			&& m_next_priority_piece < m_end_piece)
 		{
-			if (m_stopped) return;
-
-			// this 4 MiB should be picked in a more sophisticated way
-			piece_index_t::diff_type const prefetch = std::max(1, 4 * 1024 * 1024 / m_piece_size);
-			int deadline = 1;
-			while (m_next_priority_piece - m_next_piece < prefetch
-				&& m_next_priority_piece < m_end_piece)
-			{
-				std::cout << "set piece deadline: " << m_next_priority_piece << '\n';
-				m_torrent.set_piece_deadline(m_next_priority_piece, deadline
-					, torrent_handle::alert_when_available);
-				++deadline;
-				++m_next_priority_piece;
-			}
+			std::cout << "set piece deadline: " << m_next_priority_piece << '\n';
+			m_torrent.set_piece_deadline(m_next_priority_piece, deadline
+				, torrent_handle::alert_when_available);
+			++deadline;
+			++m_next_priority_piece;
 		}
+	}
 
-		void on_piece_alert(lt::read_piece_alert const& a)
-		{
-#error this may be called concurrently with the network calls, from another thread. Members must be protected
-			if (m_stopped) return;
+	void on_piece_alert(lt::read_piece_alert const& a)
+	{
+//#error this may be called concurrently with the network calls, from another thread. Members must be protected
+		if (m_stopped) return;
 
-			if (a.piece == m_next_piece && !m_writing) {
+		if (a.piece == m_next_piece && !m_writing) {
 
-				if (a.error) return abort();
-
-				int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
-				async_write(a.buffer, m_offset, size);
-				++m_next_piece;
-				TORRENT_ASSERT(m_left_to_send >= size);
-				m_left_to_send -= size;
-				m_offset = 0;
-
-				set_piece_deadlines();
-			}
-			else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
-				if (a.error) return abort();
-				m_out_of_order[a.piece] = a.buffer;
-			}
-		}
-
-		void async_write(boost::shared_array<char> buf, int offset, int size)
-		{
-			using boost::asio::buffer;
-			TORRENT_ASSERT(!m_currently_sending);
-			TORRENT_ASSERT(!m_writing);
-			boost::asio::async_write(m_socket, buffer(buf.get() + offset, size)
-				, beast::bind_front_handler(&file_request_conn::on_write, shared_from_this()));
-			m_writing = true;
-			m_currently_sending = std::move(buf);
-		}
-
-		void on_write(beast::error_code const& ec, std::size_t)
-		{
-			TORRENT_ASSERT(m_writing);
-			m_writing = false;
-			m_currently_sending = nullptr;
-			if (ec) return abort();
-			if (m_stopped) return;
-
-			if (m_next_piece == m_end_piece) {
-				TORRENT_ASSERT(m_left_to_send == 0);
-				m_done(false);
-				return;
-			}
-			auto const it = m_out_of_order.find(m_next_piece);
-			if (it == m_out_of_order.end()) return;
+			if (a.error) return abort();
 
 			int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
-			std::cout << "async_write: " << m_next_piece << '\n';
-			async_write(std::move(it->second), m_offset, size);
-			m_out_of_order.erase(it);
+			async_write(a.buffer, m_offset, size);
 			++m_next_piece;
 			TORRENT_ASSERT(m_left_to_send >= size);
 			m_left_to_send -= size;
@@ -162,62 +120,107 @@ namespace {
 
 			set_piece_deadlines();
 		}
-
-		void abort()
-		{
-			if (m_stopped) return;
-			m_stopped = true;
-			m_out_of_order.clear();
-			for (piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
-				std::cout << "reset piece deadline: " << i << '\n';
-				m_torrent.reset_piece_deadline(i);
-			}
-#error somehow remove ourselves from the list now, maybe the m_done() call can do it
-//#error It would be nice to have reference counting, so we won't remove the deadline in case there are other requests in flight
-			m_done(true);
+		else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
+			if (a.error) return abort();
+			m_out_of_order[a.piece] = a.buffer;
 		}
+	}
 
-	private:
+	void async_write(boost::shared_array<char> buf, int offset, int size)
+	{
+		using boost::asio::buffer;
+		TORRENT_ASSERT(!m_currently_sending);
+		TORRENT_ASSERT(!m_writing);
+		boost::asio::async_write(m_socket, buffer(buf.get() + offset, size)
+			, beast::bind_front_handler(&file_request_conn::on_write, shared_from_this()));
+		m_writing = true;
+		m_currently_sending = std::move(buf);
+	}
 
-		// pieces we may receive out of order. store them here until it's time
-		// to send them
-		std::map<piece_index_t, boost::shared_array<char>> m_out_of_order;
+	void on_write(beast::error_code const& ec, std::size_t)
+	{
+		TORRENT_ASSERT(m_writing);
+		m_writing = false;
+		m_currently_sending = nullptr;
+		if (ec) return abort();
+		if (m_stopped) return;
 
-		boost::shared_array<char> m_currently_sending;
+		if (m_next_piece == m_end_piece) {
+			TORRENT_ASSERT(m_left_to_send == 0);
+			m_done(false);
+			return;
+		}
+		auto const it = m_out_of_order.find(m_next_piece);
+		if (it == m_out_of_order.end()) return;
 
-		piece_index_t m_next_piece;
-		piece_index_t m_next_priority_piece;
-		piece_index_t m_end_piece;
+		int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
+		std::cout << "async_write: " << m_next_piece << '\n';
+		async_write(std::move(it->second), m_offset, size);
+		m_out_of_order.erase(it);
+		++m_next_piece;
+		TORRENT_ASSERT(m_left_to_send >= size);
+		m_left_to_send -= size;
+		m_offset = 0;
 
-		// the number of bytes left to send
-		std::int64_t m_left_to_send;
+		set_piece_deadlines();
+	}
 
-		// the socket to write the response to
-		beast::ssl_stream<beast::tcp_stream>& m_socket;
+	void abort()
+	{
+		if (m_stopped) return;
+		m_stopped = true;
+		m_out_of_order.clear();
+		for (piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
+			std::cout << "reset piece deadline: " << i << '\n';
+			m_torrent.reset_piece_deadline(i);
+		}
+//#error somehow remove ourselves from the list now, maybe the m_done() call can do it
+//#error It would be nice to have reference counting, so we won't remove the deadline in case there are other requests in flight
+		m_done(true);
+	}
 
-		// called when the full response has been sent
-		std::function<void(bool)> m_done;
+private:
 
-		// we need this in order to keep updating file priorities and deadlines
-		// as we receive pieces
-		torrent_handle m_torrent;
+	// pieces we may receive out of order. store them here until it's time
+	// to send them
+	std::map<piece_index_t, boost::shared_array<char>> m_out_of_order;
 
-		int m_piece_size;
+	boost::shared_array<char> m_currently_sending;
 
-		// offset into the next piece (should be zero except for the first
-		// piece)
-		int m_offset;
+	piece_index_t m_next_piece;
+	piece_index_t m_next_priority_piece;
+	piece_index_t m_end_piece;
 
-		// when this is true, we have an outstanding write operation to the
-		// socket and we cannot issue another one until it completes.
-		// we always start in writing mode, because we're writing the header
-		std::atomic<bool> m_writing = true;
+	// the number of bytes left to send
+	std::int64_t m_left_to_send;
 
-		bool m_stopped = false;
+	// the socket to write the response to
+	beast::ssl_stream<beast::tcp_stream>& m_socket;
 
-		// TODO: there should be a timeout too
-	};
+	// called when the full response has been sent
+	std::function<void(bool)> m_done;
 
+	// we need this in order to keep updating file priorities and deadlines
+	// as we receive pieces
+	torrent_handle m_torrent;
+
+	int m_piece_size;
+
+	// offset into the next piece (should be zero except for the first
+	// piece)
+	int m_offset;
+
+	// when this is true, we have an outstanding write operation to the
+	// socket and we cannot issue another one until it completes.
+	// we always start in writing mode, because we're writing the header
+	std::atomic<bool> m_writing = true;
+
+	bool m_stopped = false;
+
+	// TODO: there should be a timeout too
+};
+
+namespace {
 	struct write_header_op
 	{
 		write_header_op(http::status s, unsigned v) : res(s, v) {}
@@ -367,6 +370,8 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	op->res.content_length(range_last_byte - range_first_byte + 1);
 	op->res.keep_alive(request.keep_alive());
 	op->res.set(http::field::accept_ranges, "bytes");
+	op->res.set(http::field::content_type, mime_type(fs::path(std::string(
+		ti->files().file_name(file))).extension()));
 	if (range_request)
 	{
 		std::stringstream range;
@@ -374,16 +379,15 @@ void file_downloader::handle_http(http::request<http::string_body> request
 		op->res.set(http::field::content_range, range.str());
 	}
 
-#error mime type
-#error disposition
+//#error disposition
 
-		async_write_header(socket, op->sr
-			, [send_op = op, freq = std::move(freq)]
-			(beast::error_code const& ec, std::size_t size)
-			{
-				if (ec) return freq->abort();
-				freq->on_write(ec, size);
-			});
+	async_write_header(socket, op->sr
+		, [send_op = op, freq = std::move(freq)]
+		(beast::error_code const& ec, std::size_t size)
+		{
+			if (ec) return freq->abort();
+			freq->on_write(ec, size);
+		});
 
 /*
 	torrent_piece_queue pq;

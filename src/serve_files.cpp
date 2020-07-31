@@ -42,37 +42,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/hasher.hpp"
 
 #include "serve_files.hpp"
+#include "mime_type.hpp"
 
 using boost::algorithm::contains;
 namespace fs = std::filesystem;
 
 namespace libtorrent
 {
-
-namespace {
-
-	std::string_view mime_type(fs::path const& ext)
-	{
-		if (ext == ".htm")  return "text/html";
-		if (ext == ".html") return "text/html";
-		if (ext == ".css")  return "text/css";
-		if (ext == ".txt")  return "text/plain";
-		if (ext == ".js")   return "text/javascript";
-		if (ext == ".json") return "application/json";
-		if (ext == ".xml")  return "application/xml";
-		if (ext == ".png")  return "image/png";
-		if (ext == ".jpeg") return "image/jpeg";
-		if (ext == ".jpg")  return "image/jpeg";
-		if (ext == ".gif")  return "image/gif";
-		if (ext == ".bmp")  return "image/bmp";
-		if (ext == ".ico")  return "image/vnd.microsoft.icon";
-		if (ext == ".tiff") return "image/tiff";
-		if (ext == ".tif")  return "image/tiff";
-		if (ext == ".svg")  return "image/svg+xml";
-		if (ext == ".svgz") return "image/svg+xml";
-		return "application/octet-stream";
-	}
-}
 
 serve_files::serve_files(std::string_view prefix
 	, std::string_view root_directory)

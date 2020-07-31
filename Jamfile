@@ -23,6 +23,7 @@ SOURCES =
 	libtorrent_webui
 	json_util
 	file_downloader
+	mime_type
 #	torrent_post
 	disk_space
 	base64
@@ -39,7 +40,7 @@ SOURCES =
 	error_logger
 	websocket_conn
 	alert_handler
-	file_requests
+#	file_requests
 	stats_logging
 	serve_files
 	hex
