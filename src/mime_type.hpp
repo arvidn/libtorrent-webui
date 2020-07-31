@@ -34,13 +34,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_MIME_TYPE
 
 #include <string_view>
-#include <filesystem>
 
 namespace libtorrent {
 
-namespace fs = std::filesystem;
-
-std::string_view mime_type(fs::path const& ext);
+std::string_view mime_type(std::string_view ext);
 
 }
 

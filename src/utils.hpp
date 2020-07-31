@@ -41,19 +41,22 @@ namespace libtorrent {
 	using boost::algorithm::starts_with;
 
 	template <typename StringView>
-	std::pair<std::string_view, std::string_view> split(StringView input, char const delimiter)
+	std::pair<std::string_view, std::string_view>
+	split(StringView input, char const delimiter)
 	{
-		typename StringView::size_type pos = 0;
-		for (auto const c : input)
-		{
-			if (c == delimiter) return
-			{
-				std::string_view(input.data(), pos)
-					, std::string_view(input.data() + pos + 1, input.size() - pos - 1)
-			};
-			++pos;
-		}
-		return {std::string_view(input.data(), input.size()), std::string_view()};
+		std::string_view const in(input.data(), input.size());
+		auto const pos = in.find_first_of(delimiter);
+		if (pos == std::string_view::npos) return { in, std::string_view{}};
+		return {in.substr(0, pos), in.substr(pos + 1)};
+	}
+
+	template <typename StringView>
+	std::string_view extension(StringView input)
+	{
+		std::string_view const in(input.data(), input.size());
+		auto const pos = in.find_last_of('.');
+		if (pos == std::string_view::npos) return std::string_view{};
+		return in.substr(pos);
 	}
 
 	inline bool is_whitespace(char const c)

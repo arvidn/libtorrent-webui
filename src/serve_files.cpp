@@ -98,7 +98,7 @@ void serve_files::handle_http(http::request<http::string_body> request
 	if (relative_path.empty())
 		full_path += "index.html";
 
-	fs::path const extension = full_path.extension();
+	std::string const extension = full_path.extension().string();
 
 	bool use_gzip = false;
 	fs::file_time_type mtime{};

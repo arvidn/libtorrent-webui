@@ -31,29 +31,88 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "mime_type.hpp"
+#include <unordered_map>
+#include <string_view>
 
 namespace libtorrent {
 
-std::string_view mime_type(fs::path const& ext)
+using namespace std::literals::string_view_literals;
+
+namespace {
+std::unordered_map<std::string_view, std::string_view> const g_mime_types{
+	{".torrent"sv, "application/x-bittorrent"sv},
+	{".json"sv, "application/json"sv},
+	{".xslt"sv, "application/xml"sv},
+	{".xsl"sv, "application/xml"sv},
+	{".doc"sv, "application/msword"sv},
+	{".exe"sv, "application/octet-stream"sv},
+	{".zip"sv, "application/zip"sv},
+	{".xls"sv, "application/excel"sv},
+	{".tgz"sv, "application/x-tar-gz"sv},
+	{".tar"sv, "application/x-tar"sv},
+	{".gz"sv, "application/gzip"sv},
+	{".arj"sv, "application/x-arj-compressed"sv},
+	{".rar"sv, "application/x-arj-compressed"sv},
+	{".rtf"sv, "application/rtf"sv},
+	{".pdf"sv, "application/pdf"sv},
+	{".swf"sv, "application/x-shockwave-flash"sv},
+
+// text
+	{".html"sv, "text/html"sv},
+	{".htm"sv, "text/html"sv},
+	{".shtm"sv, "text/html"sv},
+	{".shtml"sv, "text/html"sv},
+	{".css"sv, "text/css"sv},
+	{".js"sv, "text/javascript"sv},
+	{".txt"sv, "text/plain"sv},
+	{".xml"sv, "text/xml"sv},
+
+// audio
+	{".mp3"sv, "audio/mpeg"sv},
+	{".mid"sv, "audio/mid"sv},
+	{".m3u"sv, "audio/x-mpegurl"sv},
+	{".ram"sv, "audio/x-pn-realaudio"sv},
+	{".ra"sv, "audio/x-pn-realaudio"sv},
+	{".ogg"sv, "audio/ogg"sv},
+	{".wav"sv, "audio/wav"sv},
+
+// video
+	{".mpg"sv, "video/mpeg"sv},
+	{".mpeg"sv, "video/mpeg"sv},
+	{".webm"sv, "video/webm"sv},
+	{".mov"sv, "video/quicktime"sv},
+	{".mp4"sv, "video/mp4"sv},
+	{".m4v"sv, "video/x-m4v"sv},
+	{".asf"sv, "video/x-ms-asf"sv},
+	{".avi"sv, "video/x-msvideo"sv},
+
+// image
+	{".webp"sv, "image/webp"sv},
+	{".bmp"sv, "image/bmp"sv},
+	{".ico"sv, "image/vnd.microsoft.icon"sv},
+	{".gif"sv, "image/gif"sv},
+	{".jpg"sv, "image/jpeg"sv},
+	{".jpeg"sv, "image/jpeg"sv},
+	{".png"sv, "image/png"sv},
+	{".svg"sv, "image/svg+xml"sv},
+	{".svgz"sv, "image/svg+xml"sv},
+	{".tiff"sv, "image/tiff"sv},
+	{".tif"sv, "image/tiff"sv},
+
+// fonts
+	{".ttf"sv, "application/x-font-ttf"sv},
+	{".woff"sv, "font/woff"sv},
+	{".woff2"sv, "font/woff2"sv},
+	{".otf"sv, "font/otf"sv},
+};
+
+}
+
+std::string_view mime_type(std::string_view ext)
 {
-	if (ext == ".htm")  return "text/html";
-	if (ext == ".html") return "text/html";
-	if (ext == ".css")  return "text/css";
-	if (ext == ".txt")  return "text/plain";
-	if (ext == ".js")   return "text/javascript";
-	if (ext == ".json") return "application/json";
-	if (ext == ".xml")  return "application/xml";
-	if (ext == ".png")  return "image/png";
-	if (ext == ".jpeg") return "image/jpeg";
-	if (ext == ".jpg")  return "image/jpeg";
-	if (ext == ".gif")  return "image/gif";
-	if (ext == ".bmp")  return "image/bmp";
-	if (ext == ".ico")  return "image/vnd.microsoft.icon";
-	if (ext == ".tiff") return "image/tiff";
-	if (ext == ".tif")  return "image/tiff";
-	if (ext == ".svg")  return "image/svg+xml";
-	if (ext == ".svgz") return "image/svg+xml";
-	return "application/octet-stream";
+	auto it = g_mime_types.find(ext);
+	if (it == g_mime_types.end()) return "application/octet-stream";
+	return it->second;
 }
 
 }

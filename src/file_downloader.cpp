@@ -370,8 +370,7 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	op->res.content_length(range_last_byte - range_first_byte + 1);
 	op->res.keep_alive(request.keep_alive());
 	op->res.set(http::field::accept_ranges, "bytes");
-	op->res.set(http::field::content_type, mime_type(fs::path(std::string(
-		ti->files().file_name(file))).extension()));
+	op->res.set(http::field::content_type, mime_type(extension(ti->files().file_name(file))));
 	if (range_request)
 	{
 		std::stringstream range;
