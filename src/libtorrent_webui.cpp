@@ -211,7 +211,8 @@ namespace {
 
 		m_alert->subscribe(this, 0
 			, session_stats_alert::alert_type
-			, add_torrent_alert::alert_type);
+			, add_torrent_alert::alert_type
+			, 0);
 	}
 
 	libtorrent_webui::~libtorrent_webui()

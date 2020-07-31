@@ -135,7 +135,8 @@ error_log::error_log(screen& scr, int x, int y, int w, int h
 		, listen_failed_alert::alert_type
 		, portmap_error_alert::alert_type
 		, fastresume_rejected_alert::alert_type
-		, torrent_error_alert::alert_type, 0);
+		, torrent_error_alert::alert_type
+		, 0);
 }
 
 void error_log::handle_alert(alert const* a)

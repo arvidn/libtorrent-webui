@@ -82,9 +82,78 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 		, m_offset(offset)
 	{}
 
-	bool stopped() const { return m_stopped; }
+	bool stopped() const
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		return m_stopped;
+	}
 
 	void set_piece_deadlines()
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		set_piece_deadlines_impl();
+	}
+
+	void on_piece_alert(lt::read_piece_alert const& a)
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+
+		if (m_stopped) return;
+
+		if (a.piece == m_next_piece && !m_writing) {
+
+			if (a.error) return abort();
+
+			int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
+			async_write(a.buffer, m_offset, size);
+			++m_next_piece;
+			TORRENT_ASSERT(m_left_to_send >= size);
+			m_left_to_send -= size;
+			m_offset = 0;
+
+			set_piece_deadlines_impl();
+		}
+		else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
+			if (a.error) return abort();
+			m_out_of_order[a.piece] = a.buffer;
+		}
+	}
+
+	void on_write(beast::error_code const& ec, std::size_t)
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+
+		TORRENT_ASSERT(m_writing);
+		m_writing = false;
+		m_currently_sending = nullptr;
+		if (ec) return abort();
+		if (m_stopped) return;
+
+		if (m_next_piece == m_end_piece) {
+			TORRENT_ASSERT(m_left_to_send == 0);
+			m_stopped = true;
+			l.unlock();
+			m_done(false);
+			return;
+		}
+		auto const it = m_out_of_order.find(m_next_piece);
+		if (it == m_out_of_order.end()) return;
+
+		int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
+		std::cout << "async_write: " << m_next_piece << '\n';
+		async_write(std::move(it->second), m_offset, size);
+		m_out_of_order.erase(it);
+		++m_next_piece;
+		TORRENT_ASSERT(m_left_to_send >= size);
+		m_left_to_send -= size;
+		m_offset = 0;
+
+		set_piece_deadlines_impl();
+	}
+
+private:
+
+	void set_piece_deadlines_impl()
 	{
 		if (m_stopped) return;
 
@@ -102,28 +171,22 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 		}
 	}
 
-	void on_piece_alert(lt::read_piece_alert const& a)
+	void abort()
 	{
-//#error this may be called concurrently with the network calls, from another thread. Members must be protected
 		if (m_stopped) return;
-
-		if (a.piece == m_next_piece && !m_writing) {
-
-			if (a.error) return abort();
-
-			int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
-			async_write(a.buffer, m_offset, size);
-			++m_next_piece;
-			TORRENT_ASSERT(m_left_to_send >= size);
-			m_left_to_send -= size;
-			m_offset = 0;
-
-			set_piece_deadlines();
+		m_stopped = true;
+		m_out_of_order.clear();
+		for (piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
+			std::cout << "reset piece deadline: " << i << '\n';
+			m_torrent.reset_piece_deadline(i);
 		}
-		else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
-			if (a.error) return abort();
-			m_out_of_order[a.piece] = a.buffer;
-		}
+		//TODO: It would be nice to have reference counting, so we won't remove the
+		// deadline in case there are other requests in flight
+
+		// we can't call m_done here, since we have m_mutex locked, and the done
+		// callback will inspect our stopped() state, which also requires
+		// locking the mutex
+		post(m_socket.get_executor(), std::bind(m_done, true));
 	}
 
 	void async_write(boost::shared_array<char> buf, int offset, int size)
@@ -137,54 +200,19 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 		m_currently_sending = std::move(buf);
 	}
 
-	void on_write(beast::error_code const& ec, std::size_t)
-	{
-		TORRENT_ASSERT(m_writing);
-		m_writing = false;
-		m_currently_sending = nullptr;
-		if (ec) return abort();
-		if (m_stopped) return;
-
-		if (m_next_piece == m_end_piece) {
-			TORRENT_ASSERT(m_left_to_send == 0);
-			m_done(false);
-			return;
-		}
-		auto const it = m_out_of_order.find(m_next_piece);
-		if (it == m_out_of_order.end()) return;
-
-		int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
-		std::cout << "async_write: " << m_next_piece << '\n';
-		async_write(std::move(it->second), m_offset, size);
-		m_out_of_order.erase(it);
-		++m_next_piece;
-		TORRENT_ASSERT(m_left_to_send >= size);
-		m_left_to_send -= size;
-		m_offset = 0;
-
-		set_piece_deadlines();
-	}
-
-	void abort()
-	{
-		if (m_stopped) return;
-		m_stopped = true;
-		m_out_of_order.clear();
-		for (piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
-			std::cout << "reset piece deadline: " << i << '\n';
-			m_torrent.reset_piece_deadline(i);
-		}
-//#error somehow remove ourselves from the list now, maybe the m_done() call can do it
-//#error It would be nice to have reference counting, so we won't remove the deadline in case there are other requests in flight
-		m_done(true);
-	}
-
-private:
+	// since we only have a single async operation outstanding (async_write())
+	// all completion handlers will be called serially and don't need
+	// synchronization. Howerver, the on_alert handler is called from a
+	// different thread and so access to all members must be protected by a
+	// mutec
+	mutable std::mutex m_mutex;
 
 	// pieces we may receive out of order. store them here until it's time
 	// to send them
 	std::map<piece_index_t, boost::shared_array<char>> m_out_of_order;
 
+	// we use this to keep a reference to the buffer currently in the
+	// async_write() call, to keep it alive.
 	boost::shared_array<char> m_currently_sending;
 
 	piece_index_t m_next_piece;
@@ -213,8 +241,10 @@ private:
 	// when this is true, we have an outstanding write operation to the
 	// socket and we cannot issue another one until it completes.
 	// we always start in writing mode, because we're writing the header
-	std::atomic<bool> m_writing = true;
+	bool m_writing = true;
 
+	// when the request has been fully sent, or aborted, this is set to true, to
+	// prevent anything else from being sent on the socket
 	bool m_stopped = false;
 
 	// TODO: there should be a timeout too
@@ -269,7 +299,7 @@ file_downloader::file_downloader(session& s
 	, m_attachment(true)
 	, m_alert(alert)
 {
-	m_alert->subscribe(this, 0, read_piece_alert::alert_type);
+	m_alert->subscribe(this, 0, read_piece_alert::alert_type, 0);
 }
 
 file_downloader::~file_downloader()
@@ -354,14 +384,34 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	piece_index_t const end_piece = next(ti->map_file(file, range_last_byte, 0).piece);
 	int offset = req.start;
 
-	auto freq = std::make_shared<file_request_conn>(socket, std::move(done)
+	// wrap the done callback to also remove the file_downloader_conn from the
+	// map
+	auto wrap_done = [this, h, d = std::move(done)] (bool close)
+	{
+		{
+			std::lock_guard<std::mutex> l(m_mutex);
+			auto conns = m_outstanding_requests.equal_range(h);
+			for (auto it = conns.first; it != conns.second;)
+			{
+				if (it->second->stopped())
+					it = m_outstanding_requests.erase(it);
+				else
+					++it;
+			}
+		}
+		d(close);
+	};
+
+	auto freq = std::make_shared<file_request_conn>(socket, std::move(wrap_done)
 		, h, first_piece, end_piece, offset, ti->files().piece_length()
 		, range_last_byte - range_first_byte + 1);
 
-	freq->set_piece_deadlines();
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		m_outstanding_requests.emplace(h, freq);
+	}
 
-	std::lock_guard<std::mutex> l(m_mutex);
-	m_outstanding_requests.emplace(h, freq);
+	freq->set_piece_deadlines();
 
 	http::status const status = range_request ? http::status::partial_content : http::status::ok;
 
@@ -387,7 +437,6 @@ void file_downloader::handle_http(http::request<http::string_body> request
 		, [send_op = op, freq = std::move(freq)]
 		(beast::error_code const& ec, std::size_t size)
 		{
-			if (ec) return freq->abort();
 			freq->on_write(ec, size);
 		});
 

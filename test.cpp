@@ -85,6 +85,7 @@ int main(int argc, char *const argv[])
 	// /download/<info-hash>/<file-index>
 	// supports range requests
 	file_downloader file_handler(ses, &alerts, &authorizer);
+	file_handler.set_disposition(false);
 	webport.add_handler(&file_handler);
 
 	signal(SIGTERM, &sighandler);
