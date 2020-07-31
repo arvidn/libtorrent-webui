@@ -371,14 +371,17 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	op->res.keep_alive(request.keep_alive());
 	op->res.set(http::field::accept_ranges, "bytes");
 	op->res.set(http::field::content_type, mime_type(extension(ti->files().file_name(file))));
+	if (m_attachment)
+	{
+		op->res.set(http::field::content_disposition
+			, str("attachment; filename=", escape_string(ti->files().file_name(file))));
+	}
 	if (range_request)
 	{
 		std::stringstream range;
 		range << range_first_byte << '-' << range_last_byte << '/' << file_size;
 		op->res.set(http::field::content_range, range.str());
 	}
-
-//#error disposition
 
 	async_write_header(socket, op->sr
 		, [send_op = op, freq = std::move(freq)]

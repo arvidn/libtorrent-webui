@@ -57,7 +57,6 @@ namespace libtorrent
 		~file_downloader();
 
 		void set_disposition(bool attachment) { m_attachment = attachment; }
-		void debug_print_requests() const;
 
 	private:
 
@@ -71,8 +70,6 @@ namespace libtorrent
 
 		session& m_ses;
 		auth_interface const* m_auth;
-
-		int m_queue_size;
 
 		// controls the content disposition of files. Defaults to true
 		// which asks the browser to save the file rather than to render it.

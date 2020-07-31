@@ -34,11 +34,21 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_UTILS_HPP
 
 #include <string_view>
+#include <sstream>
 #include <boost/algorithm/string/predicate.hpp>
 
 namespace libtorrent {
 
 	using boost::algorithm::starts_with;
+
+	template <typename... Elems>
+	std::string str(Elems&&... e)
+	{
+		std::stringstream ret;
+		int dummy[] = {(ret << e, 0)...};
+		static_cast<void>(dummy); // unused
+		return ret.str();
+	}
 
 	template <typename StringView>
 	std::pair<std::string_view, std::string_view>
