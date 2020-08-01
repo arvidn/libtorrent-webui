@@ -64,6 +64,7 @@ function _check_error(e, callback)
 	
 	console.log("ERROR: " + error);
 	if (typeof(callback) !== 'undefined') callback(error);
+	return true;
 }
 
 libtorrent_connection = function(url, callback)

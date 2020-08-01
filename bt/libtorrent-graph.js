@@ -53,7 +53,7 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 			peak = Math.max(data[dp][n] * multiplier, peak);
 		}
 	}
-   if (peak == 0) peak = 1 * (scale == 'auto' ? 1 : scale);
+	if (peak == 0) peak = 1 * (scale == 'auto' ? 1 : scale);
 
 	ctx.clearRect(0,0,canvas.width, canvas.height);
 
