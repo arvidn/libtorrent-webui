@@ -1022,30 +1022,30 @@ namespace {
 	}
 
 	// TODO: this should take a span
-	bool libtorrent_webui::on_websocket_read(websocket_conn* st, char const* data, size_t length)
+	bool libtorrent_webui::on_websocket_read(websocket_conn* st, span<char const> data)
 	{
 		// parse RPC message
 
 		// RPC call is always at least 3 bytes.
-		if (length < 3)
+		if (data.size() < 3)
 		{
-			fprintf(stderr, "ERROR: received packet that's smaller than 3 bytes (%d)\n", int(length));
+			fprintf(stderr, "ERROR: received packet that's smaller than 3 bytes (%d)\n"
+				, int(data.size()));
 			return false;
 		}
 
-		// TODO: this is not the rigth place for this. There should be another
-		// object to hold these for the functions
 		function_call f;
-		f.data = data;
+		f.data = data.data();
 		f.function_id = io::read_uint8(f.data);
 		f.transaction_id = io::read_uint16(f.data);
 
 		if (f.function_id & 0x80)
 		{
 			// RPC responses is at least 4 bytes
-			if (length < 4)
+			if (data.size() < 4)
 			{
-				fprintf(stderr, "ERROR: received RPC response that's smaller than 4 bytes (%d)\n", int(length));
+				fprintf(stderr, "ERROR: received RPC response that's smaller than 4 bytes (%d)\n"
+					, int(data.size()));
 				return false;
 			}
 			int status = io::read_uint8(f.data);
@@ -1054,7 +1054,7 @@ namespace {
 		}
 		else
 		{
-			f.len = data + length - f.data;
+			f.len = data.data() + data.size() - f.data;
 
 			fprintf(stderr, "CALL: %s (%d bytes arguments)\n", fun_name(f.function_id), f.len);
 			if (f.function_id >= 0 && f.function_id < int(functions.size()))
@@ -1093,24 +1093,5 @@ namespace {
 
 		return st->send_packet(rpc, sizeof(rpc));
 	}
-/*
-	bool libtorrent_webui::call_rpc(websocket_conn* st, int function, char const* data, int len)
-	{
-		lt::aux::buffer buf(len + 3);
-		char* ptr = &buf[0];
-		TORRENT_ASSERT(function >= 0 && function < 128);
-
-		// function id
-		io::write_uint8(function, ptr);
-
-		// transaction id
-		std::uint16_t tid = m_transaction_id++;
-		io::write_uint16(tid, ptr);
-
-		if (len > 0) memcpy(ptr, data, len);
-
-		return st->send_packet(buf.data(), buf.size());
-	}
-*/
 }
 

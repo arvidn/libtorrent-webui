@@ -12,6 +12,9 @@ var conn = null;
 var g_stats = [];
 var g_disk_graph_defs = [
 {name: 'disk.queued_write_bytes', color: '#888'},
+};
+
+var g_disk_graph2_defs = [
 {name: 'disk.disk_blocks_in_use', color: '#444'},
 {name: 'disk.pinned_blocks', color: '#e49'},
 {name: 'disk.queued_disk_jobs', color: '#4ee'},
@@ -208,8 +211,9 @@ redraw_graph = function(counters)
 	prune_data_points(g_stats_counters, start_time);
 
 	render_graph('disk_graph', g_stats_counters, g_disk_graph_defs, start_time, now, "B", 'auto', 1, true);
+	render_graph('disk_graph2', g_stats_counters, g_disk_graph2_defs, start_time, now, "", 'auto', 1, true);
 	render_graph('net_graph', g_stats_counters, g_net_graph_defs, start_time, now, "B/s", 'auto', 1, true);
-	setTimeout(get_session_stats, 1000);
+	setTimeout(get_session_stats, 300);
 }
 
 add_torrent = function()
@@ -316,7 +320,8 @@ window.onload = function()
 <td id="connected-peers" class="counter"></td>
 </tr>
 </template>
-<canvas id="net_graph" width="800" height="500"></canvas>
-<canvas id="disk_graph" width="800" height="500"></canvas>
+<canvas id="net_graph" width="800" height="250"></canvas>
+<canvas id="disk_graph" width="800" height="250"></canvas>
+<canvas id="disk_graph2" width="800" height="250"></canvas>
 </html>
 

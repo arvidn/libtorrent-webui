@@ -84,7 +84,7 @@ libtorrent_connection = function(url, callback)
 		{
 			var e = view.getUint8(3);
 			fun &= 0x7f;
-			console.log('RESPONSE: fun: ' + fun + ' tid: ' + tid + ' error: ' + e);
+//			console.log('RESPONSE: fun: ' + fun + ' tid: ' + tid + ' error: ' + e);
 
 			if (!self._transactions.hasOwnProperty(tid)) return;
 
@@ -174,7 +174,7 @@ libtorrent_connection.prototype['list_settings'] = function(callback)
 	// transaction-id
 	view.setUint16(1, tid);
 
-	console.log('CALL list_settings() tid = ' + tid);
+//	console.log('CALL list_settings() tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -257,7 +257,7 @@ libtorrent_connection.prototype['get_settings'] = function(settings, callback)
 		offset += 2;
 	}
 
-	console.log('CALL get_settings( num: ' + settings.length + ' ) tid = ' + tid);
+//	console.log('CALL get_settings( num: ' + settings.length + ' ) tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -346,7 +346,7 @@ libtorrent_connection.prototype['set_settings'] = function(settings, callback)
 		}
 	}
 
-	console.log('CALL set_settings( settings: ' + Object.keys(settings).length + ') tid = ' + tid);
+//	console.log('CALL set_settings( settings: ' + Object.keys(settings).length + ') tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -372,7 +372,7 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 		self._frame = view.getUint32(4);
 		var num_torrents = view.getUint32(8);
 		var num_removed_torrents = view.getUint32(12);
-		console.log('frame: ' + self._frame + ' num-torrents: ' + num_torrents + ' num-removed-torrents: ' + num_removed_torrents);
+//		console.log('frame: ' + self._frame + ' num-torrents: ' + num_torrents + ' num-removed-torrents: ' + num_removed_torrents);
 		ret = {};
 		var offset = 16;
 		for (var i = 0; i < num_torrents; ++i)
@@ -519,7 +519,7 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 	view.setUint32(7, 0);
 	view.setUint32(11, mask);
 
-	console.log('CALL get_updates( frame: ' + this._frame + ' mask: ' + mask.toString(16) + ' ) tid = ' + tid);
+//	console.log('CALL get_updates( frame: ' + this._frame + ' mask: ' + mask.toString(16) + ' ) tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -566,7 +566,7 @@ libtorrent_connection.prototype['list_stats'] = function(callback)
 	// transaction-id
 	view.setUint16(1, tid);
 
-	console.log('CALL list_stats () tid = ' + tid);
+//	console.log('CALL list_stats () tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -628,7 +628,7 @@ libtorrent_connection.prototype['get_stats'] = function(stats, callback)
 		offset += 2;
 	}
 
-	console.log('CALL get_stats () tid = ' + tid);
+//	console.log('CALL get_stats () tid = ' + tid);
 	this._socket.send(call);
 }
 
@@ -653,7 +653,7 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
 
 		var frame = view.getUint32(4);
 		var num_files = view.getUint32(8);
-		console.log('frame: ' + frame + ' num-files: ' + num_files);
+//		console.log('frame: ' + frame + ' num-files: ' + num_files);
 		ret = [];
 		var offset = 12;
 		var mask = 0;
@@ -724,7 +724,7 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
 	// frame-number
 	view.setUint32(offset, 0);
 
-	console.log('CALL get_file_updates() tid = ' + tid);
+//	console.log('CALL get_file_updates() tid = ' + tid);
 	this._socket.send(call);
 }
 libtorrent_connection.prototype['start'] = function(info_hashes, callback)
@@ -798,7 +798,7 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 		}
 	}
 
-	console.log('CALL ' + fun_id + '() tid = ' + tid);
+//	console.log('CALL ' + fun_id + '() tid = ' + tid);
 
 	// this is the handler of the response for this call. It first
 	// parses out the return value, the passes it on to the user
@@ -838,7 +838,7 @@ libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
 		offset++;
 	}
 
-	console.log('CALL 20 ("' + magnet_link + '") tid = ' + tid);
+//	console.log('CALL 20 ("' + magnet_link + '") tid = ' + tid);
 
 	// this is the handler of the response for this call. It first
 	// parses out the return value, the passes it on to the user

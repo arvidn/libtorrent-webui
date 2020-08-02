@@ -90,7 +90,7 @@ namespace libtorrent
 		bool get_file_updates(websocket_conn* st, function_call f);
 		bool add_torrent(websocket_conn* st, function_call f);
 
-		bool on_websocket_read(websocket_conn* st, char const* data, size_t length);
+		bool on_websocket_read(websocket_conn* st, span<char const> data);
 
 	private:
 
@@ -101,8 +101,6 @@ namespace libtorrent
 			, std::function<void(bool)> done) override;
 
 		void handle_alert(alert const* a) override;
-
-//		bool call_rpc(websocket_conn* st, int function, char const* data, int len);
 
 		bool respond(websocket_conn* st, function_call f, int error, int val);
 

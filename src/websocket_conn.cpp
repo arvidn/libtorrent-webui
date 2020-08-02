@@ -113,8 +113,8 @@ void websocket_conn::on_read(beast::error_code const& ec, std::size_t num_bytes)
 	beast::get_lowest_layer(m_conn).expires_after(60s);
 
 	if (!m_parent->on_websocket_read(this
-		, static_cast<char const*>(m_read_buffer.cdata().data())
-		, m_read_buffer.cdata().size()))
+		, { static_cast<char const*>(m_read_buffer.cdata().data())
+		, int(m_read_buffer.cdata().size())}))
 	{
 		return close();
 	}
