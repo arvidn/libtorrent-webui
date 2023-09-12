@@ -40,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/peer_id.hpp" // for sha1_hash
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/torrent.hpp"
+#include "libtorrent/aux_/torrent.hpp"
 #include "libtorrent/aux_/escape_string.hpp" // for escape_string
 
 #include <boost/shared_array.hpp>
@@ -196,9 +196,9 @@ namespace libtorrent
 
 			std::unique_lock<std::mutex> l(m_mutex);
 			using iter = std::multimap<sha1_hash, torrent_piece_queue*>::iterator;
-			std::shared_ptr<torrent> t = p->handle.native_handle();
+			std::shared_ptr<aux::torrent> t = p->handle.native_handle();
 
-			std::pair<iter, iter> range = m_torrents.equal_range(t->info_hash());
+			std::pair<iter, iter> range = m_torrents.equal_range(t->info_hash().get_best());
 			if (range.first == m_torrents.end()) return;
 
 			for (iter i = range.first; i != range.second; ++i)
@@ -291,8 +291,8 @@ namespace libtorrent
 	bool file_downloader::handle_http(mg_connection* conn,
 		mg_request_info const* request_info)
 	{
-		if (!string_begins_no_case(request_info->uri, "/download")
-			&& !string_begins_no_case(request_info->uri, "/proxy"))
+		if (!aux::string_begins_no_case(request_info->uri, "/download")
+			&& !aux::string_begins_no_case(request_info->uri, "/proxy"))
 			return false;
 
 		permissions_interface const* perms = parse_http_auth(conn, m_auth);
@@ -322,7 +322,7 @@ namespace libtorrent
 			return true;
 		}
 
-		file_index_t const file{atoi(file_str.to_string().c_str())};
+		file_index_t const file{atoi(std::string(file_str).c_str())};
 
 		sha1_hash info_hash;
 		from_hex(info_hash_str, info_hash.data());
@@ -419,7 +419,7 @@ namespace libtorrent
 			"Accept-Ranges: bytes\r\n"
 			, range_request ? "206 Partial Content" : "200 OK"
 			, range_last_byte - range_first_byte + 1
-			, mg_get_builtin_mime_type(ti->files().file_name(file).to_string().c_str())
+			, mg_get_builtin_mime_type(std::string(ti->files().file_name(file)).c_str())
 			, m_attachment ? "Content-Disposition: attachment; filename=" : ""
 			, m_attachment ? escape_string(fname).c_str() : ""
 			, m_attachment ? "\r\n" : "");

@@ -39,7 +39,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <mutex>
 
 #include "escape_json.hpp"
-#include "libtorrent/utf8.hpp"
 #include "libtorrent/assert.hpp"
 
 namespace libtorrent
@@ -49,14 +48,27 @@ std::string escape_json(string_view input)
 {
 	if (input.empty()) return "";
 	std::string ret;
-	for (auto const c : input)
+	for (auto const s : input)
 	{
-		switch(c)
+		if (s > 0x1f && s < 0x80 && s != '"' && s != '\\')
 		{
-			case '"': ret += "\\\""; break;
-			case '\\': ret += "\\\\"; break;
-			case '\n': ret += "\\n"; break;
-			default: ret += c; break;
+			ret += s;
+		}
+		else
+		{
+			ret += '\\';
+			switch(s)
+			{
+				case '"': ret += '"'; break;
+				case '\\': ret += '\\'; break;
+				case '\n': ret += '\n'; break;
+				default:
+				{
+					char buf[20];
+					snprintf(buf, sizeof(buf), "u%04x", std::uint16_t(s));
+					ret += buf;
+				}
+			}
 		}
 	}
 	return ret;

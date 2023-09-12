@@ -55,7 +55,7 @@ struct external_ip_observer : alert_observer
 		if (ip == NULL) return;
 
 		error_code ec;
-		printf("EXTERNAL IP: %s\n", ip->external_address.to_string(ec).c_str());
+		printf("EXTERNAL IP: %s\n", ip->external_address.to_string().c_str());
 
 		if (m_last_known_addr != address()
 			&& m_last_known_addr != ip->external_address)

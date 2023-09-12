@@ -35,7 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "file_requests.hpp"
 
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/torrent.hpp"
+#include "libtorrent/aux_/torrent.hpp"
 
 //#define DLOG printf
 #define DLOG if (false) printf
@@ -44,7 +44,7 @@ using namespace libtorrent;
 
 std::size_t file_requests::hash_value(piece_request const& r) const
 {
-	sha1_hash const& h = r.info_hash;
+	sha1_hash const& h = r.info_hash.get_best();
 	return (h[0] | (h[1] << 8) | (h[2] << 16) | (h[3] << 24)) ^ static_cast<int>(r.piece);
 }
 
@@ -58,7 +58,7 @@ void file_requests::on_alert(alert const* a)
 	read_piece_alert const* p = alert_cast<read_piece_alert>(a);
 	if (p)
 	{
-		std::shared_ptr<torrent> t = p->handle.native_handle();
+		std::shared_ptr<aux::torrent> t = p->handle.native_handle();
 
 		piece_request rq;
 		rq.info_hash = t->info_hash();
@@ -86,7 +86,7 @@ void file_requests::on_alert(alert const* a)
 		for (iter i = m_requests.begin(); i != m_requests.end(); ++i)
 		{
 			TORRENT_ASSERT(i->info_hash != rq.info_hash || i->piece != rq.piece);
-			DLOG("(%02x%02x, %d) ", i->info_hash[0], i->info_hash[1], static_cast<int>(i->piece));
+			DLOG("(%02x%02x, %d) ", i->info_hash.get_best()[0], i->info_hash.get_best()[1], static_cast<int>(i->piece));
 		}
 		DLOG("\n");
 		return;
@@ -96,7 +96,7 @@ void file_requests::on_alert(alert const* a)
 	if (pf)
 	{
 		DLOG("piece_finished: %d\n", static_cast<int>(pf->piece_index));
-		std::shared_ptr<torrent> t = pf->handle.native_handle();
+		std::shared_ptr<aux::torrent> t = pf->handle.native_handle();
 		piece_request rq;
 		rq.info_hash = t->info_hash();
 		rq.piece = pf->piece_index;
@@ -119,11 +119,11 @@ void file_requests::on_alert(alert const* a)
 	torrent_paused_alert const* tp = alert_cast<torrent_paused_alert>(a);
 	if (tr)
 	{
-		rq.info_hash = tr->info_hash;
+		rq.info_hash = tr->info_hashes;
 	}
 	else if (tp)
 	{
-		rq.info_hash = tp->handle.native_handle()->info_hash();
+		rq.info_hash = tp->handle.info_hashes();
 	}
 	else return;
 
@@ -177,11 +177,11 @@ std::shared_future<piece_entry> file_requests::read_piece(
 	, lt::piece_index_t const piece
 	, lt::clock_type::duration const timeout_ms)
 {
-	TORRENT_ASSERT(piece >= 0);
-	TORRENT_ASSERT(piece < h.torrent_file()->num_pieces());
+	TORRENT_ASSERT(piece >= piece_index_t{0});
+	TORRENT_ASSERT(piece < h.torrent_file()->end_piece());
 
 	piece_request rq;
-	rq.info_hash = h.info_hash();
+	rq.info_hash = h.info_hashes();
 	rq.piece = piece;
 	rq.promise.reset(new std::promise<piece_entry>());
 	rq.timeout = lt::clock_type::now() + timeout_ms;

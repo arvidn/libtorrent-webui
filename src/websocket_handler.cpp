@@ -31,7 +31,7 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "websocket_handler.hpp"
-#include "libtorrent/io.hpp"
+#include "libtorrent/aux_/io_bytes.hpp"
 #include "local_mongoose.h"
 
 namespace libtorrent
@@ -41,7 +41,7 @@ namespace libtorrent
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
 
-		namespace io = libtorrent::detail;
+		namespace io = libtorrent::aux;
 
 		auto i = m_open_sockets.find(conn);
 		if (i == m_open_sockets.end())

@@ -32,7 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "torrent_post.hpp"
 #include "transmission_webui.hpp"
-#include "libtorrent/http_parser.hpp" // for http_parser
+#include "libtorrent/aux_/http_parser.hpp" // for http_parser
 #include "libtorrent/torrent_info.hpp"
 
 extern "C" {
@@ -90,7 +90,7 @@ bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_c
 		part_end = strstr(part_start, boundary);
 		if (part_end == nullptr) part_end = body_end;
 
-		http_parser part;
+		aux::http_parser part;
 		bool error = false;
 		part.incoming(span<char const>(part_start, part_end - part_start), error);
 /*

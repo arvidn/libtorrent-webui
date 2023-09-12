@@ -31,12 +31,13 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "libtorrent_webui.hpp"
-#include "libtorrent/io.hpp"
-#include "libtorrent/buffer.hpp"
+#include "libtorrent/aux_/buffer.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/session_stats.hpp"
 #include "libtorrent/torrent_info.hpp"
 #include "libtorrent/alert_types.hpp"
+#include "libtorrent/aux_/io_bytes.hpp"
+#include "libtorrent/aux_/escape_string.hpp"
 #include "local_mongoose.h"
 #include "auth.hpp"
 #include "torrent_history.hpp"
@@ -49,7 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace libtorrent {
 namespace {
 
-	namespace io = libtorrent::detail;
+	namespace io = libtorrent::aux;
 
 	struct rpc_entry
 	{
@@ -249,7 +250,8 @@ namespace {
 
 			++num_torrents;
 			// first write the info-hash
-			std::copy(i->status.info_hash.begin(), i->status.info_hash.end(), ptr);
+			auto const ih = i->status.info_hashes.get_best();
+			std::copy(ih.begin(), ih.end(), ptr);
 			// then 64 bits of bitmask, indicating which fields
 			// are included in the update for this torrent
 			io::write_uint64(bitmask, ptr);
@@ -362,7 +364,6 @@ namespace {
 						switch (s.state)
 						{
 							case torrent_status::checking_files:
-							case torrent_status::allocating:
 							case torrent_status::checking_resume_data:
 								state = 0; // checking-files
 								break;
@@ -933,7 +934,7 @@ namespace {
 
 	bool libtorrent_webui::call_rpc(mg_connection* conn, int function, char const* data, int len)
 	{
-		buffer buf(len + 3);
+		lt::aux::buffer buf(len + 3);
 		char* ptr = &buf[0];
 		TORRENT_ASSERT(function >= 0 && function < 128);
 

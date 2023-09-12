@@ -49,17 +49,17 @@ extern "C" {
 }
 
 #include "libtorrent/add_torrent_params.hpp"
-#include "libtorrent/parse_url.hpp"
+#include "libtorrent/aux_/parse_url.hpp"
 #include "libtorrent/torrent_info.hpp"
 #include "libtorrent/announce_entry.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/peer_info.hpp"
-#include "libtorrent/socket_io.hpp" // for print_address
-#include "libtorrent/io.hpp" // for read_int32
+#include "libtorrent/aux_/socket_io.hpp" // for print_address
+#include "libtorrent/aux_/io_bytes.hpp" // for read_int32
 #include "libtorrent/magnet_uri.hpp" // for make_magnet_uri
 #include "libtorrent/aux_/escape_string.hpp" // for unescape_string
-#include "libtorrent/string_util.hpp" // for string_begins_no_case
+#include "libtorrent/aux_/string_util.hpp" // for string_begins_no_case
 #include "libtorrent/span.hpp"
 #include "libtorrent/hasher.hpp"
 #include "response_buffer.hpp" // for appendf
@@ -72,7 +72,7 @@ extern "C" {
 namespace libtorrent
 {
 
-	namespace io = detail;
+	namespace io = aux;
 
 utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 	, auto_load* al, torrent_history* hist
@@ -111,8 +111,10 @@ utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 		int port = m_settings->get_int("listen_port", -1);
 		if (port != -1)
 		{
-			error_code ec;
-			m_ses.listen_on(std::make_pair(port, port+1), ec);
+			settings_pack pack;
+			std::string const listen_interface = "0.0.0.0:" + std::to_string(port);
+			pack.set_str(settings_pack::listen_interfaces, listen_interface.c_str());
+			m_ses.apply_settings(pack);
 		}
 	}
 
@@ -182,7 +184,7 @@ bool utorrent_webui::handle_http(mg_connection* conn, mg_request_info const* req
 	}
 
 	// we only provide access to paths under /gui
-	if (!string_begins_no_case("/gui/", request_info->uri)) return false;
+	if (!aux::string_begins_no_case("/gui/", request_info->uri)) return false;
 
 	permissions_interface const* perms = parse_http_auth(conn, m_auth);
 	if (!perms)
@@ -429,7 +431,7 @@ void utorrent_webui::set_file_priority(std::vector<char>&, char const* args, per
 
 	apply_fun(args, [&](torrent_status const& st) {
 		for (file_index_t const j : files)
-			st.handle.file_priority(j, prio);
+			st.handle.file_priority(j, lt::download_priority_t(prio));
 	});
 }
 
@@ -524,12 +526,14 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 
 		char const* sname;
 		std::int64_t value;
-		if (s == settings_pack::cache_size)
+/*		if (s == settings_pack::cache_size)
 		{
 			sname = "cache.override_size";
 			value = std::int64_t(sett.get_int(s)) * 16 / 1024;
 		}
-		else if (s == settings_pack::upload_rate_limit)
+		else
+*/
+		if (s == settings_pack::upload_rate_limit)
 		{
 			sname = "max_ul_rate";
 			value = std::int64_t(sett.get_int(s)) / 1024;
@@ -577,7 +581,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 			",[\"dir_autoload_flag\",1,\"%s\",{\"access\":\"%c\"}]" + first
 			, escape_json(m_al->auto_load_dir()).c_str()
 			, p->allow_set_settings(-1) ? 'Y' : 'R'
-			, m_al->scan_interval() ? "true" : "false"
+			, m_al->scan_interval().count() != 0 ? "true" : "false"
 			, p->allow_set_settings(-1) ? 'Y' : 'R');
 		first = 0;
 	}
@@ -680,8 +684,8 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		{
 			if (!p->allow_set_settings(-1)) continue;
 			int port = atoi(value.c_str());
-			error_code ec;
-			m_ses.listen_on(std::make_pair(port, port+1), ec);
+			std::string const listen_interface = "0.0.0.0:" + std::to_string(port);
+			pack.set_str(settings_pack::listen_interfaces, listen_interface.c_str());
 			if (m_settings) m_settings->set_int("listen_port", port);
 		}
 		else if (key == "bt.transp_disposition")
@@ -748,7 +752,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		else if (key == "dir_autoload_flag" && m_al)
 		{
 			if (!p->allow_set_settings(-1)) continue;
-			m_al->set_scan_interval(to_bool(value) ? 0 : 20);
+			m_al->set_scan_interval(std::chrono::seconds(to_bool(value) ? 0 : 20));
 		}
 		else if (key == "dir_active_download")
 		{
@@ -758,6 +762,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 				m_al->set_params_model(m_params_model);
 			if (m_settings) m_settings->set_str("save_path", value);
 		}
+/*
 		else if (key == "cache.override_size")
 		{
 			if (!p->allow_set_settings(settings_pack::cache_size)) continue;
@@ -765,6 +770,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			int size = atoi(value.c_str()) * 1024 / 16;
 			pack.set_int(settings_pack::cache_size, size);
 		}
+*/
 		else if (key == "max_ul_rate")
 		{
 			if (!p->allow_set_settings(settings_pack::upload_rate_limit)) continue;
@@ -855,12 +861,14 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 			int first_piece = files.file_offset(i) / files.piece_length();
 			int last_piece = (files.file_offset(i) + files.file_size(i)) / files.piece_length();
 			// don't round 1 down to 0. 0 is special (do-not-download)
-			if (file_prio[i] == lt::low_priority) file_prio[i] = download_priority_t{2};
+			if (file_prio[static_cast<int>(i)] == lt::low_priority)
+				file_prio[static_cast<int>(i)] = download_priority_t{2};
 			appendf(response, ",[\"%s\", %" PRId64 ", %" PRId64 ", %d" + first_file
 				, escape_json(files.file_name(i)).c_str()
 				, files.file_size(i)
-				, progress[i]
-				, static_cast<std::uint8_t>(file_prio[i]) / 2 // uTorrent's web UI uses 4 priority levels, libtorrent uses 8
+				, progress[static_cast<int>(i)]
+				// uTorrent's web UI uses 4 priority levels, libtorrent uses 8
+				, static_cast<std::uint8_t>(file_prio[static_cast<int>(i)]) / 2
 				);
 
 			if (m_version > 0)
@@ -1041,7 +1049,7 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 		{
 			appendf(response, ",[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
 				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]" + first_peer
-				, print_endpoint(p.ip).c_str()
+				, aux::print_endpoint(p.ip).c_str()
 				, ""
 				, bool(p.flags & peer_info::utp_socket)
 				, p.ip.port()
@@ -1074,7 +1082,8 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 
 void utorrent_webui::get_version(std::vector<char>& response, char const* args, permissions_interface const* p)
 {
-	auto const our_peer_id = m_ses.id();
+	settings_pack const sett = m_ses.get_settings();
+	auto const our_peer_id = sett.get_str(settings_pack::peer_fingerprint);
 	appendf(response, ",\"version\":{\"engine_version\": \"%s\""
 		",\"major_version\": %d"
 		",\"minor_version\": %d"
@@ -1108,7 +1117,7 @@ int utorrent_status(torrent_status const& st)
 		|| st.state == torrent_status::finished))
 		ret |= STARTED;
 
-	if (!(st.flags & torrent_flags::paused) && (st.state == torrent_status::queued_for_checking || st.state == torrent_status::checking_files))
+	if (!(st.flags & torrent_flags::paused) && st.state == torrent_status::checking_files)
 		ret |= CHECKING;
 	else
 		ret |= CHECKED;
@@ -1122,8 +1131,7 @@ std::string utorrent_message(torrent_status const& st)
 	if (st.errc) return "Error: " + st.errc.message();
 	if (st.flags & torrent_flags::upload_mode) return "Upload Mode";
 
-	if (st.state == torrent_status::queued_for_checking
-		|| st.state == torrent_status::checking_resume_data)
+	if (st.state == torrent_status::checking_resume_data)
 		return "Checking";
 
 	if (st.state == torrent_status::checking_files)
@@ -1161,8 +1169,8 @@ std::string utorrent_message(torrent_status const& st)
 	if (st.state == torrent_status::downloading_metadata)
 		return "Downloading metadata";
 
-	if (st.state == torrent_status::allocating)
-		return "Allocating";
+//	if (st.state == torrent_status::allocating)
+//		return "Allocating";
 
 	assert(false);
 	return "??";

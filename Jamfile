@@ -41,9 +41,7 @@ SOURCES =
 	file_requests
 	stats_logging
 	hex
-	transmission_webui
 	utorrent_webui
-	deluge
 	;
 
 lib torrent-webui

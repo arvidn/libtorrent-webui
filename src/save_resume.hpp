@@ -34,8 +34,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_SAVE_RESUME_HPP
 
 #include "libtorrent/session.hpp"
-#include "libtorrent/deadline_timer.hpp"
-#include "libtorrent/io_service.hpp"
 #include "libtorrent/error_code.hpp"
 #include "alert_observer.hpp"
 

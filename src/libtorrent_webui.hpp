@@ -36,6 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "websocket_handler.hpp"
 #include "torrent_history.hpp" // for frame_t
 #include "libtorrent/torrent_handle.hpp"
+#include "libtorrent/fwd.hpp"
 #include "alert_observer.hpp"
 #include <atomic>
 
@@ -47,7 +48,6 @@ namespace libtorrent
 	struct torrent_history;
 	struct auth_interface;
 	struct alert_handler;
-	class session;
 
 	struct libtorrent_webui : websocket_handler, alert_observer
 	{

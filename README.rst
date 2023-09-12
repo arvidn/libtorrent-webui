@@ -3,8 +3,7 @@ primarily centered around web UI support.
 
 Currently supported web UIs:
 
-* transmission
-* deluge
+* librorrent native
 * uTorrent
 
 (patches for improving support or new web UIs are welcome).

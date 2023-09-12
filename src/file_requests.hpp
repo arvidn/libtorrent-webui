@@ -43,6 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/peer_id.hpp" // for sha1_hash
 #include "libtorrent/extensions.hpp" // for plugin
 #include "libtorrent/time.hpp" // for time_point
+#include "libtorrent/info_hash.hpp"
 
 using lt::sha1_hash;
 using std::mutex;
@@ -73,7 +74,7 @@ private:
 
 	struct piece_request
 	{
-		sha1_hash info_hash;
+		info_hash_t info_hash;
 		lt::piece_index_t piece;
 		std::shared_ptr<std::promise<piece_entry> > promise;
 		lt::clock_type::time_point timeout;
@@ -91,7 +92,7 @@ private:
 	requests_t::iterator m_next_timeout;
 
 	// TOOD: figure out a way to clear out info-hashes
-	std::map<sha1_hash, std::set<piece_index_t> > m_have_pieces;
+	std::map<info_hash_t, std::set<piece_index_t> > m_have_pieces;
 };
 
 }

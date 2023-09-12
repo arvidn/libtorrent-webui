@@ -37,10 +37,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdint>
 #include <array>
 
+#include "libtorrent/fwd.hpp"
+
 namespace libtorrent
 {
-
-class alert;
 
 struct alert_observer
 {

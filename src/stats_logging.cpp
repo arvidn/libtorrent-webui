@@ -35,7 +35,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "stats_logging.hpp"
 #include "libtorrent/session.hpp"
-#include "libtorrent/file.hpp"
 #include "alert_handler.hpp"
 #include "libtorrent/session_stats.hpp"
 #include "libtorrent/aux_/path.hpp"
