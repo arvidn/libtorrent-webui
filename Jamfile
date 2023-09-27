@@ -7,6 +7,8 @@ feature pam : off on : composite ;
 
 feature use-boost : system source : composite ;
 
+project libtorrent-webui : requirements <cxxstd>17 ;
+
 use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
 lib libiconv : : <name>iconv <link>shared <search>/usr/local/lib ;
