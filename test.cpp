@@ -1,7 +1,5 @@
-#include "transmission_webui.hpp"
 #include "utorrent_webui.hpp"
 #include "libtorrent_webui.hpp"
-#include "deluge.hpp"
 #include "file_downloader.hpp"
 #include "auto_load.hpp"
 #include "save_settings.hpp"
@@ -14,9 +12,11 @@
 #include "libtorrent/session.hpp"
 #include "alert_handler.hpp"
 #include "stats_logging.hpp"
-#include "rss_filter.hpp"
 
 #include <signal.h>
+#include <iostream>
+#include <thread>
+#include <chrono>
 
 bool quit = false;
 bool force_quit = false;
@@ -55,7 +55,7 @@ struct external_ip_observer : alert_observer
 		if (ip == NULL) return;
 
 		error_code ec;
-		printf("EXTERNAL IP: %s\n", ip->external_address.to_string(ec).c_str());
+		printf("EXTERNAL IP: %s\n", ip->external_address.to_string().c_str());
 
 		if (m_last_known_addr != address()
 			&& m_last_known_addr != ip->external_address)
@@ -83,16 +83,19 @@ struct external_ip_observer : alert_observer
 
 int main(int argc, char *const argv[])
 {
-	settings_pack s;
-	s.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881");
-	s.set_int(settings_pack::alert_mask, 0xffffffff);
+	session_params s;
+	error_code ec;
+	s.settings.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881");
+	s.settings.set_int(settings_pack::alert_mask, 0xffffffff);
+
+	load_settings(s, "settings.dat", ec);
+	if (ec) std::cout << "Failed to load settings: " << ec.message() << '\n';
+
 	lt::session ses(s);
 
 	alert_handler alerts(ses);
 
-	error_code ec;
-	save_settings sett(ses, "settings.dat");
-	sett.load(ec);
+	save_settings sett(ses, s.settings, "settings.dat");
 
 	torrent_history hist(&alerts);
 	auth authorizer;
@@ -111,10 +114,8 @@ int main(int argc, char *const argv[])
 //	external_ip_observer eip(ses, &alerts);
 
 	auto_load al(ses, &sett);
-	rss_filter_handler rss_filter(alerts, ses);
 
-	transmission_webui tr_handler(ses, &sett, &authorizer);
-	utorrent_webui ut_handler(ses, &sett, &al, &hist, &rss_filter, &authorizer);
+	utorrent_webui ut_handler(ses, &sett, &al, &hist, &authorizer);
 	file_downloader file_handler(ses, &authorizer);
 	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
 	stats_logging log(ses, &alerts);
@@ -122,17 +123,13 @@ int main(int argc, char *const argv[])
 	webui_base webport;
 	webport.add_handler(&lt_handler);
 	webport.add_handler(&ut_handler);
-	webport.add_handler(&tr_handler);
 	webport.add_handler(&file_handler);
-	webport.start(8090);
+	webport.start(8090, "server.pem");
 	if (!webport.is_running())
 	{
 		fprintf(stderr, "failed to start web server\n");
 		return 1;
 	}
-
-	deluge dlg(ses, "server.pem", &authorizer);
-	dlg.start(58846);
 
 	signal(SIGTERM, &sighandler);
 	signal(SIGINT, &sighandler);
@@ -140,7 +137,7 @@ int main(int argc, char *const argv[])
 	bool shutting_down = false;
 	while (!quit || !resume.ok_to_quit())
 	{
-		usleep(500000);
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
 		alerts.dispatch_alerts();
 		if (!shutting_down) ses.post_torrent_updates();
 		if (quit && !shutting_down)
@@ -166,7 +163,6 @@ int main(int argc, char *const argv[])
 	// this point.
 	alerts.abort();
 	fprintf(stderr, "closing web server\n");
-	dlg.stop();
 	webport.stop();
 
 	fprintf(stderr, "saving settings\n");

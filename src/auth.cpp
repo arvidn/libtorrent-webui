@@ -35,6 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/hasher.hpp"
 #include "save_settings.hpp"
 #include "base64.hpp"
+#include "hex.hpp"
 
 extern "C" {
 #include "local_mongoose.h"
@@ -74,10 +75,9 @@ std::vector<std::string> auth::users() const
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	std::vector<std::string> users;
-	for (std::map<std::string, account_t>::const_iterator i = m_accounts.begin()
-		, end(m_accounts.end()); i != end; ++i)
+	for (auto const& a : m_accounts)
 	{
-		users.push_back(i->first);
+		users.push_back(a.first);
 	}
 	return users;
 }
@@ -96,12 +96,11 @@ void auth::add_account(std::string const& user, std::string const& pwd, int grou
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	std::map<std::string, account_t>::iterator i = m_accounts.find(user);
+	auto const i = m_accounts.find(user);
 	if (i == m_accounts.end())
 	{
 		account_t acct;
-		for (int i = 0; i < sizeof(acct.salt); ++i)
-			acct.salt[i] = rand();
+		for (char& c : acct.salt) c = rand();
 		acct.group = group;
 		acct.hash = acct.password_hash(pwd);
 		m_accounts.insert(std::make_pair(user, acct));
@@ -122,7 +121,7 @@ void auth::remove_account(std::string const& user)
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	std::map<std::string, account_t>::iterator i = m_accounts.find(user);
+	auto const i = m_accounts.find(user);
 	if (i == m_accounts.end()) return;
 	m_accounts.erase(i);
 }
@@ -141,17 +140,17 @@ void auth::set_group(int g, permissions_interface const* perms)
 
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	if (g >= m_groups.size())
-		m_groups.resize(g+1, NULL);
+	if (g >= int(m_groups.size()))
+		m_groups.resize(g+1, nullptr);
 	m_groups[g] = perms;
 }
 
 /**
 	Finds appropriate permissions for the given user. If authentication fails, or the user
-	doesn't exist, NULL is returned, which is interpreted as authentication failure.
+	doesn't exist, nullptr is returned, which is interpreted as authentication failure.
 	\param username The username to authenticate
 	\param password The password for this user
-	\return The permissions_interface appropriate for this user's access permissions, or NULL
+	\return The permissions_interface appropriate for this user's access permissions, or nullptr
 	        if authentication failed.
 */
 permissions_interface const* auth::find_user(std::string username, std::string password) const
@@ -159,13 +158,13 @@ permissions_interface const* auth::find_user(std::string username, std::string p
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	std::map<std::string, account_t>::const_iterator i = m_accounts.find(username);
-	if (i == m_accounts.end()) return NULL;
+	if (i == m_accounts.end()) return nullptr;
 
 	sha1_hash ph = i->second.password_hash(password);
-	if (ph != i->second.hash) return NULL;
+	if (ph != i->second.hash) return nullptr;
 
-	if (i->second.group < 0 || i->second.group >= m_groups.size())
-		return NULL;
+	if (i->second.group < 0 || i->second.group >= int(m_groups.size()))
+		return nullptr;
 
 	return m_groups[i->second.group];
 }
@@ -173,7 +172,7 @@ permissions_interface const* auth::find_user(std::string username, std::string p
 sha1_hash auth::account_t::password_hash(std::string const& pwd) const
 {
 	hasher h;
-	h.update(salt, sizeof(salt));
+	h.update(salt);
 	if (pwd.size()) h.update(pwd);
 	sha1_hash ret = h.final();
 
@@ -188,21 +187,22 @@ sha1_hash auth::account_t::password_hash(std::string const& pwd) const
 void auth::save_accounts(std::string const& filename, error_code& ec) const
 {
 	FILE* f = fopen(filename.c_str(), "w+");
-	if (f == NULL)
+	if (f == nullptr)
 	{
 		ec = error_code(errno, system_category());
 		return;
 	}
+	ec.clear();
 
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	for (std::map<std::string, account_t>::const_iterator i = m_accounts.begin()
-		, end(m_accounts.end()); i != end; ++i)
+	for (auto i = m_accounts.begin(), end(m_accounts.end()); i != end; ++i)
 	{
 		account_t const& a = i->second;
-		char salthash[21];
-		to_hex(a.salt, 10, salthash);
-		fprintf(f, "%s\t%s\t%s\t%d\n", i->first.c_str(), to_hex(a.hash.to_string()).c_str(), salthash, i->second.group);
+		fprintf(f, "%s\t%s\t%s\t%d\n", i->first.c_str()
+			, to_hex(a.hash).c_str()
+			, to_hex(a.salt).c_str()
+			, i->second.group);
 	}
 
 	fclose(f);
@@ -216,29 +216,34 @@ void auth::save_accounts(std::string const& filename, error_code& ec) const
 void auth::load_accounts(std::string const& filename, error_code& ec)
 {
 	FILE* f = fopen(filename.c_str(), "r");
-	if (f == NULL)
+	if (f == nullptr)
 	{
 		ec = error_code(errno, system_category());
 		return;
 	}
+	ec.clear();
 
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	m_accounts.clear();
 
-	char username[512];
-	char pwdhash[41];
-	char salt[21];
+	std::array<char, 512> username;
+	std::array<char, 41> pwdhash;
+	std::array<char, 21> salt;
 	int group;
 
-	while (fscanf(f, "%511s\t%40s\t%20s\t%d\n", username, pwdhash, salt, &group) == 4)
+	while (fscanf(f, "%511s\t%40s\t%20s\t%d\n"
+		, username.data()
+		, pwdhash.data()
+		, salt.data()
+		, &group) == 4)
 	{
 		account_t a;
-		if (!from_hex(pwdhash, 40, (char*)&a.hash[0])) continue;
-		if (!from_hex(salt, 20, a.salt)) continue;
+		if (!from_hex({pwdhash.data(), 40}, a.hash.data())) continue;
+		if (!from_hex({salt.data(), 20}, a.salt.data())) continue;
 		if (group < 0) continue;
 		a.group = group;
-		m_accounts[username] = a;
+		m_accounts[std::string(username.data())] = a;
 	}
 
 	fclose(f);
@@ -249,7 +254,7 @@ void auth::load_accounts(std::string const& filename, error_code& ec)
 	provided auth_interface for a permissions object.
 	\param conn the mongoos connection object
 	\param auth the auth_interface object
-	\return the permission object appropriate for the user, or NULL in case authentication failed.
+	\return the permission object appropriate for the user, or nullptr in case authentication failed.
 */
 permissions_interface const* parse_http_auth(mg_connection* conn, auth_interface const* auth)
 {
@@ -274,7 +279,7 @@ permissions_interface const* parse_http_auth(mg_connection* conn, auth_interface
 	}
 
 	permissions_interface const* perms = auth->find_user(user, pwd);
-	if (perms == NULL) return NULL;
+	if (perms == nullptr) return NULL;
 	return perms;
 }
 

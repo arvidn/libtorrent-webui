@@ -34,8 +34,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_SAVE_SETTINGS_HPP
 
 #include "libtorrent/session.hpp"
-#include "libtorrent/deadline_timer.hpp"
-#include "libtorrent/io_service.hpp"
 #include <mutex>
 #include "libtorrent/error_code.hpp"
 
@@ -47,7 +45,6 @@ namespace libtorrent
 	struct save_settings_interface
 	{
 		virtual void save(error_code& ec) const = 0;
-		virtual void load(error_code& ec) = 0;
 		virtual void set_int(char const* key, int val) = 0;
 		virtual void set_str(char const* key, std::string val) = 0;
 		virtual int get_int(char const* key, int def = 0) const = 0;
@@ -56,11 +53,11 @@ namespace libtorrent
 
 	struct save_settings : save_settings_interface
 	{
-		save_settings(session& s, std::string const& settings_file);
+		save_settings(session& s, settings_pack const& sp
+			, std::string const& settings_file);
 		~save_settings();
 
 		void save(error_code& ec) const;
-		void load(error_code& ec);
 
 		void set_int(char const* key, int val);
 		void set_str(char const* key, std::string val);
@@ -70,16 +67,17 @@ namespace libtorrent
 
 	private:
 
-		void load_impl(std::string filename, error_code& ec);
-
 		session& m_ses;
 		std::string m_settings_file;
 		std::map<std::string, int> m_ints;
 		std::map<std::string, std::string> m_strings;
 	};
 
-	int load_file(std::string const& filename, std::vector<char>& v, error_code& ec, int limit = 8000000);
-	int save_file(std::string const& filename, std::vector<char>& v, error_code& ec);
+	void load_settings(session_params& params, std::string const& filename
+		, error_code& ec);
+
+	std::vector<char> load_file(char const* filename);
+	int save_file(std::string const& filename, std::vector<char> const& v);
 
 }
 

@@ -36,15 +36,16 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <functional>
 
 #include "libtorrent/add_torrent_params.hpp"
+#include "libtorrent/read_resume_data.hpp"
+#include "libtorrent/write_resume_data.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/entry.hpp"
 #include "libtorrent/bencode.hpp"
-#include "libtorrent/lazy_entry.hpp"
-#include "libtorrent/file.hpp"
 #include "libtorrent/alert_types.hpp"
 
 #include "alert_handler.hpp"
+#include "hex.hpp"
 
 namespace s = std::placeholders;
 
@@ -55,11 +56,19 @@ save_resume::save_resume(session& s, std::string const& resume_file, alert_handl
 	: m_ses(s)
 	, m_alerts(alerts)
 	, m_cursor(m_torrents.begin())
-	, m_last_save(time_now())
+	, m_last_save(lt::clock_type::now())
 	, m_interval(minutes(15))
 	, m_num_in_flight(0)
 	, m_shutting_down(false)
 {
+	int ret = sqlite3_open(resume_file.c_str(), &m_db);
+	if (ret != SQLITE_OK)
+	{
+		fprintf(stderr, "Can't open resume file [%s]: %s\n"
+			, resume_file.c_str(), sqlite3_errmsg(m_db));
+		return;
+	}
+
 	m_alerts->subscribe(this, 0, add_torrent_alert::alert_type
 		, torrent_removed_alert::alert_type
 		, stats_alert::alert_type // just to get woken up regularly
@@ -69,27 +78,14 @@ save_resume::save_resume(session& s, std::string const& resume_file, alert_handl
 		, torrent_finished_alert::alert_type
 		, 0);
 
-	// we can use the save_resume object to reload torrents. There is a
-	// potential race condition when adding torrents. We may add a torrent
-	// asynchronously, libtorrent will know about the torrent before we receive
-	// the torrent_added_alert and the resume data won't have saved it yet. for
-	// this reason all torrents must be pinned until we receive the
-	// torrent_added_alert. Once we've saved the resume data into our resume
-	// file, we can unpin it
-	m_ses.set_load_function(std::bind(
-		&save_resume::load_torrent, this, s::_1, s::_2, s::_3));
-
-	int ret = sqlite3_open(resume_file.c_str(), &m_db);
+	ret = sqlite3_exec(m_db, "CREATE TABLE TORRENTS("
+		"INFOHASH STRING PRIMARY KEY NOT NULL,"
+		"RESUME BLOB NOT NULL);", nullptr, 0, nullptr);
 	if (ret != SQLITE_OK)
 	{
-		fprintf(stderr, "Can't open resume file [%s]: %s\n"
-			, resume_file.c_str(), sqlite3_errmsg(m_db));
-		return;
+		fprintf(stderr, "Failed to create table: %s\n"
+			, sqlite3_errmsg(m_db));
 	}
-
-	sqlite3_exec(m_db, "CREATE TABLE TORRENTS("
-		"INFOHASH STRING PRIMARY KEY NOT NULL,"
-		"RESUME BLOB NOT NULL);", NULL, 0, NULL);
 
 	// ignore errors, since the table is likely to already
 	// exist (and sqlite doesn't give a reasonable way to
@@ -100,59 +96,10 @@ save_resume::~save_resume()
 {
 	m_alerts->unsubscribe(this);
 	sqlite3_close(m_db);
-	m_db = NULL;
+	m_db = nullptr;
 }
 
-void save_resume::load_torrent(libtorrent::sha1_hash const& ih
-	, std::vector<char>& buf, libtorrent::error_code& ec)
-{
-	ec.clear();
-
-	sqlite3_stmt* stmt = NULL;
-	int ret = sqlite3_prepare_v2(m_db
-		, "SELECT RESUME FROM TORRENTS WHERE INFOHASH = :ih;", -1, &stmt, NULL);
-
-	if (ret != SQLITE_OK)
-	{
-		printf("failed to prepare select statement: %s\n", sqlite3_errmsg(m_db));
-		ec.assign(boost::system::errc::no_such_file_or_directory, boost::system::generic_category());
-		return;
-	}
-	std::string ih_string = to_hex(ih.to_string());
-	ret = sqlite3_bind_text(stmt, 1, ih_string.c_str(), 40, SQLITE_STATIC);
-	if (ret != SQLITE_OK)
-	{
-		printf("failed to bind select statement: %s\n", sqlite3_errmsg(m_db));
-		ec.assign(boost::system::errc::no_such_file_or_directory, boost::system::generic_category());
-		sqlite3_finalize(stmt);
-		return;
-	}
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_ROW)
-	{
-		printf("failed to step remove statement: %s\n", sqlite3_errmsg(m_db));
-		ec.assign(boost::system::errc::no_such_file_or_directory, boost::system::generic_category());
-		sqlite3_finalize(stmt);
-		return;
-	}
-
-	int bytes = sqlite3_column_bytes(stmt, 0);
-	if (bytes == 0)
-	{
-		printf("empty resume data buffer");
-		ec.assign(boost::system::errc::no_such_file_or_directory, boost::system::generic_category());
-		sqlite3_finalize(stmt);
-		return;
-	}
-
-	void const* buffer = sqlite3_column_blob(stmt, 0);
-	buf.assign((char*)buffer, ((char*)buffer) + bytes);
-
-	sqlite3_step(stmt);
-	sqlite3_finalize(stmt);
-}
-
-void save_resume::handle_alert(alert const* a)
+void save_resume::handle_alert(alert const* a) try
 {
 	add_torrent_alert const* ta = alert_cast<add_torrent_alert>(a);
 	torrent_removed_alert const* td = alert_cast<torrent_removed_alert>(a);
@@ -187,7 +134,7 @@ void save_resume::handle_alert(alert const* a)
 	else if (td)
 	{
 		bool wrapped = false;
-		boost::unordered_set<torrent_handle>::iterator i = m_torrents.find(td->handle);
+		auto i = m_torrents.find(td->handle);
 		if (i == m_torrents.end())
 		{
 			// this is a bit sad...
@@ -213,14 +160,14 @@ void save_resume::handle_alert(alert const* a)
 
 		// we need to delete the resume file from the resume directory
 		// as well, to prevent it from being reloaded on next startup
-		sqlite3_stmt* stmt = NULL;
-		int ret = sqlite3_prepare_v2(m_db, "DELETE FROM TORRENTS WHERE INFOHASH = :ih;", -1, &stmt, NULL);
+		sqlite3_stmt* stmt = nullptr;
+		int ret = sqlite3_prepare_v2(m_db, "DELETE FROM TORRENTS WHERE INFOHASH = :ih;", -1, &stmt, nullptr);
 		if (ret != SQLITE_OK)
 		{
 			printf("failed to prepare remove statement: %s\n", sqlite3_errmsg(m_db));
 			return;
 		}
-		std::string ih = to_hex(td->info_hash.to_string());
+		std::string const ih = to_hex(td->info_hash);
 		ret = sqlite3_bind_text(stmt, 1, ih.c_str(), 40, SQLITE_STATIC);
 		if (ret != SQLITE_OK)
 		{
@@ -244,19 +191,18 @@ void save_resume::handle_alert(alert const* a)
 		TORRENT_ASSERT(m_num_in_flight > 0);
 		--m_num_in_flight;
 		error_code ec;
-		std::vector<char> buf;
-		bencode(std::back_inserter(buf), *sr->resume_data);
+		std::vector<char> buf = write_resume_data_buf(sr->params);
 
-		sqlite3_stmt* stmt = NULL;
+		sqlite3_stmt* stmt = nullptr;
 		int ret = sqlite3_prepare_v2(m_db, "INSERT OR REPLACE INTO TORRENTS(INFOHASH,RESUME) "
-			"VALUES(?, ?);", -1, &stmt, NULL);
+			"VALUES(?, ?);", -1, &stmt, nullptr);
 		if (ret != SQLITE_OK)
 		{
 			fprintf(stderr, "failed to prepare insert statement: %s\n", sqlite3_errmsg(m_db));
 			return;
 		}
 
-		std::string ih = to_hex((*sr->resume_data)["info-hash"].string());
+		std::string const ih = to_hex(sr->params.info_hash);
 		ret = sqlite3_bind_text(stmt, 1, ih.c_str(), 40, SQLITE_STATIC);
 		if (ret != SQLITE_OK)
 		{
@@ -264,7 +210,7 @@ void save_resume::handle_alert(alert const* a)
 			sqlite3_finalize(stmt);
 			return;
 		}
-		ret = sqlite3_bind_blob(stmt, 2, &buf[0], buf.size(), SQLITE_STATIC);
+		ret = sqlite3_bind_blob(stmt, 2, buf.data(), buf.size(), SQLITE_STATIC);
 		if (ret != SQLITE_OK)
 		{
 			printf("failed to bind insert statement: %s\n", sqlite3_errmsg(m_db));
@@ -281,8 +227,6 @@ void save_resume::handle_alert(alert const* a)
 		}
 		sqlite3_finalize(stmt);
 		printf("saving %s\n", ih.c_str());
-
-		sr->handle.set_pinned(false);
 	}
 	else if (sf)
 	{
@@ -299,7 +243,7 @@ void save_resume::handle_alert(alert const* a)
 	// how long since we last tried to save one. Every m_interval seconds,
 	// we should have saved all torrents
 	int num_torrents = m_torrents.size();
-	int seconds_since_last = total_seconds(time_now() - m_last_save);
+	int seconds_since_last = total_seconds(lt::clock_type::now() - m_last_save);
 	int num_to_save = num_torrents * seconds_since_last /
 		total_seconds(m_interval);
 
@@ -324,14 +268,14 @@ void save_resume::handle_alert(alert const* a)
 		--num_to_save;
 		++m_cursor;
 
-		m_last_save = time_now();
+		m_last_save = lt::clock_type::now();
 	}
 }
+catch (std::exception const&) {}
 
 void save_resume::save_all()
 {
-	for (boost::unordered_set<torrent_handle>::iterator i = m_torrents.begin()
-		, end(m_torrents.end()); i != end; ++i)
+	for (auto i = m_torrents.begin(), end(m_torrents.end()); i != end; ++i)
 	{
 		i->save_resume_data(torrent_handle::save_info_dict | torrent_handle::only_if_modified);
 		++m_num_in_flight;
@@ -351,8 +295,8 @@ bool save_resume::ok_to_quit() const
 
 void save_resume::load(error_code& ec, add_torrent_params model)
 {
-	sqlite3_stmt* stmt = NULL;
-	int ret = sqlite3_prepare_v2(m_db, "SELECT RESUME FROM TORRENTS;", -1, &stmt, NULL);
+	sqlite3_stmt* stmt = nullptr;
+	int ret = sqlite3_prepare_v2(m_db, "SELECT RESUME FROM TORRENTS;", -1, &stmt, nullptr);
 	if (ret != SQLITE_OK)
 	{
 		fprintf(stderr, "failed to prepare select statement: %s\n", sqlite3_errmsg(m_db));
@@ -367,7 +311,9 @@ void save_resume::load(error_code& ec, add_torrent_params model)
 		if (bytes > 0)
 		{
 			void const* buffer = sqlite3_column_blob(stmt, 0);
-			p.resume_data.assign((char*)buffer, ((char*)buffer) + bytes);
+			error_code ec;
+			p = read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
+			if (ec) continue;
 			m_ses.async_add_torrent(p);
 		}
 

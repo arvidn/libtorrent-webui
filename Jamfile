@@ -7,7 +7,9 @@ feature pam : off on : composite ;
 
 feature use-boost : system source : composite ;
 
-use-project /torrent : ../libtorrent ;
+project libtorrent-webui : requirements <cxxstd>17 ;
+
+use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
 lib libiconv : : <name>iconv <link>shared <search>/usr/local/lib ;
 
@@ -18,14 +20,11 @@ if $(BOOST_ROOT)
 
 SOURCES =
 	webui
-	transmission_webui
-	utorrent_webui
 	libtorrent_webui
 	json_util
 	file_downloader
 	torrent_post
 	rencode
-	deluge
 	disk_space
 	base64
 	escape_json
@@ -40,10 +39,11 @@ SOURCES =
 	http_whitelist
 	error_logger
 	websocket_handler
-	rss_filter
 	alert_handler
 	file_requests
 	stats_logging
+	hex
+	utorrent_webui
 	;
 
 lib torrent-webui
@@ -51,7 +51,7 @@ lib torrent-webui
 	src/$(SOURCES).cpp src/mongoose.c src/jsmn.c src/cdecode.c
 
 	: # requirements
-	<library>/torrent//torrent/<crypto>openssl
+	<library>/torrent//torrent
 	<library>zlib
 	<library>sqlite
 #	<library>libiconv

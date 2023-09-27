@@ -33,58 +33,40 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef TORRENT_ALERT_HANDLER_HPP_INCLUDED
 #define TORRENT_ALERT_HANDLER_HPP_INCLUDED
 
-#include "libtorrent/alert_types.hpp" // for num_alert_types
 #include <vector>
 #include <memory>
 #include <mutex>
 #include <deque>
 #include <future>
+#include "libtorrent/fwd.hpp"
+#include "libtorrent/alert_types.hpp" // for num_alert_types
 
 namespace libtorrent
 {
 
 struct alert_observer;
-struct alert_handler;
-
-// block until the specified alert is posted to
-// the alert_handler, return a copy of the alert
-// keep in mind that this has to be called from a
-// different thread than the one calling dispatch_alerts(),
-// otherwise you'll have a deadlock.
-TORRENT_EXPORT std::auto_ptr<alert> wait_for_alert(alert_handler& h, int type);
 
 struct TORRENT_EXPORT alert_handler
 {
-	alert_handler(session& ses);
+	alert_handler(lt::session& ses);
 
 	// TODO 2: move the responsibility of picking which
 	// alert types to subscribe to to the observer
 	// TODO 3: make subscriptions automatically enable
 	// the corresponding category of alerts in the session somehow
+	// TODO: 3 make this a variadic template
 	void subscribe(alert_observer* o, int flags = 0, ...);
 	void dispatch_alerts(std::vector<alert*>& alerts) const;
 	void dispatch_alerts() const;
 	void unsubscribe(alert_observer* o);
-
-	// the future may return NULL if the alert_handler is aborted.
-	template <class T>
-	std::future<alert*> subscribe()
-	{
-		return subscribe_impl(T::alert_type);
-	}
 
 	void abort();
 
 private:
 
 	void subscribe_impl(int const* type_list, int num_types, alert_observer* o, int flags);
-	std::future<alert*> subscribe_impl(int cat);
 
-	std::vector<alert_observer*> m_observers[num_alert_types];
-
-	mutable std::mutex m_mutex;
-	using promise_t = std::shared_ptr<std::promise<alert*> >;
-	mutable std::deque<promise_t> m_promises[num_alert_types];
+	std::array<std::vector<alert_observer*>, num_alert_types> m_observers;
 
 	// when set to true, all outstanding (std::future-based) subscriptions
 	// are cancelled, and new such subscriptions are disabled, by failing

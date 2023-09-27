@@ -32,7 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "error_logger.hpp"
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/socket_io.hpp"
+#include "libtorrent/aux_/socket_io.hpp"
 #include "libtorrent/error_code.hpp"
 #include <boost/asio/ssl.hpp>
 
@@ -74,9 +74,7 @@ namespace libtorrent
 				, metadata_failed_alert::alert_type
 				, udp_error_alert::alert_type
 				, listen_failed_alert::alert_type
-				, rss_alert::alert_type
 				, invalid_request_alert::alert_type
-				, mmap_cache_alert::alert_type
 				, 0);
 		}
 	}
@@ -91,12 +89,12 @@ namespace libtorrent
 	{
 		if (m_file == NULL) return;
 		time_t now = time(NULL);
-		char timestamp[256];
-		strncpy(timestamp, ctime(&now), sizeof(timestamp));
-		for (int i = 0; i < sizeof(timestamp); ++i)
+		std::array<char, 256> timestamp;
+		strncpy(timestamp.data(), ctime(&now), timestamp.size());
+		for (char& c : timestamp)
 		{
-			if (timestamp[i] != '\n' && timestamp[i] != '\r') continue;
-			timestamp[i] = '\0';
+			if (c != '\n' && c != '\r') continue;
+			c = '\0';
 			break;
 		}
 
@@ -110,8 +108,8 @@ namespace libtorrent
 				if (pe->error != error_code(336027900, boost::asio::error::get_ssl_category()))
 #endif
 				{
-					fprintf(m_file, "%s\terror [%s] (%s:%d) %s\n", timestamp
-						, print_endpoint(pe->ip).c_str(), pe->error.category().name()
+					fprintf(m_file, "%s\terror [%s] (%s:%d) %s\n", timestamp.data()
+						, print_endpoint(pe->endpoint).c_str(), pe->error.category().name()
 						, pe->error.value(), pe->error.message().c_str());
 				}
 				break;
@@ -134,15 +132,21 @@ namespace libtorrent
 #endif
 					&& pd->error != error_code(libtorrent::errors::self_connection)
 					&& pd->error != error_code(libtorrent::errors::torrent_removed)
+					&& pd->error != error_code(libtorrent::errors::torrent_paused)
 					&& pd->error != error_code(libtorrent::errors::torrent_aborted)
 					&& pd->error != error_code(libtorrent::errors::stopping_torrent)
 					&& pd->error != error_code(libtorrent::errors::session_closing)
 					&& pd->error != error_code(libtorrent::errors::duplicate_peer_id)
+					&& pd->error != error_code(libtorrent::errors::uninteresting_upload_peer)
+					&& pd->error != error_code(libtorrent::errors::unsupported_encryption_mode)
+					&& pd->error != error_code(libtorrent::errors::torrent_finished)
 					&& pd->error != error_code(libtorrent::errors::timed_out)
+					&& pd->error != error_code(libtorrent::errors::timed_out_inactivity)
+					&& pd->error != error_code(libtorrent::errors::timed_out_no_request)
 					&& pd->error != error_code(libtorrent::errors::timed_out_no_handshake)
 					&& pd->error != error_code(libtorrent::errors::upload_upload_connection))
-					fprintf(m_file, "%s\tdisconnect [%s][%s] (%s:%d) %s\n", timestamp
-						, print_endpoint(pd->ip).c_str(), operation_name(pd->operation)
+					fprintf(m_file, "%s\tdisconnect [%s][%s] (%s:%d) %s\n", timestamp.data()
+						, print_endpoint(pd->endpoint).c_str(), operation_name(pd->op)
 						, pd->error.category().name(), pd->error.value(), pd->error.message().c_str());
 				break;
 			}
@@ -150,7 +154,7 @@ namespace libtorrent
 			{
 				save_resume_data_failed_alert const* rs= alert_cast<save_resume_data_failed_alert>(a);
 				if (rs && rs->error != error_code(libtorrent::errors::resume_data_not_modified))
-					fprintf(m_file, "%s\tsave-resume-failed (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tsave-resume-failed (%s:%d) %s\n", timestamp.data()
 						, rs->error.category().name(), rs->error.value()
 						, rs->message().c_str());
 			}
@@ -158,7 +162,7 @@ namespace libtorrent
 			{
 				torrent_delete_failed_alert const* td = alert_cast<torrent_delete_failed_alert>(a);
 				if (td)
-					fprintf(m_file, "%s\tstorage-delete-failed (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tstorage-delete-failed (%s:%d) %s\n", timestamp.data()
 						, td->error.category().name(), td->error.value()
 						, td->message().c_str());
 			}
@@ -166,7 +170,7 @@ namespace libtorrent
 			{
 				storage_moved_failed_alert const* sm = alert_cast<storage_moved_failed_alert>(a);
 				if (sm)
-					fprintf(m_file, "%s\tstorage-move-failed (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tstorage-move-failed (%s:%d) %s\n", timestamp.data()
 						, sm->error.category().name(), sm->error.value()
 						, sm->message().c_str());
 			}
@@ -174,7 +178,7 @@ namespace libtorrent
 			{
 				file_rename_failed_alert const* rn = alert_cast<file_rename_failed_alert>(a);
 				if (rn)
-					fprintf(m_file, "%s\tfile-rename-failed (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tfile-rename-failed (%s:%d) %s\n", timestamp.data()
 						, rn->error.category().name(), rn->error.value()
 						, rn->message().c_str());
 			}
@@ -182,7 +186,7 @@ namespace libtorrent
 			{
 				torrent_error_alert const* te = alert_cast<torrent_error_alert>(a);
 				if (te)
-					fprintf(m_file, "%s\ttorrent-error (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\ttorrent-error (%s:%d) %s\n", timestamp.data()
 						, te->error.category().name(), te->error.value()
 						, te->message().c_str());
 			}
@@ -190,14 +194,14 @@ namespace libtorrent
 			{
 				hash_failed_alert const* hf = alert_cast<hash_failed_alert>(a);
 				if (hf)
-					fprintf(m_file, "%s\thash-failed %s\n", timestamp
+					fprintf(m_file, "%s\thash-failed %s\n", timestamp.data()
 						, hf->message().c_str());
 			}
 			case file_error_alert::alert_type:
 			{
 				file_error_alert const* fe = alert_cast<file_error_alert>(a);
 				if (fe)
-					fprintf(m_file, "%s\tfile-error (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tfile-error (%s:%d) %s\n", timestamp.data()
 						, fe->error.category().name(), fe->error.value()
 						, fe->message().c_str());
 			}
@@ -205,7 +209,7 @@ namespace libtorrent
 			{
 				metadata_failed_alert const* mf = alert_cast<metadata_failed_alert>(a);
 				if (mf)
-					fprintf(m_file, "%s\tmetadata-error (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tmetadata-error (%s:%d) %s\n", timestamp.data()
 						, mf->error.category().name(), mf->error.value()
 						, mf->message().c_str());
 			}
@@ -213,7 +217,7 @@ namespace libtorrent
 			{
 				udp_error_alert const* ue = alert_cast<udp_error_alert>(a);
 				if (ue)
-					fprintf(m_file, "%s\tudp-error (%s:%d) %s %s\n", timestamp
+					fprintf(m_file, "%s\tudp-error (%s:%d) %s %s\n", timestamp.data()
 						, ue->error.category().name(), ue->error.value()
 						, print_endpoint(ue->endpoint).c_str()
 						, ue->error.message().c_str());
@@ -222,33 +226,16 @@ namespace libtorrent
 			{
 				listen_failed_alert const* lf = alert_cast<listen_failed_alert>(a);
 				if (lf)
-					fprintf(m_file, "%s\tlisten-error (%s:%d) %s\n", timestamp
+					fprintf(m_file, "%s\tlisten-error (%s:%d) %s\n", timestamp.data()
 						, lf->error.category().name(), lf->error.value()
 						, lf->message().c_str());
-			}
-			case rss_alert::alert_type:
-			{
-				rss_alert const* ra = alert_cast<rss_alert>(a);
-				if (ra && ra->state == rss_alert::state_error)
-					fprintf(m_file, "%s\trss-error (%s:%d) %s %s\n", timestamp
-						, ra->error.category().name(), ra->error.value()
-						, ra->error.message().c_str()
-						, ra->url.c_str());
 			}
 			case invalid_request_alert::alert_type:
 			{
 				invalid_request_alert const* ira = alert_cast<invalid_request_alert>(a);
 				if (ira)
-					fprintf(m_file, "%s\tinvalid-request %s\n", timestamp
+					fprintf(m_file, "%s\tinvalid-request %s\n", timestamp.data()
 						, ira->message().c_str());
-			}
-			case mmap_cache_alert::alert_type:
-			{
-				mmap_cache_alert const* ma = alert_cast<mmap_cache_alert>(a);
-				if (ma)
-					fprintf(m_file, "%s\tmmap-cache-error (%s:%d )%s\n", timestamp
-						, ma->error.category().name(), ma->error.value()
-						, ma->message().c_str());
 			}
 		}
 	}

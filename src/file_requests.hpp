@@ -42,36 +42,42 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/peer_id.hpp" // for sha1_hash
 #include "libtorrent/extensions.hpp" // for plugin
-#include "libtorrent/time.hpp" // for ptime
+#include "libtorrent/time.hpp" // for time_point
+#include "libtorrent/info_hash.hpp"
 
-using libtorrent::sha1_hash;
+using lt::sha1_hash;
 using std::mutex;
+
+namespace libtorrent {
 
 struct piece_entry
 {
 	boost::shared_array<char> buffer;
 	int size;
-	int piece;
+	piece_index_t piece;
 };
 
 // this is a session plugin which wraps the concept of reading pieces
 // from torrents, returning futures for when those pieces are complete
-struct file_requests : libtorrent::plugin
+struct file_requests : lt::plugin
 {
 	file_requests();
-	void on_alert(libtorrent::alert const* a);
-	void on_tick();
-	std::shared_future<piece_entry> read_piece(libtorrent::torrent_handle const& h
-		, int piece, int timeout_ms);
+	void on_alert(lt::alert const* a) override;
+	void on_tick() override;
+	std::shared_future<piece_entry> read_piece(lt::torrent_handle const& h
+		, lt::piece_index_t piece, lt::clock_type::duration timeout_ms);
+
+	feature_flags_t implemented_features() override
+	{ return lt::plugin::alert_feature | lt::plugin::tick_feature; }
 
 private:
 
 	struct piece_request
 	{
-		sha1_hash info_hash;
-		int piece;
+		info_hash_t info_hash;
+		lt::piece_index_t piece;
 		std::shared_ptr<std::promise<piece_entry> > promise;
-		libtorrent::ptime timeout;
+		lt::clock_type::time_point timeout;
 		bool operator==(piece_request const& rq) const
 		{ return rq.info_hash == info_hash && rq.piece == piece; }
 		bool operator<(piece_request const& rq) const
@@ -86,8 +92,10 @@ private:
 	requests_t::iterator m_next_timeout;
 
 	// TOOD: figure out a way to clear out info-hashes
-	std::map<sha1_hash, std::set<int> > m_have_pieces;
+	std::map<info_hash_t, std::set<piece_index_t> > m_have_pieces;
 };
+
+}
 
 #endif // FILE_REQUESTS_HPP_
 

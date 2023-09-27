@@ -6,8 +6,6 @@ Despite its name, it provides more than just web interfaces. It also provides th
 * auto-load director (``auto_load`` class).
 * load plain text configuration (``load_config``).
 * utorrent compatible web UI (``utorrent_webui``).
-* transmission compatible web UI (``transmission_webui``).
-* deluge compatible remote interface (``deluge``).
 * general purpose web server (based on mongoose, ``webui``).
 * authentication module with varying levels of access permissions (``auth_interface``, ``auth``, ``permissions_interface``).
 * PAM baed authentication module (``pam_auth``)

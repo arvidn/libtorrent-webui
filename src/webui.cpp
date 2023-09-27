@@ -49,7 +49,7 @@ using namespace libtorrent;
 static int handle_http_request(mg_connection* conn)
 {
 	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == NULL) return 0;
+	if (request_info->user_data == nullptr) return 0;
 
 	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_http(
 		conn, request_info);
@@ -66,7 +66,7 @@ static int websocket_connect(mg_connection const* c)
 {
 	mg_connection* conn = const_cast<mg_connection*>(c);
 	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == NULL)
+	if (request_info->user_data == nullptr)
 		return 1;
 
 	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_websocket_connect(
@@ -78,7 +78,7 @@ static int websocket_data(mg_connection* conn, int bits
 	, char *data, size_t data_len)
 {
 	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == NULL)
+	if (request_info->user_data == nullptr)
 		return 0;
 
 	return reinterpret_cast<webui_base*>(request_info->user_data)->handle_websocket_data(
@@ -89,64 +89,48 @@ static void end_request(mg_connection const* c, int reply_status_code)
 {
 	mg_connection* conn = const_cast<mg_connection*>(c);
 	const mg_request_info *request_info = mg_get_request_info(conn);
-	if (request_info->user_data == NULL) return;
+	if (request_info->user_data == nullptr) return;
 
 	reinterpret_cast<webui_base*>(request_info->user_data)->handle_end_request(conn);
 }
 
-webui_base::webui_base()
-	: m_document_root(".")
-	, m_ctx(NULL)
-{}
-
+webui_base::webui_base() {}
 webui_base::~webui_base() {}
 
 void webui_base::remove_handler(http_handler* h)
 {
-	std::vector<http_handler*>::iterator i = std::find(m_handlers.begin(), m_handlers.end(), h);
+	auto i = std::find(m_handlers.begin(), m_handlers.end(), h);
 	if (i != m_handlers.end()) m_handlers.erase(i);
 }
 
 bool webui_base::handle_http(mg_connection* conn
 	, mg_request_info const* request_info)
 {
-	for (std::vector<http_handler*>::iterator i = m_handlers.begin()
-		, end(m_handlers.end()); i != end; ++i)
-	{
-		if ((*i)->handle_http(conn, request_info)) return true;
-	}
+	for (auto* h : m_handlers)
+		if (h->handle_http(conn, request_info)) return true;
 	return false;
 }
 
 bool webui_base::handle_websocket_connect(mg_connection* conn
 	, mg_request_info const* request_info)
 {
-	for (std::vector<http_handler*>::iterator i = m_handlers.begin()
-		, end(m_handlers.end()); i != end; ++i)
-	{
-		if ((*i)->handle_websocket_connect(conn, request_info)) return true;
-	}
+	for (auto* h : m_handlers)
+		if (h->handle_websocket_connect(conn, request_info)) return true;
 	return false;
 }
 
 bool webui_base::handle_websocket_data(mg_connection* conn
 	, int bits, char* data, size_t data_len)
 {
-	for (std::vector<http_handler*>::iterator i = m_handlers.begin()
-		, end(m_handlers.end()); i != end; ++i)
-	{
-		if ((*i)->handle_websocket_data(conn, bits, data, data_len)) return true;
-	}
+	for (auto* h : m_handlers)
+		if (h->handle_websocket_data(conn, bits, data, data_len)) return true;
 	return false;
 }
 
 void webui_base::handle_end_request(mg_connection* conn)
 {
-	for (std::vector<http_handler*>::iterator i = m_handlers.begin()
-		, end(m_handlers.end()); i != end; ++i)
-	{
-		(*i)->handle_end_request(conn);
-	}
+	for (auto* h : m_handlers)
+		h->handle_end_request(conn);
 }
 
 bool webui_base::is_running() const
@@ -182,7 +166,7 @@ void webui_base::start(int port, char const* cert_path, int num_threads)
 	snprintf(threads_str, sizeof(threads_str), "%d", num_threads);
 	options[i++] = "num_threads";
 	options[i++] = threads_str;
-	options[i++] = NULL;
+	options[i++] = nullptr;
 
 	mg_callbacks cb;
 	memset(&cb, 0, sizeof(cb));
@@ -198,6 +182,6 @@ void webui_base::start(int port, char const* cert_path, int num_threads)
 void webui_base::stop()
 {
 	if (m_ctx) mg_stop(m_ctx);
-	m_ctx = NULL;
+	m_ctx = nullptr;
 }
 

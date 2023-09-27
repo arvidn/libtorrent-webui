@@ -35,6 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <vector>
 #include <string>
+#include "libtorrent/fwd.hpp"
 
 struct mg_context;
 struct mg_connection;
@@ -53,8 +54,6 @@ struct http_handler
 
 namespace libtorrent
 {
-	class session;
-
 	struct webui_base
 	{
 		webui_base();
@@ -75,7 +74,7 @@ namespace libtorrent
 			, mg_request_info const* request_info);
 		bool handle_websocket_data(mg_connection* conn, int bits, char* data, size_t length);
 		void handle_end_request(mg_connection* conn);
-	
+
 		void set_document_root(std::string r) { m_document_root = r; }
 
 		int listen_port() const { return m_listen_port; }
@@ -83,9 +82,9 @@ namespace libtorrent
 	private:
 
 		std::vector<http_handler*> m_handlers;
-		std::string m_document_root;
+		std::string m_document_root = ".";
 
-		mg_context* m_ctx;
+		mg_context* m_ctx = nullptr;
 		int m_listen_port;
 	};
 

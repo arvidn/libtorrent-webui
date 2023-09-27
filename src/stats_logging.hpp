@@ -35,12 +35,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "alert_observer.hpp"
 #include "libtorrent/time.hpp"
+#include "libtorrent/fwd.hpp"
 #include <stdio.h>
 
 namespace libtorrent
 {
-struct alert_handler;
-class session;
+	struct alert_handler;
 
 /// writes logs to directory 'session_stats' in current working directory.
 /// logs are rotated each hour. Use parse_session_stats.py to parse logs.

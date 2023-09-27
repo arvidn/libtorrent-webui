@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015, Arvid Norberg
+Copyright (c) 2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,33 +30,28 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#ifndef TORRENT_HEX_HPP
+#define TORRENT_HEX_HPP
 
-#ifndef TORRENT_ALERT_OBSERVER_HPP_INCLUDED
-#define TORRENT_ALERT_OBSERVER_HPP_INCLUDED
+#include "libtorrent/span.hpp"
+#include "libtorrent/info_hash.hpp"
+#include <string>
+#include <type_traits>
 
-#include <cstdint>
-#include <array>
+namespace libtorrent {
 
-#include "libtorrent/fwd.hpp"
+	std::string to_hex(span<char const> in);
+	void to_hex(span<char const> in, char* out);
+	bool from_hex(span<char const> in, char* out);
 
-namespace libtorrent
-{
-
-struct alert_observer
-{
-	friend struct alert_handler;
-
-	alert_observer() = default;
-	alert_observer(alert_observer const&) = delete;
-
-	virtual void handle_alert(alert const* a) = 0;
-private:
-	std::array<std::uint8_t, 64> types;
-	int num_types = 0;
-	int flags = 0;
-};
+	template <typename T>
+	typename std::enable_if<std::is_same<T, lt::info_hash_t>::value, std::string>::type
+	to_hex(T const& ih)
+	{
+		return to_hex(ih.get_best());
+	}
 
 }
 
-#endif // TORRENT_ALERT_OBSERVER_HPP_INCLUDED
+#endif
 

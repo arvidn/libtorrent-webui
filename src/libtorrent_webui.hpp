@@ -34,8 +34,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_LIBTORRENT_WEBUI_HPP
 
 #include "websocket_handler.hpp"
+#include "torrent_history.hpp" // for frame_t
 #include "libtorrent/torrent_handle.hpp"
-#include <boost/atomic.hpp>
+#include "libtorrent/fwd.hpp"
+#include "alert_observer.hpp"
+#include <atomic>
 
 struct mg_connection;
 
@@ -45,9 +48,8 @@ namespace libtorrent
 	struct torrent_history;
 	struct auth_interface;
 	struct alert_handler;
-	class session;
 
-	struct libtorrent_webui : websocket_handler
+	struct libtorrent_webui : websocket_handler, alert_observer
 	{
 		libtorrent_webui(session& ses, torrent_history const* hist
 			, auth_interface const* auth, alert_handler* alerts);
@@ -67,6 +69,8 @@ namespace libtorrent
 			int len;
 			permissions_interface const* perms;
 		};
+
+		void handle_alert(alert const* a) override;
 
 		bool get_torrent_updates(conn_state* st);
 		bool start(conn_state* st);
@@ -92,9 +96,6 @@ namespace libtorrent
 
 		bool get_file_updates(conn_state* st);
 
-		// parse the arguments to the simple torrent commands
-		int parse_torrent_args(std::vector<torrent_status>& torrents, conn_state* st);
-
 		bool call_rpc(mg_connection* conn, int function, char const* data, int len);
 
 		bool respond(conn_state* st, int error, int val);
@@ -115,19 +116,23 @@ namespace libtorrent
 
 	private:
 
+		// parse the arguments to the simple torrent commands
+		template <typename Fun>
+		bool apply_torrent_fun(conn_state* st, Fun const& f);
+
 		session& m_ses;
 		torrent_history const* m_hist;
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
-		boost::atomic<int> m_transaction_id;
+		std::atomic<int> m_transaction_id;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class
 		// the frame numbers where the stats counters changed
-		std::vector<std::pair<std::uint64_t, std::uint32_t> > m_stats;
+		std::vector<std::pair<std::int64_t, frame_t> > m_stats;
 		// the current stats frame (incremented every time) stats
 		// are requested
-		std::uint32_t m_stats_frame;
+		frame_t m_stats_frame = 0;
 
 	};
 }

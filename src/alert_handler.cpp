@@ -45,15 +45,15 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace libtorrent
 {
 
-	alert_handler::alert_handler(session& ses)
+	alert_handler::alert_handler(lt::session& ses)
 		: m_abort(false)
 		, m_ses(ses)
 	{}
 
-	void alert_handler::subscribe(alert_observer* o, int flags, ...)
+	void alert_handler::subscribe(alert_observer* o, int const flags, ...)
 	{
-		int types[64];
-		memset(types, 0, sizeof(types));
+		std::array<int, 64> types;
+		types.fill(0);
 		va_list l;
 		va_start(l, flags);
 		int t = va_arg(l, int);
@@ -65,38 +65,19 @@ namespace libtorrent
 			t = va_arg(l, int);
 		}
 		va_end(l);
-		subscribe_impl(types, i, o, flags);
+		subscribe_impl(types.data(), i, o, flags);
 	}
 
 	void alert_handler::dispatch_alerts(std::vector<alert*>& alerts) const
 	{
-		for (std::vector<alert*>::const_iterator i = alerts.begin()
-			, end(alerts.end()); i != end; ++i)
+		for (alert* a : alerts)
 		{
-			alert* a = *i;
-			int type = a->type();
+			int const type = a->type();
 
 			// copy this vector since handlers may unsubscribe while we're looping
 			std::vector<alert_observer*> alert_dispatchers = m_observers[type];
-			{
-				for (std::vector<alert_observer*>::const_iterator k = alert_dispatchers.begin()
-					, end(alert_dispatchers.end()); k != end; ++k)
-				{
-					(*k)->handle_alert(a);
-				}
-			}
-
-			std::deque<promise_t> promises;
-
-			std::unique_lock<std::mutex> l(m_mutex);
-			promises.swap(m_promises[type]);
-			l.unlock();
-
-			for (std::deque<promise_t>::iterator i = promises.begin()
-				, end(promises.end()); i != end; ++i)
-			{
-				(*i)->set_value(a->clone().release());
-			}
+			for (auto* h : alert_dispatchers)
+				h->handle_alert(a);
 		}
 		alerts.clear();
 	}
@@ -112,35 +93,35 @@ namespace libtorrent
 	{
 		for (int i = 0; i < o->num_types; ++i)
 		{
-			int type = o->types[i];
+			int const type = o->types[i];
 			if (type == 0) continue;
 			TORRENT_ASSERT(type >= 0);
-			TORRENT_ASSERT(type < sizeof(m_observers)/sizeof(m_observers[0]));
-			if (type < 0 || type >= sizeof(m_observers)/sizeof(m_observers[0])) continue;
-			std::vector<alert_observer*>& alert_observers = m_observers[type];
-			std::vector<alert_observer*>::iterator j = std::find(alert_observers.begin()
-				, alert_observers.end(), o);
+			TORRENT_ASSERT(type < int(m_observers.size()));
+			if (type < 0 || type >= int(m_observers.size())) continue;
+			auto& alert_observers = m_observers[type];
+			auto j = std::find(alert_observers.begin(), alert_observers.end(), o);
 			if (j != alert_observers.end()) alert_observers.erase(j);
 		}
 		o->num_types = 0;
 	}
 
-	void alert_handler::subscribe_impl(int const* type_list, int num_types
-		, alert_observer* o, int flags)
+	// TODO: use span<int const>
+	void alert_handler::subscribe_impl(int const* type_list, int const num_types
+		, alert_observer* o, int const flags)
 	{
-		memset(o->types, 0, sizeof(o->types));
+		o->types.fill(0);
 		o->flags = flags;
 		for (int i = 0; i < num_types; ++i)
 		{
-			int type = type_list[i];
+			int const type = type_list[i];
 			if (type == 0) break;
 
 			// only subscribe once per observer per type
-			if (std::count(o->types, o->types + o->num_types, type) > 0) continue;
+			if (std::count(o->types.data(), o->types.data() + o->num_types, type) > 0) continue;
 
 			TORRENT_ASSERT(type >= 0);
-			TORRENT_ASSERT(type < sizeof(m_observers)/sizeof(m_observers[0]));
-			if (type < 0 || type >= sizeof(m_observers)/sizeof(m_observers[0])) continue;
+			TORRENT_ASSERT(type < int(m_observers.size()));
+			if (type < 0 || type >= int(m_observers.size())) continue;
 
 			o->types[o->num_types++] = type;
 			m_observers[type].push_back(o);
@@ -148,93 +129,9 @@ namespace libtorrent
 		}
 	}
 
-	std::future<alert*> alert_handler::subscribe_impl(int cat)
-	{
-		std::unique_lock<std::mutex> l(m_mutex);
-		if (m_abort)
-		{
-			std::promise<alert*> promise;
-			promise.set_value(NULL);
-			return promise.get_future();
-		}
-
-		m_promises[cat].push_back(std::make_shared<std::promise<alert*> >());
-		// TODO: enable this alert in the alert mask in m_ses
-		return m_promises[cat].back()->get_future();
-	}
-
 	void alert_handler::abort()
 	{
-		std::unique_lock<std::mutex> l(m_mutex);
-
 		m_abort = true;
-
-		std::deque<promise_t> promises;
-		for (int i = 0; i < num_alert_types; ++i)
-		{
-			promises.clear();
-			promises.swap(m_promises[i]);
-
-			for (std::deque<promise_t>::iterator i = promises.begin()
-				, end(promises.end()); i != end; ++i)
-			{
-				(*i)->set_value(NULL);
-			}
-		}
-	}
-
-	namespace
-	{
-		struct wait_alert_observer : alert_observer
-		{
-			wait_alert_observer(alert_handler& h, int type)
-				: m_handler(h)
-				, m_type(type)
-			{
-				m_handler.subscribe(this, 0, type, NULL);
-			}
-
-			void handle_alert(alert const* a)
-			{
-				if (a->type() != m_type) return;
-				m_type = -1;
-
-				m_handler.unsubscribe(this);
-
-				std::unique_lock<std::mutex> l(m_mutex);
-				m_alert = a->clone();
-				m_cond.notify_one();
-			}
-
-			std::auto_ptr<alert> wait()
-			{
-				std::unique_lock<std::mutex> l(m_mutex);
-				m_cond.wait(l);
-				return m_alert;
-			}
-
-			~wait_alert_observer()
-			{
-				if (m_type >= 0) m_handler.unsubscribe(this);
-			}
-
-		private:
-			alert_handler& m_handler;
-
-			std::auto_ptr<alert> m_alert;
-
-			// the alert type we're waiting for
-			int m_type;
-
-			std::mutex m_mutex;
-			std::condition_variable m_cond;
-		};
-	};
-
-	std::auto_ptr<alert> wait_for_alert(alert_handler& h, int type)
-	{
-		wait_alert_observer obs(h, type);
-		return obs.wait();
 	}
 
 }

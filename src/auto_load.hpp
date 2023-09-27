@@ -34,9 +34,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_AUTO_LOAD_HPP
 
 #include "libtorrent/session.hpp"
-#include "libtorrent/deadline_timer.hpp"
-#include "libtorrent/io_service.hpp"
+#include "libtorrent/io_context.hpp"
+#include "boost/asio/high_resolution_timer.hpp"
 #include <mutex>
+#include <thread>
+#include <chrono>
 
 namespace libtorrent
 {
@@ -53,8 +55,8 @@ namespace libtorrent
 		void set_auto_load_dir(std::string const& dir);
 		std::string const& auto_load_dir() const { return m_dir; }
 
-		int scan_interval() const { return m_scan_interval; }
-		void set_scan_interval(int s);
+		std::chrono::seconds scan_interval() const { return m_scan_interval; }
+		void set_scan_interval(std::chrono::seconds s);
 
 		void set_remove_files(bool r);
 		bool remove_files() const;
@@ -66,8 +68,8 @@ namespace libtorrent
 		void thread_fun();
 
 		session& m_ses;
-		boost::asio::io_service m_ios;
-		deadline_timer m_timer;
+		boost::asio::io_context m_ios;
+		boost::asio::high_resolution_timer m_timer;
 		save_settings_interface* m_settings;
 
 		// whether or not to remove .torrent files
@@ -81,7 +83,7 @@ namespace libtorrent
 
 		add_torrent_params m_params_model;
 		std::string m_dir;
-		int m_scan_interval;
+		std::chrono::seconds m_scan_interval;
 		bool m_abort;
 
 		// used to protect m_abort, m_scan_interval, m_dir,
@@ -92,7 +94,7 @@ namespace libtorrent
 		// last in the constructor. This way the object is
 		// guaranteed to be completely constructed by the time
 		// the thread function is started
-		thread m_thread;
+		std::thread m_thread;
 	};
 }
 

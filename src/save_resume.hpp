@@ -34,14 +34,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_SAVE_RESUME_HPP
 
 #include "libtorrent/session.hpp"
-#include "libtorrent/deadline_timer.hpp"
-#include "libtorrent/io_service.hpp"
 #include "libtorrent/error_code.hpp"
 #include "alert_observer.hpp"
 
 #include <string>
-#include <map>
 #include <mutex>
+#include <unordered_set>
 
 #include <sqlite3.h>
 
@@ -62,9 +60,6 @@ namespace libtorrent
 		void save_all();
 		bool ok_to_quit() const;
 
-		void load_torrent(libtorrent::sha1_hash const& ih
-			, std::vector<char>& buf, libtorrent::error_code& ec);
-
 	private:
 
 		session& m_ses;
@@ -72,10 +67,10 @@ namespace libtorrent
 		sqlite3* m_db;
 
 		// all torrents currently loaded
-		boost::unordered_set<torrent_handle> m_torrents;
+		std::unordered_set<torrent_handle> m_torrents;
 
 		// the next torrent to save (may point to end)
-		boost::unordered_set<torrent_handle>::iterator m_cursor;
+		std::unordered_set<torrent_handle>::iterator m_cursor;
 
 		// the last time we visited a torrent to potentially
 		// save its fast-resume

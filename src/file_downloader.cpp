@@ -34,12 +34,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "file_downloader.hpp"
 #include "no_auth.hpp"
 #include "auth.hpp"
+#include "hex.hpp"
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/peer_id.hpp" // for sha1_hash
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/torrent.hpp"
+#include "libtorrent/aux_/torrent.hpp"
 #include "libtorrent/aux_/escape_string.hpp" // for escape_string
 
 #include <boost/shared_array.hpp>
@@ -47,9 +48,42 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <cinttypes>
 
 extern "C" {
 #include "local_mongoose.h"
+}
+
+namespace {
+	lt::string_view::size_type find(lt::string_view haystack, lt::string_view needle, lt::string_view::size_type pos)
+	{
+		auto const p = haystack.substr(pos).find(needle);
+		if (p == lt::string_view::npos) return p;
+		return pos + p;
+	}
+
+	lt::string_view url_has_argument(
+		lt::string_view url, std::string argument, std::string::size_type* out_pos = nullptr)
+	{
+		auto i = url.find('?');
+		if (i == std::string::npos) return {};
+		++i;
+
+		argument += '=';
+
+		if (url.substr(i, argument.size()) == argument)
+		{
+			auto const pos = i + argument.size();
+			if (out_pos) *out_pos = pos;
+			return url.substr(pos, url.substr(pos).find('&'));
+		}
+		argument.insert(0, "&");
+		i = find(url, argument, i);
+		if (i == std::string::npos) return {};
+		auto const pos = i + argument.size();
+		if (out_pos) *out_pos = pos;
+		return url.substr(pos, find(url, "&", pos) - pos);
+	}
 }
 
 namespace libtorrent
@@ -58,7 +92,7 @@ namespace libtorrent
 	{
 		boost::shared_array<char> buffer;
 		int size;
-		int piece;
+		piece_index_t piece;
 		// we want ascending order!
 		bool operator<(piece_entry const& rhs) const { return piece > rhs.piece; }
 	};
@@ -66,11 +100,11 @@ namespace libtorrent
 	struct torrent_piece_queue
 	{
 		// this is the range of pieces we're interested in
-		int begin;
-		int end;
+		piece_index_t begin;
+		piece_index_t end;
 		// end may not progress past this. This is end of file
 		// or end of request
-		int finish;
+		piece_index_t finish;
 		std::priority_queue<piece_entry> queue;
 		std::condition_variable cond;
 		std::mutex queue_mutex;
@@ -116,7 +150,6 @@ namespace libtorrent
 
 			int start = (std::min)(start_offset * progress_width / file_size, std::uint64_t(progress_width) - 1);
 			int progress_range = (std::max)(std::uint64_t(1), request_size * progress_width / file_size);
-			int e = (start_offset + request_size) * progress_width / file_size;
 			int pos = request_size == 0 ? 0 : bytes_sent * progress_range / request_size;
 			int pos_end = progress_range - pos;
 			prefix[start] = 0;
@@ -126,7 +159,8 @@ namespace libtorrent
 
 			printf("%4.1f [%s%s%s%s] [p: %4d] [s: %d] %s\n"
 				, total_milliseconds(now - start_time) / 1000.f
-				, prefix, progress, invprogress, suffix, piece, state, file.c_str());
+				, prefix, progress, invprogress, suffix, static_cast<int>(piece)
+				, state, file.c_str());
 		}
 
 		enum state_t
@@ -134,13 +168,13 @@ namespace libtorrent
 			received, writing_to_socket, waiting_for_libtorrent
 		};
 
-		const time_point start_time;
-		const std::string file;
+		time_point const start_time;
+		std::string const file;
 		std::uint64_t request_size;
 		std::uint64_t file_size;
 		std::uint64_t start_offset;
 		std::uint64_t bytes_sent;
-		int piece;
+		piece_index_t piece;
 		int state;
 
 	private:
@@ -151,18 +185,20 @@ namespace libtorrent
 	// TODO: replace this with file_requests class
 	struct piece_alert_dispatch : plugin
 	{
-		void on_alert(alert const* a)
+		libtorrent::feature_flags_t implemented_features() override { return plugin::alert_feature; }
+
+		void on_alert(alert const* a) override
 		{
 			read_piece_alert const* p = alert_cast<read_piece_alert>(a);
-			if (p == NULL) return;
+			if (p == nullptr) return;
 
 //			fprintf(stderr, "piece: %d\n", p->piece);
 
 			std::unique_lock<std::mutex> l(m_mutex);
-			typedef std::multimap<sha1_hash, torrent_piece_queue*>::iterator iter;
-			shared_ptr<torrent> t = p->handle.native_handle();
+			using iter = std::multimap<sha1_hash, torrent_piece_queue*>::iterator;
+			std::shared_ptr<aux::torrent> t = p->handle.native_handle();
 
-			std::pair<iter, iter> range = m_torrents.equal_range(t->info_hash());
+			std::pair<iter, iter> range = m_torrents.equal_range(t->info_hash().get_best());
 			if (range.first == m_torrents.end()) return;
 
 			for (iter i = range.first; i != range.second; ++i)
@@ -191,10 +227,10 @@ namespace libtorrent
 		// that were part of the 'pq' request, and are also still parts of
 		// other requests, that are still outstanding
 		void unsubscribe(sha1_hash const& ih, torrent_piece_queue* pq
-			, std::set<int>* pieces = NULL)
+			, std::set<piece_index_t>* pieces = nullptr)
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
-			typedef std::multimap<sha1_hash, torrent_piece_queue*>::iterator iter;
+			using iter = std::multimap<sha1_hash, torrent_piece_queue*>::iterator;
 
 			std::pair<iter, iter> range = m_torrents.equal_range(ih);
 			if (range.first == m_torrents.end()) return;
@@ -207,7 +243,7 @@ namespace libtorrent
 				{
 					if (pieces)
 					{
-						for (int k = (std::max)(pq->begin, i->second->begin)
+						for (piece_index_t k = (std::max)(pq->begin, i->second->begin)
 							, end((std::min)(pq->end, i->second->end)); k < end; ++k)
 						{
 							pieces->insert(k);
@@ -243,20 +279,20 @@ namespace libtorrent
 		, m_queue_size(20 * 1024 * 1024)
 		, m_attachment(true)
 	{
-		if (m_auth == NULL)
+		if (m_auth == nullptr)
 		{
 			const static no_auth n;
 			m_auth = &n;
 		}
 
-		m_ses.add_extension(boost::static_pointer_cast<libtorrent::plugin>(m_dispatch));
+		m_ses.add_extension(std::static_pointer_cast<libtorrent::plugin>(m_dispatch));
 	}
 
 	bool file_downloader::handle_http(mg_connection* conn,
 		mg_request_info const* request_info)
 	{
-		if (!string_begins_no_case(request_info->uri, "/download")
-			&& !string_begins_no_case(request_info->uri, "/proxy"))
+		if (!aux::string_begins_no_case(request_info->uri, "/download")
+			&& !aux::string_begins_no_case(request_info->uri, "/proxy"))
 			return false;
 
 		permissions_interface const* perms = parse_http_auth(conn, m_auth);
@@ -268,11 +304,11 @@ namespace libtorrent
 			return true;
 		}
 
-		std::string info_hash_str;
-		std::string file_str;
+		string_view info_hash_str;
+		string_view file_str;
+		std::string query_string = "?";
 		if (request_info->query_string)
 		{
-			std::string query_string = "?";
 			query_string += request_info->query_string;
 			info_hash_str = url_has_argument(query_string, "ih");
 			file_str = url_has_argument(query_string, "file");
@@ -286,10 +322,10 @@ namespace libtorrent
 			return true;
 		}
 
-		int const file = atoi(file_str.c_str());
+		file_index_t const file{atoi(std::string(file_str).c_str())};
 
 		sha1_hash info_hash;
-		from_hex(info_hash_str.c_str(), 40, (char*)&info_hash[0]);
+		from_hex(info_hash_str, info_hash.data());
 
 		torrent_handle h = m_ses.find_torrent(info_hash);
 
@@ -300,14 +336,14 @@ namespace libtorrent
 			return true;
 		}
 
-		shared_ptr<torrent_info const> ti = h.torrent_file();
+		std::shared_ptr<torrent_info const> ti = h.torrent_file();
 		if (!ti->is_valid())
 		{
 			mg_printf(conn, "HTTP/1.1 404 Not Found\r\n\r\n");
 			return true;
 		}
 
-		if (file < 0 || file >= ti->num_files())
+		if (file < file_index_t{} || file >= ti->files().end_file())
 		{
 			mg_printf(conn, "HTTP/1.1 400 Bad Request\r\n\r\n");
 			return true;
@@ -328,12 +364,12 @@ namespace libtorrent
 				char const* divider = strchr(range, '-');
 				if (divider)
 				{
-					range_first_byte = strtoll(range, NULL, 10);
+					range_first_byte = strtoll(range, nullptr, 10);
 
 					// if the end of a range is not specified, the end of file
 					// is implied
 					if (divider[1] != '\0')
-						range_last_byte = strtoll(divider+1, NULL, 10);
+						range_last_byte = strtoll(divider+1, nullptr, 10);
 					else
 						range_last_byte = file_size - 1;
 
@@ -343,9 +379,8 @@ namespace libtorrent
 		}
 
 		peer_request req = ti->map_file(file, range_first_byte, 0);
-		int piece_size = ti->piece_length();
-		int first_piece = req.piece;
-		int end_piece = ti->map_file(file, range_last_byte, 0).piece + 1;
+		piece_index_t const first_piece = req.piece;
+		piece_index_t const end_piece = next(ti->map_file(file, range_last_byte, 0).piece);
 		std::uint64_t offset = req.start;
 
 		if (range_request && (range_first_byte > range_last_byte
@@ -363,18 +398,19 @@ namespace libtorrent
 		torrent_piece_queue pq;
 		pq.begin = first_piece;
 		pq.finish = end_piece;
-		pq.end = (std::min)(first_piece + (std::max)(m_queue_size / ti->piece_length(), 1), pq.finish);
+		auto const num_pieces = static_cast<piece_index_t::diff_type>(std::max(m_queue_size / ti->piece_length(), 1));
+		pq.end = (std::min)(first_piece + num_pieces, pq.finish);
 
 		m_dispatch->subscribe(info_hash, &pq);
 
-		int priority_cursor = pq.begin;
+		piece_index_t priority_cursor = pq.begin;
 
 		request_t r(ti->files().file_path(file), m_requests, m_mutex);
 		r.request_size = range_last_byte - range_first_byte + 1;
 		r.file_size = ti->files().file_size(file);
 		r.start_offset = range_first_byte;
 
-		std::string fname = ti->files().file_name(file);
+		string_view const fname = ti->files().file_name(file);
 		r.state = request_t::writing_to_socket;
 		mg_printf(conn, "HTTP/1.1 %s\r\n"
 			"Content-Length: %" PRId64 "\r\n"
@@ -383,9 +419,9 @@ namespace libtorrent
 			"Accept-Ranges: bytes\r\n"
 			, range_request ? "206 Partial Content" : "200 OK"
 			, range_last_byte - range_first_byte + 1
-			, mg_get_builtin_mime_type(ti->files().file_name(file).c_str())
+			, mg_get_builtin_mime_type(std::string(ti->files().file_name(file)).c_str())
 			, m_attachment ? "Content-Disposition: attachment; filename=" : ""
-			, m_attachment ? escape_string(fname.c_str(), fname.size()).c_str() : ""
+			, m_attachment ? escape_string(fname).c_str() : ""
 			, m_attachment ? "\r\n" : "");
 
 		if (range_request)
@@ -403,12 +439,12 @@ namespace libtorrent
 //		printf("left_to_send: %" PRId64 " bytes\n", left_to_send);
 
 		// increase the priority of this range to 5
-		std::vector<std::pair<int, int> > pieces_in_req;
-		pieces_in_req.resize(pq.finish - pq.begin);
-		int p = pq.begin;
-		for (int i = 0; i < pieces_in_req.size(); ++i)
+		std::vector<std::pair<piece_index_t, download_priority_t>> pieces_in_req;
+		pieces_in_req.resize(static_cast<int>(pq.finish - pq.begin));
+		piece_index_t p = pq.begin;
+		for (auto& e : pieces_in_req)
 		{
-			pieces_in_req[i] = std::make_pair(p, 5);
+			e = {p, lt::download_priority_t{5}};
 			++p;
 		}
 		h.prioritize_pieces(pieces_in_req);
@@ -417,12 +453,12 @@ namespace libtorrent
 		{
 //			printf("set_piece_deadline: %d\n", priority_cursor);
 			h.set_piece_deadline(priority_cursor
-				, 100 * (priority_cursor - pq.begin)
+				, 100 * static_cast<int>(priority_cursor - pq.begin)
 				, torrent_handle::alert_when_available);
 			++priority_cursor;
 		}
 
-		for (int i = pq.begin; i < pq.finish; ++i)
+		for (piece_index_t i = pq.begin; i < pq.finish; ++i)
 		{
 			std::unique_lock<std::mutex> l(pq.queue_mutex);
 
@@ -445,8 +481,8 @@ namespace libtorrent
 				continue;
 			}
 
-			pq.end = (std::min)(pq.end + 1, pq.finish);
-			pq.begin = (std::min)(pq.begin + 1, pq.end);
+			pq.end = std::min(next(pq.end), pq.finish);
+			pq.begin = std::min(next(pq.begin), pq.end);
 
 			l.unlock();
 
@@ -454,7 +490,7 @@ namespace libtorrent
 			{
 //				printf("set_piece_deadline: %d\n", priority_cursor);
 				h.set_piece_deadline(priority_cursor
-					, 100 * (priority_cursor - i)
+					, 100 * static_cast<int>(priority_cursor - i)
 					, torrent_handle::alert_when_available);
 				++priority_cursor;
 			}
@@ -501,13 +537,13 @@ namespace libtorrent
 			offset = 0;
 		}
 
-		std::set<int> still_in_use;
+		std::set<piece_index_t> still_in_use;
 		m_dispatch->unsubscribe(info_hash, &pq, &still_in_use);
 
-		for (int k = pq.begin; k < priority_cursor; ++k)
+		for (piece_index_t k = pq.begin; k < priority_cursor; ++k)
 		{
 			if (still_in_use.count(k)) continue;
-			printf("reset_piece_deadline: %d\n", k);
+			printf("reset_piece_deadline: %d\n", static_cast<int>(k));
 			h.reset_piece_deadline(k);
 		}
 //		printf("done, sent %" PRId64 " bytes\n", r.bytes_sent);
@@ -515,8 +551,8 @@ namespace libtorrent
 		// TODO: this doesn't work right if there are overlapping requests
 
 		// restore piece priorities
-		for (int i = 0; i < pieces_in_req.size(); ++i)
-			pieces_in_req[i].second = 1;
+		for (auto& e : pieces_in_req)
+			e.second = default_priority;
 		h.prioritize_pieces(pieces_in_req);
 
 		return true;

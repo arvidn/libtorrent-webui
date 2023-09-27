@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015, Arvid Norberg
+Copyright (c) 2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,33 +30,73 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#include "hex.hpp"
+#include <string>
 
-#ifndef TORRENT_ALERT_OBSERVER_HPP_INCLUDED
-#define TORRENT_ALERT_OBSERVER_HPP_INCLUDED
+namespace libtorrent {
 
-#include <cstdint>
-#include <array>
+	int hex_to_int(char in)
+	{
+		if (in >= '0' && in <= '9') return int(in) - '0';
+		if (in >= 'A' && in <= 'F') return int(in) - 'A' + 10;
+		if (in >= 'a' && in <= 'f') return int(in) - 'a' + 10;
+		return -1;
+	}
 
-#include "libtorrent/fwd.hpp"
+	bool is_hex(span<char const> in)
+	{
+		for (char const c : in)
+		{
+			int const t = hex_to_int(c);
+			if (t == -1) return false;
+		}
+		return true;
+	}
 
-namespace libtorrent
-{
+	bool from_hex(span<char const> in, char* out)
+	{
+		for (auto i = in.begin(), end = in.end(); i != end; ++i, ++out)
+		{
+			int const t1 = hex_to_int(*i);
+			if (t1 == -1) return false;
+			*out = char(t1 << 4);
+			++i;
+			int const t2 = hex_to_int(*i);
+			if (t2 == -1) return false;
+			*out |= t2 & 15;
+		}
+		return true;
+	}
 
-struct alert_observer
-{
-	friend struct alert_handler;
+	extern char const hex_chars[];
 
-	alert_observer() = default;
-	alert_observer(alert_observer const&) = delete;
+	char const hex_chars[] = "0123456789abcdef";
+	void to_hex(char const* in, size_t const len, char* out)
+	{
+		int idx = 0;
+		for (size_t i=0; i < len; ++i)
+		{
+			out[idx++] = hex_chars[std::uint8_t(in[i]) >> 4];
+			out[idx++] = hex_chars[std::uint8_t(in[i]) & 0xf];
+		}
+	}
 
-	virtual void handle_alert(alert const* a) = 0;
-private:
-	std::array<std::uint8_t, 64> types;
-	int num_types = 0;
-	int flags = 0;
-};
+	std::string to_hex(span<char const> in)
+	{
+		std::string ret;
+		if (!in.empty())
+		{
+			ret.resize(in.size() * 2);
+			to_hex(in.data(), in.size(), &ret[0]);
+		}
+		return ret;
+	}
+
+	void to_hex(span<char const> in, char* out)
+	{
+		to_hex(in.data(), in.size(), out);
+		out[in.size() * 2] = '\0';
+	}
 
 }
-
-#endif // TORRENT_ALERT_OBSERVER_HPP_INCLUDED
 

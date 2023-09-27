@@ -41,7 +41,6 @@ namespace libtorrent
 {
 
 struct alert_handler;
-class alert;
 
 struct error_logger : libtorrent::alert_observer
 {
