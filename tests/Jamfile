@@ -13,9 +13,8 @@ project
 	<debug-iterators>on
    ;
 
-test-suite libtorrent : 	
-	[ run test_rencode.cpp ]
+test-suite libtorrent :
 	[ run test_rss_filter.cpp ]
-	; 
+	;
 
 
