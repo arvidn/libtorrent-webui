@@ -31,7 +31,6 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "torrent_post.hpp"
-#include "transmission_webui.hpp"
 #include "libtorrent/aux_/http_parser.hpp" // for http_parser
 #include "libtorrent/torrent_info.hpp"
 
