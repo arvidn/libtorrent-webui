@@ -38,7 +38,7 @@ SOURCES =
 	error_logger
 	websocket_conn
 	alert_handler
-#	file_requests
+	file_requests
 	stats_logging
 	serve_files
 	hex
