@@ -24,7 +24,6 @@ SOURCES =
 	json_util
 	file_downloader
 	torrent_post
-	rencode
 	disk_space
 	base64
 	escape_json
