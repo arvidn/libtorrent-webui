@@ -36,14 +36,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 using namespace libtorrent;
 
-bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_code& ec)
+bool parse_torrent_post(http::request<http::string_body> const& req
+	, add_torrent_params& params, error_code& ec)
 {
-	char const* cl = mg_get_header(conn, "content-length");
-	if (cl == nullptr) return false;
+	std::string const& body = req.body();
+	int content_length = static_cast<int>(body.size());
 
-	std::vector<char> post_body;
-
-	int content_length = atoi(cl);
 	if (content_length <= 0)
 	{
 		ec = error_code(boost::system::errc::invalid_argument, boost::system::generic_category());
@@ -56,14 +54,12 @@ bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_c
 		return false;
 	}
 
-	post_body.resize(content_length + 1);
-	// minus one here since we shouldn't read the null terminator
-	mg_read(conn, &post_body[0], content_length);
-	post_body[content_length] = 0;
-	// null terminate
+	char const* body_start = body.c_str();
+	char const* body_end = body_start + content_length;
 
 	// expect a multipart message here
-	char const* content_type = mg_get_header(conn, "content-type");
+	std::string const content_type_str = std::string(req[http::field::content_type]);
+	char const* content_type = content_type_str.c_str();
 	if (strstr(content_type, "multipart/form-data") == nullptr) return false;
 
 	char const* boundary = strstr(content_type, "boundary=");
@@ -71,16 +67,14 @@ bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_c
 
 	boundary += 9;
 
-	char const* body_end = &post_body[0] + content_length;
-
-	char const* part_start = strstr(&post_body[0], boundary);
+	char const* part_start = strstr(body_start, boundary);
 	if (part_start == nullptr) return false;
 
 	part_start += strlen(boundary);
 	char const* part_end = nullptr;
 
 	// loop through all parts
-	for(; part_start < body_end; part_start = (std::min)(body_end, part_end + strlen(boundary)))
+	for (; part_start < body_end; part_start = (std::min)(body_end, part_end + strlen(boundary)))
 	{
 		part_end = strstr(part_start, boundary);
 		if (part_end == nullptr) part_end = body_end;
@@ -88,14 +82,7 @@ bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_c
 		aux::http_parser part;
 		bool error = false;
 		part.incoming(span<char const>(part_start, part_end - part_start), error);
-/*
-		std::multimap<std::string, std::string> const& part_headers = part.headers();
-		for (std::multimap<std::string, std::string>::const_iterator i = part_headers.begin()
-			, end(part_headers.end()); i != end; ++i)
-		{
-			printf("  %s: %s\n", i->first.c_str(), i->second.c_str());
-		}
-*/
+
 		std::string const& disposition = part.header("content-type");
 		if (disposition != "application/octet-stream"
 			&& disposition != "application/x-bittorrent") continue;
@@ -108,4 +95,3 @@ bool parse_torrent_post(mg_connection* conn, add_torrent_params& params, error_c
 
 	return false;
 }
-

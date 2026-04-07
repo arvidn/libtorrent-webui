@@ -42,7 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cinttypes>
 #include <vector>
 #include <map>
-#include <boost/cstdint.hpp>
+#include <cstdint>
 
 #include "libtorrent/add_torrent_params.hpp"
 #include "libtorrent/aux_/parse_url.hpp"
@@ -79,7 +79,6 @@ utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 	, m_settings(sett)
 //	, m_rss_filter(rss_filter)
 	, m_hist(hist)
-	, m_listener(nullptr)
 {
 	if (m_auth == nullptr)
 	{
@@ -160,41 +159,76 @@ static const method_handler handlers[] =
 //	{ "add-peer", &utorrent_webui:: },
 };
 
-void return_error(mg_connection* conn)
+// URL-decode a percent-encoded string (+ decoded as space).
+static std::string url_decode(std::string_view s)
 {
-	mg_printf(conn, "HTTP/1.1 400 Invalid Request\r\n"
-		"Content-Length: 0\r\n\r\n");
+	std::string result;
+	result.reserve(s.size());
+	for (std::size_t i = 0; i < s.size(); ++i)
+	{
+		if (s[i] == '+') { result += ' '; }
+		else if (s[i] == '%' && i + 2 < s.size())
+		{
+			char hex[3] = { s[i+1], s[i+2], '\0' };
+			result += char(strtol(hex, nullptr, 16));
+			i += 2;
+		}
+		else { result += s[i]; }
+	}
+	return result;
 }
 
-bool utorrent_webui::handle_http(mg_connection* conn, mg_request_info const* request_info)
+// Return the raw (URL-encoded) value for var_name in query, or nullopt if not found.
+static std::optional<std::string_view> get_query_var(std::string_view query, std::string_view var_name)
 {
-	// redirect to /gui/
-	if (strcmp(request_info->uri, "/gui") == 0
-		|| (strcmp(request_info->uri, "/gui/") == 0
-			&& request_info->query_string == nullptr))
+	while (!query.empty())
 	{
-		mg_printf(conn, "HTTP/1.1 301 Moved Permanently\r\n"
-			"Content-Length: 0\r\n"
-			"Location: /gui/index.html\r\n\r\n");
-		return true;
+		auto const eq = query.find('=');
+		if (eq == std::string_view::npos) break;
+		auto const amp = query.find('&', eq + 1);
+		std::string_view const key = query.substr(0, eq);
+		std::string_view const val = query.substr(eq + 1
+			, amp == std::string_view::npos ? std::string_view::npos : amp - eq - 1);
+		if (key == var_name) return val;
+		if (amp == std::string_view::npos) break;
+		query.remove_prefix(amp + 1);
+	}
+	return std::nullopt;
+}
+
+void utorrent_webui::handle_http(http::request<http::string_body> request
+	, beast::ssl_stream<beast::tcp_stream>& socket
+	, std::function<void(bool)> done)
+{
+	auto const target = std::string(request.target());
+	auto const qpos = target.find('?');
+	std::string const uri = qpos != std::string::npos ? target.substr(0, qpos) : target;
+	std::string const query_string = qpos != std::string::npos ? target.substr(qpos + 1) : std::string{};
+
+	// redirect /gui and /gui/ (no query) to /gui/index.html
+	if (uri == "/gui" || (uri == "/gui/" && query_string.empty()))
+	{
+		http::response<http::empty_body> res{http::status::moved_permanently, request.version()};
+		res.set(http::field::location, "/gui/index.html");
+		res.keep_alive(request.keep_alive());
+		send_http(socket, done, std::move(res));
+		return;
 	}
 
-	// we only provide access to paths under /gui
-	if (!aux::string_begins_no_case("/gui/", request_info->uri)) return false;
-
-	permissions_interface const* perms = parse_http_auth(conn, m_auth);
+	permissions_interface const* perms = parse_http_auth(request, m_auth);
 	if (!perms)
 	{
-		mg_printf(conn, "HTTP/1.1 401 Unauthorized\r\n"
-			"WWW-Authenticate: Basic realm=\"BitTorrent\"\r\n"
-			"Content-Length: 0\r\n\r\n");
-		return true;
+		http::response<http::empty_body> res{http::status::unauthorized, request.version()};
+		res.set(http::field::www_authenticate, "Basic realm=\"BitTorrent\"");
+		res.keep_alive(request.keep_alive());
+		send_http(socket, done, std::move(res));
+		return;
 	}
 
 	std::vector<char> response;
 
 	// Auth token handling
-	if (strcmp(request_info->uri, "/gui/token.html") == 0)
+	if (uri == "/gui/token.html")
 	{
 		// note, the uTorrent webUI actually requires the xml attributes
 		// to use single quotes here.
@@ -203,69 +237,50 @@ bool utorrent_webui::handle_http(mg_connection* conn, mg_request_info const* req
 		TORRENT_ASSERT(response.back() != '\0');
 		response.push_back('\0');
 
-		mg_printf(conn, "HTTP/1.1 200 OK\r\n"
-			"Content-Length: %d\r\n"
-			"Content-Type: text/html\r\n\r\n"
-			"%s", int(response.size()-1), &response[0]);
-		return true;
+		http::response<http::string_body> res{http::status::ok, request.version()};
+		res.set(http::field::content_type, "text/html");
+		res.body() = std::string(response.data(), response.size() - 1);
+		res.keep_alive(request.keep_alive());
+		send_http(socket, done, std::move(res));
+		return;
 	}
 
-	if (strcmp(request_info->uri, "/gui/") != 0) return false;
-
-	if (request_info->query_string == nullptr)
+	if (uri != "/gui/")
 	{
-		mg_printf(conn, "HTTP/1.1 400 Invalid Request (no query string)\r\n"
-			"Connection: close\r\n\r\n");
-		return true;
+		send_http(socket, done, http_error(request, http::status::not_found));
+		return;
 	}
 
-	m_listener = (webui_base*)request_info->user_data;
-
-//	printf("%s%s%s\n", request_info->uri
-//		, request_info->query_string ? "?" : ""
-//		, request_info->query_string ? request_info->query_string : "");
-
-	// TODO: make this configurable
-	int ret = 0;
-/*
-	char token[50];
-	// first, verify the token
-	ret = mg_get_var(request_info->query_string, strlen(request_info->query_string)
-		, "token", token, sizeof(token));
-
-	if (ret <= 0 || m_token != token)
+	if (query_string.empty())
 	{
-		mg_printf(conn, "HTTP/1.1 400 Invalid Request (invalid token)\r\n"
-			"Connection: close\r\n\r\n");
-		return true;
+		send_http(socket, done, http_error(request, http::status::bad_request));
+		return;
 	}
-*/
 
 	appendf(response, "{\"build\":%d", LIBTORRENT_VERSION_NUM);
 
-	char action[50];
-	// then, find the action
-	ret = mg_get_var(request_info->query_string, strlen(request_info->query_string)
-		, "action", action, sizeof(action));
-	if (ret > 0)
+	if (auto const action = get_query_var(query_string, "action"))
 	{
 		// add-file is special, since it posts the torrent
-		if (strcmp(action, "add-file") == 0)
+		if (*action == "add-file")
 		{
 			if (!perms->allow_add())
 			{
-				mg_printf(conn, "HTTP/1.1 401 Unauthorized\r\n"
-					"WWW-Authenticate: Basic realm=\"BitTorrent\"\r\n"
-					"Content-Length: 0\r\n\r\n");
-				return true;
+				http::response<http::empty_body> res{http::status::unauthorized, request.version()};
+				res.set(http::field::www_authenticate, "Basic realm=\"BitTorrent\"");
+				res.keep_alive(request.keep_alive());
+				send_http(socket, done, std::move(res));
+				return;
 			}
 			add_torrent_params p = m_params_model;
 			error_code ec;
-			if (!parse_torrent_post(conn, p, ec))
+			if (!parse_torrent_post(request, p, ec))
 			{
-				mg_printf(conn, "HTTP/1.1 400 Invalid Request (%s)\r\n"
-					"Connection: close\r\n\r\n", ec.message().c_str());
-				return true;
+				http::response<http::string_body> res{http::status::bad_request, request.version()};
+				res.body() = ec.message();
+				res.keep_alive(request.keep_alive());
+				send_http(socket, done, std::move(res));
+				return;
 			}
 
 			m_ses.async_add_torrent(p);
@@ -274,35 +289,30 @@ bool utorrent_webui::handle_http(mg_connection* conn, mg_request_info const* req
 		{
 			for (auto const& e : handlers)
 			{
-				if (strcmp(action, e.action_name)) continue;
-
-				(this->*e.fun)(response, request_info->query_string, perms);
+				if (*action != e.action_name) continue;
+				(this->*e.fun)(response, query_string.c_str(), perms);
 				break;
 			}
 		}
 	}
 
-	char buf[10];
-	if (mg_get_var(request_info->query_string, strlen(request_info->query_string)
-		, "list", buf, sizeof(buf)) > 0
-		&& atoi(buf) > 0)
+	if (auto const list = get_query_var(query_string, "list"))
 	{
-		send_torrent_list(response, request_info->query_string, perms);
-		send_rss_list(response, request_info->query_string, perms);
+		if (atoi(url_decode(*list).c_str()) > 0)
+		{
+			send_torrent_list(response, query_string.c_str(), perms);
+			send_rss_list(response, query_string.c_str(), perms);
+		}
 	}
 
-	// we need a null terminator
 	appendf(response, "}");
 	response.push_back('\0');
 
-	// subtract one from content-length
-	// to not count null terminator
-	mg_printf(conn, "HTTP/1.1 200 OK\r\n"
-		"Content-Type: text/json\r\n"
-		"Content-Length: %d\r\n\r\n", int(response.size()) - 1);
-	mg_write(conn, &response[0], response.size()-1);
-//	printf("%s\n", &response[0]);
-	return true;
+	http::response<http::string_body> res{http::status::ok, request.version()};
+	res.set(http::field::content_type, "text/json");
+	res.body() = std::string(response.data(), response.size() - 1);
+	res.keep_alive(request.keep_alive());
+	send_http(socket, done, std::move(res));
 }
 
 template <typename Fun>
@@ -404,12 +414,9 @@ void utorrent_webui::set_file_priority(std::vector<char>&, char const* args, per
 	if (!p->allow_set_file_prio()) return;
 
 	char prio_str[10];
-	if (mg_get_var(args, strlen(args)
-		, "p", prio_str, sizeof(prio_str)) <= 0)
-	{
-		return;
-	}
-	int prio = atoi(prio_str);
+	auto const prio_val = get_query_var(args, "p");
+	if (!prio_val) return;
+	int prio = atoi(url_decode(*prio_val).c_str());
 	prio *= 2;
 
 	std::vector<file_index_t> files;
@@ -634,7 +641,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		",[\"webui.uconnect_enable\",1,\"false\",{\"access\":\"R\"}]\n"
 		"]"
 		 + first
-		, escape_json(m_webui_cookie).c_str(), m_listener->listen_port());
+		, escape_json(m_webui_cookie).c_str(), 0);
 	first = 0;
 }
 bool to_bool(std::string const& s)
@@ -906,18 +913,12 @@ void utorrent_webui::add_url(std::vector<char>&, char const* args, permissions_i
 {
 	if (!p->allow_add()) return;
 
-	char url[4096];
-	if (mg_get_var(args, strlen(args)
-		, "url", url, sizeof(url)) <= 0)
-	{
-		if (mg_get_var(args, strlen(args)
-			, "s", url, sizeof(url)) <= 0)
-		{
-			return;
-		}
-	}
+	auto const url_val = get_query_var(args, "url")
+		? get_query_var(args, "url") : get_query_var(args, "s");
+	if (!url_val) return;
+	std::string const url_str = url_decode(*url_val);
 
-	add_torrent_params atp = parse_magnet_uri(url);
+	add_torrent_params atp = parse_magnet_uri(url_str);
 	atp.save_path = m_params_model.save_path;
 
 	m_ses.async_add_torrent(atp);
@@ -1177,11 +1178,8 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 	if (!p->allow_list()) return;
 
 	int cid = 0;
-	char buf[50];
-	// first, find the action
-	int ret = mg_get_var(args, strlen(args)
-		, "cid", buf, sizeof(buf));
-	if (ret > 0) cid = atoi(buf);
+	if (auto const cid_val = get_query_var(args, "cid"))
+		cid = atoi(url_decode(*cid_val).c_str());
 
 	appendf(response, cid > 0 ? ",\"torrentp\":[" : ",\"torrents\":[");
 

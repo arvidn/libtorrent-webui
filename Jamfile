@@ -7,7 +7,7 @@ feature pam : off on : composite ;
 
 feature use-boost : system source : composite ;
 
-project libtorrent-webui : requirements <cxxstd>17 ;
+project libtorrent-webui : requirements <cxxstd>17 <export-extra>on ;
 
 use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
@@ -24,7 +24,7 @@ SOURCES =
 	json_util
 	file_downloader
 	mime_type
-#	torrent_post
+	torrent_post
 	disk_space
 	base64
 	escape_json
