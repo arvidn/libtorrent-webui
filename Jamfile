@@ -34,7 +34,6 @@ SOURCES =
 	torrent_history
 	auth
 	no_auth
-#	auth_localhost
 	load_config
 	error_logger
 	websocket_conn
