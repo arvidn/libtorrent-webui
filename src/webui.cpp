@@ -50,8 +50,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/alert_types.hpp"
 #include "webui.hpp"
 
-using namespace libtorrent;
 using namespace std::literals::chrono_literals;
+using libtorrent::send_http;
+using libtorrent::http_error;
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -276,7 +277,7 @@ private:
 	bool m_stopped = false;
 };
 
-webui_base::~webui_base()
+libtorrent::webui_base::~webui_base()
 {
 	m_listener->stop();
 //	m_ioc.run_for(2s);
@@ -288,7 +289,7 @@ webui_base::~webui_base()
 		t.join();
 }
 
-void webui_base::remove_handler(http_handler* h)
+void libtorrent::webui_base::remove_handler(http_handler* h)
 {
 	auto const i = std::find_if(m_handlers.begin(), m_handlers.end()
 		, [h](std::pair<std::string, http_handler*> v)
@@ -296,13 +297,13 @@ void webui_base::remove_handler(http_handler* h)
 	if (i != m_handlers.end()) m_handlers.erase(i);
 }
 
-void webui_base::add_handler(http_handler* h)
+void libtorrent::webui_base::add_handler(http_handler* h)
 {
 	std::string prefix = h->path_prefix();
 	m_handlers.emplace_back(std::move(prefix), h);
 }
 
-webui_base::webui_base(int const port, char const* cert_path, int const num_threads)
+libtorrent::webui_base::webui_base(int const port, char const* cert_path, int const num_threads)
 	: m_ioc(num_threads)
 	, m_ctx(ssl::context::tls)
 {
@@ -315,7 +316,7 @@ webui_base::webui_base(int const port, char const* cert_path, int const num_thre
 
 	// Create and launch a listening port
 	m_listener = std::make_shared<listener>(m_ioc, m_ctx
-		, tcp::endpoint{address{}, std::uint16_t(port)}, m_handlers);
+		, tcp::endpoint{boost::asio::ip::address{}, std::uint16_t(port)}, m_handlers);
 	m_listener->run();
 
 	m_threads.reserve(num_threads);

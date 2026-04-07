@@ -158,7 +158,7 @@ private:
 		if (m_stopped) return;
 
 		// this 4 MiB should be picked in a more sophisticated way
-		piece_index_t::diff_type const prefetch = std::max(1, 4 * 1024 * 1024 / m_piece_size);
+		piece_index_t::diff_type const prefetch(std::max(1, 4 * 1024 * 1024 / m_piece_size));
 		int deadline = 1;
 		while (m_next_priority_piece - m_next_piece < prefetch
 			&& m_next_priority_piece < m_end_piece)
