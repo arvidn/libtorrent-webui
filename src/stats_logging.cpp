@@ -37,14 +37,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/session.hpp"
 #include "alert_handler.hpp"
 #include "libtorrent/session_stats.hpp"
-#include "libtorrent/aux_/path.hpp"
+#include <filesystem>
 
 namespace libtorrent {
 
 using namespace std::placeholders;
 
-// TODO: get rid of these dependencies
-using lt::create_directories;
 
 stats_logging::stats_logging(session& s, alert_handler* h)
 	: m_alerts(h)
@@ -72,9 +70,8 @@ void stats_logging::rotate_stats_log()
 		fclose(m_stats_logger);
 	}
 
-	error_code ec;
 	char filename[100];
-	create_directory("session_stats", ec);
+	{ std::error_code fec; std::filesystem::create_directory("session_stats", fec); }
 #ifdef TORRENT_WINDOWS
 	const int pid = GetCurrentProcessId();
 #else

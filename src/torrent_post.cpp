@@ -31,7 +31,7 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "torrent_post.hpp"
-#include "libtorrent/aux_/http_parser.hpp" // for http_parser
+#include "mime_part.hpp"
 #include "libtorrent/torrent_info.hpp"
 
 using namespace libtorrent;
@@ -79,15 +79,12 @@ bool parse_torrent_post(http::request<http::string_body> const& req
 		part_end = strstr(part_start, boundary);
 		if (part_end == nullptr) part_end = body_end;
 
-		aux::http_parser part;
-		bool error = false;
-		part.incoming(span<char const>(part_start, part_end - part_start), error);
+		std::string content_type;
+		char const* torrent_start = parse_mime_part(part_start, part_end, content_type);
+		if (torrent_start == nullptr) continue;
+		if (content_type != "application/octet-stream"
+			&& content_type != "application/x-bittorrent") continue;
 
-		std::string const& disposition = part.header("content-type");
-		if (disposition != "application/octet-stream"
-			&& disposition != "application/x-bittorrent") continue;
-
-		char const* torrent_start = part.get_body().data();
 		params.ti = std::make_shared<torrent_info>(span<char const>{torrent_start, part_end - torrent_start}, ec, from_span);
 		if (ec) return false;
 		return true;

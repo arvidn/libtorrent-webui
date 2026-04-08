@@ -35,7 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "file_requests.hpp"
 
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/aux_/torrent.hpp"
+#include "libtorrent/torrent_handle.hpp"
 
 //#define DLOG printf
 #define DLOG if (false) printf
@@ -58,10 +58,8 @@ void file_requests::on_alert(alert const* a)
 	read_piece_alert const* p = alert_cast<read_piece_alert>(a);
 	if (p)
 	{
-		std::shared_ptr<aux::torrent> t = p->handle.native_handle();
-
 		piece_request rq;
-		rq.info_hash = t->info_hash();
+		rq.info_hash = p->handle.info_hashes();
 		rq.piece = p->piece;
 		typedef requests_t::iterator iter;
 
@@ -96,9 +94,8 @@ void file_requests::on_alert(alert const* a)
 	if (pf)
 	{
 		DLOG("piece_finished: %d\n", static_cast<int>(pf->piece_index));
-		std::shared_ptr<aux::torrent> t = pf->handle.native_handle();
 		piece_request rq;
-		rq.info_hash = t->info_hash();
+		rq.info_hash = pf->handle.info_hashes();
 		rq.piece = pf->piece_index;
 		using iter = requests_t::iterator;
 		m_have_pieces[rq.info_hash].insert(pf->piece_index);

@@ -13,4 +13,7 @@ project
    ;
 
 run test_base64.cpp ;
+run test_mime_part.cpp ;
+run test_percent_encode.cpp ;
+run test_url_decode.cpp ;
 run test_torrent_history.cpp ;

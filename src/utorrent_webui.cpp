@@ -45,17 +45,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdint>
 
 #include "libtorrent/add_torrent_params.hpp"
-#include "libtorrent/aux_/parse_url.hpp"
 #include "libtorrent/torrent_info.hpp"
 #include "libtorrent/announce_entry.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/peer_info.hpp"
-#include "libtorrent/aux_/socket_io.hpp" // for print_address
-#include "libtorrent/aux_/io_bytes.hpp" // for read_int32
 #include "libtorrent/magnet_uri.hpp" // for make_magnet_uri
-#include "libtorrent/aux_/escape_string.hpp" // for unescape_string
-#include "libtorrent/aux_/string_util.hpp" // for string_begins_no_case
 #include "libtorrent/span.hpp"
 #include "libtorrent/hasher.hpp"
 #include "response_buffer.hpp" // for appendf
@@ -65,10 +60,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "save_settings.hpp"
 #include "torrent_history.hpp"
 
+#include "url_decode.hpp"
+
 namespace libtorrent
 {
-
-	namespace io = aux;
 
 utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 	, auto_load* al, torrent_history* hist
@@ -666,7 +661,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		std::string key(s, key_end - s);
 		std::string value(key_end + 3, v_end - key_end - 3);
 		error_code ec;
-		value = unescape_string(value, ec);
+		value = ::url_decode(value, ec);
 
 		// ignore duplicate settings
 		if (duplicates.count(key)) continue;
@@ -1046,7 +1041,7 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 		{
 			appendf(response, ",[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
 				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]" + first_peer
-				, aux::print_endpoint(p.ip).c_str()
+				, (p.ip.address().to_string() + ":" + std::to_string(p.ip.port())).c_str()
 				, ""
 				, bool(p.flags & peer_info::utp_socket)
 				, p.ip.port()
