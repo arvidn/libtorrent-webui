@@ -33,8 +33,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef TORRENT_DISK_SPACE_HPP
 #define TORRENT_DISK_SPACE_HPP
 
+#include <cstdint>
 #include <string>
-#include <boost/cstdint.hpp>
 
 namespace libtorrent
 {

@@ -37,17 +37,21 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/peer_id.hpp" // sha1_hash
 #include "libtorrent/error_code.hpp"
+
 #include <mutex> // for mutex
 #include <string>
 #include <map>
 #include <vector>
 #include <array>
 
-struct mg_connection;
+#include <boost/beast/http.hpp>
+
+namespace http = boost::beast::http;
 
 namespace libtorrent
 {
-	permissions_interface const* parse_http_auth(mg_connection* conn, auth_interface const* auth);
+	permissions_interface const* parse_http_auth(http::request<http::string_body> const& request
+		, auth_interface const* auth);
 
 	/**
 		Implements simple access control. Users can be added, removed, saved and load from

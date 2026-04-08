@@ -36,7 +36,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "webui.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/add_torrent_params.hpp"
-#include <boost/cstdint.hpp>
+#include <cstdint>
+#include <functional>
 #include <vector>
 #include <set>
 #include <deque>
@@ -59,8 +60,10 @@ namespace libtorrent
 		void set_params_model(add_torrent_params const& p)
 		{ m_params_model = p; }
 
-		virtual bool handle_http(mg_connection* conn
-			, mg_request_info const* request_info);
+		virtual std::string path_prefix() const override { return "/gui"; }
+		virtual void handle_http(http::request<http::string_body> request
+			, beast::ssl_stream<beast::tcp_stream>& socket
+			, std::function<void(bool)> done) override;
 
 		void start(std::vector<char>&, char const* args, permissions_interface const* p);
 		void stop(std::vector<char>&, char const* args, permissions_interface const* p);
@@ -124,7 +127,6 @@ namespace libtorrent
 
 		int m_version;
 		std::string m_token;
-		webui_base* m_listener;
 	};
 }
 

@@ -36,15 +36,15 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "save_settings.hpp"
 #include "base64.hpp"
 #include "hex.hpp"
-
-extern "C" {
-#include "local_mongoose.h"
-}
+#include "utils.hpp"
 
 #include <vector>
-#include <string.h> // for strcmp() 
 #include <stdio.h>
 #include <sys/time.h>
+
+#include <boost/algorithm/string/predicate.hpp>
+
+using boost::algorithm::starts_with;
 
 namespace libtorrent
 {
@@ -256,31 +256,26 @@ void auth::load_accounts(std::string const& filename, error_code& ec)
 	\param auth the auth_interface object
 	\return the permission object appropriate for the user, or nullptr in case authentication failed.
 */
-permissions_interface const* parse_http_auth(mg_connection* conn, auth_interface const* auth)
+permissions_interface const* parse_http_auth(http::request<http::string_body> const& request
+	, auth_interface const* auth)
 {
 	std::string user;
 	std::string pwd;
-	char const* authorization = mg_get_header(conn, "authorization");
-	if (authorization)
+	auto const it = request.find(http::field::authorization);
+	if (it != request.end())
 	{
-		authorization = strcasestr(authorization, "basic ");
-		if (authorization)
+		auto auth = trim(it->value());
+		if (starts_with(auth, "basic "))
 		{
-			authorization += 6;
-			// skip whiltespace
-			while (*authorization == ' '
-				|| *authorization == '\t')
-				++authorization;
+			// skip "basic "
+			auth = trim(auth.substr(6));
 
-			std::string cred = base64decode(authorization);
-			user = cred.substr(0, cred.find_first_of(':'));
-			pwd = cred.substr(user.size()+1);
+			std::string cred = base64decode(std::string(auth));
+			std::tie(user, pwd) = split(std::string_view(cred), ':');
 		}
 	}
 
-	permissions_interface const* perms = auth->find_user(user, pwd);
-	if (perms == nullptr) return NULL;
-	return perms;
+	return auth->find_user(user, pwd);
 }
 
 }

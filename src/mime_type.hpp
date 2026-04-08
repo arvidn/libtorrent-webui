@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,29 +30,15 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include "auth_localhost.hpp"
+#ifndef TORRENT_MIME_TYPE
+#define TORRENT_MIME_TYPE
 
-extern "C" {
-#include "local_mongoose.h"
-}
+#include <string_view>
 
-#include <stdio.h>
+namespace libtorrent {
 
-namespace libtorrent
-{
-
-bool auth_localhost::handle_http(mg_connection* conn, mg_request_info const* request_info)
-{
-	// we might as well be extra strict and only allow 127.0.0.1, instead
-	// of 127.x.x.x
-	if (request_info->remote_ip == 0x7f000001)
-		return false;
-
-	mg_printf(conn, "HTTP/1.1 401 Unauthorized\r\n"
-		"WWW-Authenticate: Basic realm=\"BitTorrent\"\r\n"
-		"Content-Length: 0\r\n\r\n");
-	return true;
-}
+std::string_view mime_type(std::string_view ext);
 
 }
 
+#endif

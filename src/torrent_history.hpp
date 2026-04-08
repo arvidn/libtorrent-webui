@@ -36,10 +36,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "alert_observer.hpp"
 #include "libtorrent/torrent_status.hpp"
 #include <mutex> // for mutex
+#include <deque>
+
+#define BOOST_BIMAP_DISABLE_SERIALIZATION
 #include <boost/bimap.hpp>
 #include <boost/bimap/list_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
-#include <deque>
 
 namespace libtorrent
 {
@@ -169,7 +171,7 @@ namespace libtorrent
 
 		virtual void handle_alert(alert const* a);
 
-	private:	
+	private:
 
 		// first is the frame this torrent was last
 		// seen modified in, second is the information

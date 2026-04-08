@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,16 +30,61 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include "webui.hpp" // for http_handler
+#ifndef TORRENT_UTILS_HPP
+#define TORRENT_UTILS_HPP
 
-namespace libtorrent
-{
+#include <string_view>
+#include <sstream>
+#include <boost/algorithm/string/predicate.hpp>
 
-	// this http_handler only lets requests from 127.0.0.1 through
-	// any other request is unauthorized
-	struct auth_localhost : http_handler
+namespace libtorrent {
+
+	using boost::algorithm::starts_with;
+
+	template <typename... Elems>
+	std::string str(Elems&&... e)
 	{
-		bool handle_http(mg_connection* conn, mg_request_info const* request_info);
-	};
+		std::stringstream ret;
+		int dummy[] = {(ret << e, 0)...};
+		static_cast<void>(dummy); // unused
+		return ret.str();
+	}
+
+	template <typename StringView>
+	std::pair<std::string_view, std::string_view>
+	split(StringView input, char const delimiter)
+	{
+		std::string_view const in(input.data(), input.size());
+		auto const pos = in.find_first_of(delimiter);
+		if (pos == std::string_view::npos) return { in, std::string_view{}};
+		return {in.substr(0, pos), in.substr(pos + 1)};
+	}
+
+	template <typename StringView>
+	std::string_view extension(StringView input)
+	{
+		std::string_view const in(input.data(), input.size());
+		auto const pos = in.find_last_of('.');
+		if (pos == std::string_view::npos) return std::string_view{};
+		return in.substr(pos);
+	}
+
+	inline bool is_whitespace(char const c)
+	{
+		return c == ' ' || c == '\t';
+	}
+
+	template <typename StringView>
+	std::string_view trim(StringView in)
+	{
+		std::string_view input(in.data(), in.size());
+		while (!input.empty() && is_whitespace(input.front()))
+			input.remove_prefix(1);
+
+		while (!input.empty() && is_whitespace(input.back()))
+			input.remove_suffix(1);
+		return input;
+	}
 }
 
+#endif

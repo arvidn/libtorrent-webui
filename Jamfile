@@ -7,7 +7,7 @@ feature pam : off on : composite ;
 
 feature use-boost : system source : composite ;
 
-project libtorrent-webui : requirements <cxxstd>17 ;
+project libtorrent-webui : requirements <cxxstd>17 <export-extra>on ;
 
 use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
@@ -23,6 +23,7 @@ SOURCES =
 	libtorrent_webui
 	json_util
 	file_downloader
+	mime_type
 	torrent_post
 	disk_space
 	base64
@@ -33,21 +34,20 @@ SOURCES =
 	torrent_history
 	auth
 	no_auth
-	auth_localhost
 	load_config
-	http_whitelist
 	error_logger
-	websocket_handler
+	websocket_conn
 	alert_handler
 	file_requests
 	stats_logging
+	serve_files
 	hex
 	utorrent_webui
 	;
 
 lib torrent-webui
 	: # sources
-	src/$(SOURCES).cpp src/mongoose.c src/jsmn.c src/cdecode.c
+	src/$(SOURCES).cpp src/jsmn.c src/cdecode.c
 
 	: # requirements
 	<library>/torrent//torrent
@@ -60,6 +60,7 @@ lib torrent-webui
 
 	: # default build
 	<link>static
+	<cxxstd>17
 
 	: # usage-requirements
 	<include>src
@@ -74,16 +75,9 @@ lib rt : : <name>rt <search>/usr/local/lib <link>shared ;
 lib pam : : <name>pam <search>/usr/local/lib ;
 lib dynamic-linker : : <name>dl <link>shared ;
 
-exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent ;
+exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>17 ;
+install stage_webui_test : webui_test : <location>. ;
 
-exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent ;
-exe snmp_test : snmp.cpp
-	: <library>/torrent//torrent
-	<library>torrent-webui
-	<include>src
-	<linkflags>"-L/opt/local/lib -L/opt/local/lib -L/opt/local/lib -lnetsnmpmibs -lnetsnmpagent -lnetsnmp -lcrypto" ;
-
-explicit snmp_test ;
-
+exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>17 ;
 install stage_add_user : add_user : <location>. ;
 

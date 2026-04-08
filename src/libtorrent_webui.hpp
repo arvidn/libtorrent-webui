@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2013, 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,14 +33,20 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef TORRENT_LIBTORRENT_WEBUI_HPP
 #define TORRENT_LIBTORRENT_WEBUI_HPP
 
-#include "websocket_handler.hpp"
 #include "torrent_history.hpp" // for frame_t
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
 #include "alert_observer.hpp"
+#include "webui.hpp"
+
+#include "libtorrent/torrent_handle.hpp"
+#include "libtorrent/add_torrent_params.hpp"
+#include "libtorrent/fwd.hpp"
+
 #include <atomic>
 
-struct mg_connection;
+#include <boost/beast/websocket/stream.hpp>
+#include <boost/beast/http.hpp>
 
 namespace libtorrent
 {
@@ -48,83 +54,67 @@ namespace libtorrent
 	struct torrent_history;
 	struct auth_interface;
 	struct alert_handler;
+	struct websocket_conn;
 
-	struct libtorrent_webui : websocket_handler, alert_observer
+	struct function_call;
+
+	struct libtorrent_webui : http_handler, alert_observer
 	{
-		libtorrent_webui(session& ses, torrent_history const* hist
+		libtorrent_webui(lt::session& ses, torrent_history const* hist
 			, auth_interface const* auth, alert_handler* alerts);
 		~libtorrent_webui();
 
-		virtual bool handle_websocket_connect(mg_connection* conn,
-			mg_request_info const* request_info);
-		virtual bool handle_websocket_data(mg_connection* conn
-			, int bits, char* data, size_t length);
+		void set_params_model(add_torrent_params const& p)
+		{ m_params_model = p; }
 
-		struct conn_state
-		{
-			mg_connection* conn;
-			int function_id;
-			std::uint16_t transaction_id;
-			char* data;
-			int len;
-			permissions_interface const* perms;
-		};
+		// internal
+		bool get_torrent_updates(websocket_conn* st, function_call f);
+		bool start(websocket_conn* st, function_call f);
+		bool stop(websocket_conn* st, function_call f);
+		bool set_auto_managed(websocket_conn* st, function_call f);
+		bool clear_auto_managed(websocket_conn* st, function_call f);
+		bool queue_up(websocket_conn* st, function_call f);
+		bool queue_down(websocket_conn* st, function_call f);
+		bool queue_top(websocket_conn* st, function_call f);
+		bool queue_bottom(websocket_conn* st, function_call f);
+		bool remove(websocket_conn* st, function_call f);
+		bool remove_and_data(websocket_conn* st, function_call f);
+		bool force_recheck(websocket_conn* st, function_call f);
+		bool set_sequential_download(websocket_conn* st, function_call f);
+		bool clear_sequential_download(websocket_conn* st, function_call f);
+		bool list_settings(websocket_conn* st, function_call f);
+		bool set_settings(websocket_conn* st, function_call f);
+		bool get_settings(websocket_conn* st, function_call f);
+		bool list_stats(websocket_conn* st, function_call f);
+		bool get_stats(websocket_conn* st, function_call f);
+		bool get_file_updates(websocket_conn* st, function_call f);
+		bool add_torrent(websocket_conn* st, function_call f);
 
-		void handle_alert(alert const* a) override;
-
-		bool get_torrent_updates(conn_state* st);
-		bool start(conn_state* st);
-		bool stop(conn_state* st);
-		bool set_auto_managed(conn_state* st);
-		bool clear_auto_managed(conn_state* st);
-		bool queue_up(conn_state* st);
-		bool queue_down(conn_state* st);
-		bool queue_top(conn_state* st);
-		bool queue_bottom(conn_state* st);
-		bool remove(conn_state* st);
-		bool remove_and_data(conn_state* st);
-		bool force_recheck(conn_state* st);
-		bool set_sequential_download(conn_state* st);
-		bool clear_sequential_download(conn_state* st);
-
-		bool list_settings(conn_state* st);
-		bool set_settings(conn_state* st);
-		bool get_settings(conn_state* st);
-
-		bool list_stats(conn_state* st);
-		bool get_stats(conn_state* st);
-
-		bool get_file_updates(conn_state* st);
-
-		bool call_rpc(mg_connection* conn, int function, char const* data, int len);
-
-		bool respond(conn_state* st, int error, int val);
-
-		// respond with an error to an RPC
-		bool error(conn_state* st, int error);
-
-		enum error_t
-		{
-			no_error,
-			no_such_function,
-			invalid_number_of_args,
-			invalid_argument_type,
-			invalid_argument,
-			truncated_message,
-			resource_not_found
-		};
+		bool on_websocket_read(websocket_conn* st, span<char const> data);
 
 	private:
 
+		std::string path_prefix() const override;
+
+		void handle_http(http::request<http::string_body> request
+			, beast::ssl_stream<beast::tcp_stream>& socket
+			, std::function<void(bool)> done) override;
+
+		void handle_alert(alert const* a) override;
+
+		bool respond(websocket_conn* st, function_call f, int error, int val);
+
+		// respond with an error to an RPC
+		bool error(websocket_conn* st, function_call f, int error);
+
 		// parse the arguments to the simple torrent commands
 		template <typename Fun>
-		bool apply_torrent_fun(conn_state* st, Fun const& f);
+		bool apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun);
 
 		session& m_ses;
 		torrent_history const* m_hist;
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
-		std::atomic<int> m_transaction_id;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class
@@ -134,6 +124,7 @@ namespace libtorrent
 		// are requested
 		frame_t m_stats_frame = 0;
 
+		add_torrent_params m_params_model;
 	};
 }
 

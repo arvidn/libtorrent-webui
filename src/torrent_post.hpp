@@ -38,7 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/add_torrent_params.hpp"
 
-bool parse_torrent_post(mg_connection* conn, libtorrent::add_torrent_params& p, libtorrent::error_code& ec);
+bool parse_torrent_post(http::request<http::string_body> const& req, libtorrent::add_torrent_params& p, libtorrent::error_code& ec);
 
 #endif
 

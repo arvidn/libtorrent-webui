@@ -31,7 +31,16 @@ update_file_list = function(files)
 			row = table.rows[i + 1];
 		}
 
-		if ('name' in f) row.cells[0].textContent = f['name'];
+		if ('name' in f)
+		{
+			if (row.cells[0].childNodes.length == 0)
+			{
+				var a = document.createElement('a');
+				a.appendChild(document.createTextNode(f['name']));
+				a.href = "/download/" + window.location.hash.substring(1) + "/" + i;
+				row.cells[0].appendChild(a);
+			}
+		}
 		if ('size' in f) row.cells[1].textContent = f['size'];
 		if ('downloaded' in f)
 		{

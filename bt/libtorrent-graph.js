@@ -35,7 +35,7 @@
 function render_graph(canvas, data, graphs, start_time, now, unit, scale, multiplier, use_legend)
 {
 	if (typeof(unit) == 'undefined') unit = '';
-	if (typeof(scale) == 'undefined') scale = 1;
+	if (typeof(scale) == 'undefined') scale = 'auto';
 	if (typeof(multiplier) == 'undefined') multiplier = 1;
 	if (typeof(use_legend) == 'undefined') use_legend = false;
 
@@ -53,7 +53,7 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 			peak = Math.max(data[dp][n] * multiplier, peak);
 		}
 	}
-   if (peak == 0) peak = 1 * (scale == 'auto' ? 1 : scale);
+	if (peak == 0) peak = 1 * (scale == 'auto' ? 1 : scale);
 
 	ctx.clearRect(0,0,canvas.width, canvas.height);
 

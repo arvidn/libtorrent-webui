@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2013, Arvid Norberg
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,43 +30,29 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include "http_whitelist.hpp"
-#include "libtorrent/aux_/path.hpp"
+#include <string_view>
+#include <string>
 
-extern "C" {
-#include "local_mongoose.h"
-}
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/http.hpp>
 
-namespace libtorrent
+#include "webui.hpp" // for http_handler
+
+namespace libtorrent {
+
+struct serve_files : http_handler
 {
-	// TODO: get rid of these dependencies
-	using lt::lsplit_path;
+	serve_files(std::string_view prefix, std::string_view root_directory);
 
-	http_whitelist::http_whitelist() {}
-	http_whitelist::~http_whitelist() {}
+	std::string path_prefix() const override;
 
-	void http_whitelist::add_allowed_prefix(std::string const& prefix)
-	{
-		m_whitelist.insert(prefix);
-	}
+	void handle_http(http::request<http::string_body> request
+		, beast::ssl_stream<beast::tcp_stream>& socket
+		, std::function<void(bool)> done) override;
 
-	bool http_whitelist::handle_http(mg_connection* conn
-		, mg_request_info const* request_info)
-	{
-		std::string request = request_info->uri;
-		const auto split = lsplit_path(request);
-		std::string first_element(split.first);
-
-		if (m_whitelist.count(first_element) == 0)
-		{
-			mg_printf(conn, "HTTP/1.1 404 Not Found\r\n"
-				"Content-Length: 0\r\n\r\n");
-			return true;
-		}
-
-		// forward in the handler chain
-		return false;
-	}
+private:
+	std::string m_root;
+	std::string m_prefix;
+};
 
 }
-

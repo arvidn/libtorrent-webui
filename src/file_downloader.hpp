@@ -34,43 +34,51 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_FILE_DOWNLOADER_HPP
 
 #include <memory>
-#include "webui.hpp"
-#include <mutex>
 #include <set>
 
-#include "libtorrent/fwd.hpp"
+#include "webui.hpp"
+#include "alert_observer.hpp"
+
+#include "libtorrent/torrent_handle.hpp"
 
 namespace libtorrent
 {
+	struct alert_handler;
+	struct piece_alert_dispatch;
 	struct auth_interface;
 	struct piece_alert_dispatch;
 	struct request_t;
+	class session;
+	struct file_request_conn;
 
-	struct file_downloader : http_handler
+	struct file_downloader : http_handler, alert_observer
 	{
-		file_downloader(session& s, auth_interface const* auth = nullptr);
-
-		virtual bool handle_http(mg_connection* conn,
-			mg_request_info const* request_info);
+		file_downloader(session& s, alert_handler* alerts, auth_interface const* auth = nullptr);
+		~file_downloader();
 
 		void set_disposition(bool attachment) { m_attachment = attachment; }
-		void debug_print_requests() const;
 
 	private:
 
+		std::string path_prefix() const override;
+
+		void handle_http(http::request<http::string_body> request
+			, beast::ssl_stream<beast::tcp_stream>& socket
+			, std::function<void(bool)> done) override;
+
+		void handle_alert(alert const* a) override;
+
 		session& m_ses;
 		auth_interface const* m_auth;
-
-		std::shared_ptr<piece_alert_dispatch> m_dispatch;
-
-		int m_queue_size;
 
 		// controls the content disposition of files. Defaults to true
 		// which asks the browser to save the file rather than to render it.
 		bool m_attachment;
 
-		mutable std::mutex m_mutex;
-		std::set<request_t*> m_requests;
+		alert_handler* m_alert;
+
+		std::mutex m_mutex;
+		std::multimap<lt::torrent_handle, std::shared_ptr<file_request_conn>> m_outstanding_requests;
 	};
 }
 

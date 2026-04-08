@@ -46,6 +46,7 @@ namespace libtorrent
 
 struct alert_observer;
 
+// TODO: rename to alert_dispatcher
 struct TORRENT_EXPORT alert_handler
 {
 	alert_handler(lt::session& ses);
