@@ -33,3 +33,6 @@ jobs:
 
       - name: Build
         run: b2 webtorrent=on
+
+      - name: Test
+        run: cd tests && b2 webtorrent=on
