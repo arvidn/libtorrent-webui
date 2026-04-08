@@ -177,7 +177,9 @@ namespace libtorrent
 		if (it != m_queue.right.end()) return it->first.status;
 
         // if we can't find it by the v2 hash, try a truncated v2 hash
-		st.status.info_hashes.v1 = sha1_hash(ih.data());
+		// (a torrent added via v2-only magnet link may be stored with only the
+		// first 20 bytes of the sha256 in v1, and v2 left empty)
+		st.status.info_hashes = lt::info_hash_t(sha1_hash(ih.data()));
 		it = m_queue.right.find(st);
 		if (it != m_queue.right.end()) return it->first.status;
 		return st.status;
