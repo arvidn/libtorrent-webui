@@ -13,3 +13,4 @@ project
    ;
 
 run test_base64.cpp ;
+run test_torrent_history.cpp ;
