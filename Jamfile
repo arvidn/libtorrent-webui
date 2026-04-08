@@ -11,7 +11,6 @@ project libtorrent-webui : requirements <cxxstd>17 <export-extra>on ;
 
 use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
-lib libiconv : : <name>iconv <link>shared <search>/usr/local/lib ;
 
 if $(BOOST_ROOT)
 {
@@ -53,7 +52,6 @@ lib torrent-webui
 	<library>/torrent//torrent
 	<library>zlib
 	<library>sqlite
-#	<library>libiconv
 	<pam>on:<library>pam
 	<pam>on:<source>src/pam_auth.cpp
 	<define>USE_WEBSOCKET=1
