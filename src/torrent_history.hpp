@@ -60,7 +60,7 @@ namespace libtorrent
 
 		void update_status(torrent_status const& s, frame_t frame);
 
-		bool operator==(torrent_history_entry const& e) const { return e.status.info_hash == status.info_hash; }
+		bool operator==(torrent_history_entry const& e) const { return e.status.info_hashes == status.info_hashes; }
 
 		enum
 		{
@@ -146,7 +146,7 @@ namespace libtorrent
 	};
 
 	inline std::size_t hash_value(torrent_history_entry const& te)
-	{ return std::hash<lt::sha1_hash>{}(te.status.info_hash); }
+	{ return std::hash<lt::info_hash_t>{}(te.status.info_hashes); }
 
 	struct torrent_history : alert_observer
 	{
@@ -156,7 +156,7 @@ namespace libtorrent
 
 		// returns the info-hashes of the torrents that have been
 		// removed since the specified frame number
-		void removed_since(frame_t frame, std::vector<sha1_hash>& torrents) const;
+		std::vector<lt::info_hash_t> removed_since(frame_t frame) const;
 
 		// returns the torrent_status structures for the torrents
 		// that have changed since the specified frame number
@@ -165,6 +165,7 @@ namespace libtorrent
 		void updated_fields_since(frame_t frame, std::vector<torrent_history_entry>& torrents) const;
 
 		torrent_status get_torrent_status(sha1_hash const& ih) const;
+		torrent_status get_torrent_status(sha256_hash const& ih) const;
 
 		// the current frame number
 		frame_t frame() const;
@@ -183,7 +184,7 @@ namespace libtorrent
 
 		queue_t m_queue;
 
-		std::deque<std::pair<frame_t, sha1_hash> > m_removed;
+		std::deque<std::pair<frame_t, lt::info_hash_t> > m_removed;
 
 		alert_handler* m_alerts;
 

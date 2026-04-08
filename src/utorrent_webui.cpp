@@ -1234,14 +1234,13 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		first = 0;
 	}
 
-	std::vector<sha1_hash> removed;
-	m_hist->removed_since(cid, removed);
+	std::vector<lt::info_hash_t> const removed = m_hist->removed_since(cid);
 
 	appendf(response, "], \"torrentm\": [");
 	first = 1;
-	for (sha1_hash const& i : removed)
+	for (lt::info_hash_t const& i : removed)
 	{
-		appendf(response, ",\"%s\"" + first, to_hex(i).c_str());
+		appendf(response, ",\"%s\"" + first, to_hex(i.get_best()).c_str());
 		first = 0;
 	}
 	// TODO: support labels

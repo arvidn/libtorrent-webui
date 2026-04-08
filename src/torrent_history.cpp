@@ -62,7 +62,7 @@ namespace libtorrent
 		if (add_torrent_alert const* ta = alert_cast<add_torrent_alert>(a))
 		{
 			torrent_status st = ta->handle.status();
-			TORRENT_ASSERT(st.info_hash == st.handle.info_hash());
+			TORRENT_ASSERT(st.info_hashes == st.handle.info_hashes());
 			TORRENT_ASSERT(st.handle == ta->handle);
 
 			std::unique_lock<std::mutex> l(m_mutex);
@@ -73,13 +73,20 @@ namespace libtorrent
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
 
-			m_removed.push_front(std::make_pair(m_frame + 1, td->info_hash));
+			m_removed.push_front(std::make_pair(m_frame + 1, td->info_hashes));
 			torrent_history_entry st;
-			st.status.info_hash = td->info_hash;
+			st.status.info_hashes = td->info_hashes;
 			m_queue.right.erase(st);
 			// weed out torrents that were removed a long time ago
-			while (m_removed.size() > 1000 && m_removed.back().first < m_frame - 10)
-				m_removed.pop_back();
+			if (m_removed.size() > 1000)
+			{
+				auto const it = std::remove_if(
+					m_removed.begin()
+					, m_removed.end()
+					, [&](auto const& pair) { return pair.first < m_frame - 60; }
+				);
+				m_removed.erase(it, m_removed.end());
+			}
 
 			m_deferred_frame_count = true;
 		}
@@ -94,7 +101,7 @@ namespace libtorrent
 			for (auto const& t : st)
 			{
 				torrent_history_entry e;
-				e.status.info_hash = t.info_hash;
+				e.status.info_hashes = t.info_hashes;
 
 				queue_t::right_iterator it = m_queue.right.find(e);
 				if (it == m_queue.right.end()) continue;
@@ -115,15 +122,16 @@ namespace libtorrent
 	}
 	catch (std::exception const&) {}
 
-	void torrent_history::removed_since(frame_t frame, std::vector<sha1_hash>& torrents) const
+    std::vector<lt::info_hash_t> torrent_history::removed_since(frame_t frame) const
 	{
-		torrents.clear();
+        std::vector<lt::info_hash_t> torrents;
 		std::unique_lock<std::mutex> l(m_mutex);
 		for (auto const& e : m_removed)
 		{
 			if (e.first <= frame) break;
 			torrents.push_back(e.second);
 		}
+		return torrents;
 	}
 
 	void torrent_history::updated_since(frame_t frame, std::vector<torrent_status>& torrents) const
@@ -149,11 +157,28 @@ namespace libtorrent
 	torrent_status torrent_history::get_torrent_status(sha1_hash const& ih) const
 	{
 		torrent_history_entry st;
-		st.status.info_hash = ih;
+		st.status.info_hashes.v1 = ih;
 
 		std::unique_lock<std::mutex> l(m_mutex);
 
 		queue_t::right_const_iterator it = m_queue.right.find(st);
+		if (it != m_queue.right.end()) return it->first.status;
+		return st.status;
+	}
+
+	torrent_status torrent_history::get_torrent_status(sha256_hash const& ih) const
+	{
+		torrent_history_entry st;
+		st.status.info_hashes.v2 = ih;
+
+		std::unique_lock<std::mutex> l(m_mutex);
+
+		queue_t::right_const_iterator it = m_queue.right.find(st);
+		if (it != m_queue.right.end()) return it->first.status;
+
+        // if we can't find it by the v2 hash, try a truncated v2 hash
+		st.status.info_hashes.v1 = sha1_hash(ih.data());
+		it = m_queue.right.find(st);
 		if (it != m_queue.right.end()) return it->first.status;
 		return st.status;
 	}

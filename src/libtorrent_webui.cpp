@@ -264,8 +264,7 @@ namespace {
 		std::vector<torrent_history_entry> torrents;
 		m_hist->updated_fields_since(frame, torrents);
 
-		std::vector<sha1_hash> removed_torrents;
-		m_hist->removed_since(frame, removed_torrents);
+		std::vector<lt::info_hash_t> const removed_torrents = m_hist->removed_since(frame);
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -459,13 +458,13 @@ namespace {
 		io::write_uint32(num_torrents, ptr2);
 
 		// send list of removed torrents
-		for (std::vector<sha1_hash>::iterator i = removed_torrents.begin()
-			, end(removed_torrents.end()); i != end; ++i)
+		for (auto const& i : removed_torrents)
 		{
-			std::copy(i->begin(), i->end(), ptr);
+			auto const ih = i.get_best();
+			std::copy(ih.begin(), ih.end(), ptr);
 		}
 
-		return st->send_packet(&response[0], response.size());
+		return st->send_packet(response.data(), response.size());
 	}
 
 	template <typename Fun>
