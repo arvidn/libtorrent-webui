@@ -439,37 +439,6 @@ void file_downloader::handle_http(http::request<http::string_body> request
 		{
 			freq->on_write(ec, size);
 		});
-
-/*
-	torrent_piece_queue pq;
-	pq.begin = first_piece;
-	pq.finish = end_piece;
-	auto const num_pieces = static_cast<piece_index_t::diff_type>(std::max(m_queue_size / ti->piece_length(), 1));
-	pq.end = (std::min)(first_piece + num_pieces, pq.finish);
-
-	m_dispatch->subscribe(info_hash, &pq);
-
-	piece_index_t priority_cursor = pq.begin;
-
-	request_t r(ti->files().file_path(file), m_requests, m_mutex);
-	r.request_size = range_last_byte - range_first_byte + 1;
-	r.file_size = ti->files().file_size(file);
-	r.start_offset = range_first_byte;
-
-	string_view const fname = ti->files().file_name(file);
-	r.state = request_t::writing_to_socket;
-	mg_printf(conn, "HTTP/1.1 %s\r\n"
-		"Content-Length: %" PRId64 "\r\n"
-		"Content-Type: %s\r\n"
-		"%s%s%s"
-		"Accept-Ranges: bytes\r\n"
-		, range_request ? "206 Partial Content" : "200 OK"
-		, range_last_byte - range_first_byte + 1
-		, mg_get_builtin_mime_type(ti->files().file_name(file).to_string().c_str())
-		, m_attachment ? "Content-Disposition: attachment; filename=" : ""
-		, m_attachment ? escape_string(fname).c_str() : ""
-		, m_attachment ? "\r\n" : "");
-*/
 }
 
 } // libtorrent namespace
