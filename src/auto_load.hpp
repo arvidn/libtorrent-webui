@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_AUTO_LOAD_HPP
-#define TORRENT_AUTO_LOAD_HPP
+#ifndef LTWEB_AUTO_LOAD_HPP
+#define LTWEB_AUTO_LOAD_HPP
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/io_context.hpp"
@@ -40,17 +40,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <thread>
 #include <chrono>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct save_settings_interface;
 
 	struct auto_load
 	{
-		auto_load(session& s, save_settings_interface* sett = NULL);
+		auto_load(lt::session& s, save_settings_interface* sett = NULL);
 		~auto_load();
 
-		void set_params_model(add_torrent_params const& p);
-		add_torrent_params params_model() const;
+		void set_params_model(lt::add_torrent_params const& p);
+		lt::add_torrent_params params_model() const;
 
 		void set_auto_load_dir(std::string const& dir);
 		std::string const& auto_load_dir() const { return m_dir; }
@@ -63,11 +63,11 @@ namespace libtorrent
 
 	private:
 
-		void on_scan(error_code const& ec);
+		void on_scan(lt::error_code const& ec);
 
 		void thread_fun();
 
-		session& m_ses;
+		lt::session& m_ses;
 		boost::asio::io_context m_ios;
 		boost::asio::high_resolution_timer m_timer;
 		save_settings_interface* m_settings;
@@ -81,7 +81,7 @@ namespace libtorrent
 		// add them again
 		std::set<std::string> m_already_loaded;
 
-		add_torrent_params m_params_model;
+		lt::add_torrent_params m_params_model;
 		std::string m_dir;
 		std::chrono::seconds m_scan_interval;
 		bool m_abort;

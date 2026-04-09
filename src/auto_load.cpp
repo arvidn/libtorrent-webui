@@ -47,7 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 using namespace std::placeholders;
 
-namespace libtorrent
+namespace ltweb
 {
 
 
@@ -106,7 +106,7 @@ std::vector<std::string> list_dir(std::string path
 }
 }
 
-auto_load::auto_load(session& s, save_settings_interface* sett)
+auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 	: m_ses(s)
 	, m_timer(m_ios)
 	, m_settings(sett)
@@ -152,13 +152,13 @@ bool auto_load::remove_files() const
 	return m_remove_files;
 }
 
-void auto_load::set_params_model(add_torrent_params const& p)
+void auto_load::set_params_model(lt::add_torrent_params const& p)
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 	m_params_model = p;
 }
 
-add_torrent_params auto_load::params_model() const
+lt::add_torrent_params auto_load::params_model() const
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 	return m_params_model;
@@ -172,7 +172,7 @@ void auto_load::set_auto_load_dir(std::string const& dir)
 	l.unlock();
 
 	// reset the timeout to use the new interval
-	m_timer.expires_after(seconds(0));
+	m_timer.expires_after(lt::seconds(0));
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
 }
 
@@ -192,7 +192,7 @@ void auto_load::set_scan_interval(std::chrono::seconds s)
 	}
 
 	// reset the timeout to use the new interval
-	m_timer.expires_after(seconds(m_scan_interval));
+	m_timer.expires_after(lt::seconds(m_scan_interval));
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
 }
 
@@ -201,7 +201,7 @@ void auto_load::thread_fun()
 	// the std::mutex must be held while inspecting m_abort
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	m_timer.expires_after(seconds(1));
+	m_timer.expires_after(lt::seconds(1));
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
 
 	while (!m_abort)
@@ -213,7 +213,7 @@ void auto_load::thread_fun()
 	}
 }
 
-void auto_load::on_scan(error_code const& e)
+void auto_load::on_scan(lt::error_code const& e)
 {
 	if (e) return;
 	std::unique_lock<std::mutex> l(m_mutex);
@@ -226,7 +226,7 @@ void auto_load::on_scan(error_code const& e)
 	bool remove_files = m_remove_files;
 	l.unlock();
 
-	error_code ec;
+	lt::error_code ec;
 	std::vector<std::string> ents = list_dir(path
 		, [](lt::string_view p) { return p.size() > 8 && p.substr(p.size() - 8) == ".torrent"; }, ec);
 	for (auto const& file : ents)
@@ -243,15 +243,15 @@ void auto_load::on_scan(error_code const& e)
 			continue;
 		}
 
-		error_code tec;
+		lt::error_code tec;
 		std::string file_path = (std::filesystem::path(path) / file).string();
-		auto ti = std::make_shared<torrent_info>(file_path, std::ref(tec));
+		auto ti = std::make_shared<lt::torrent_info>(file_path, std::ref(tec));
 
 		// assume the file isn't fully written yet.
 		if (tec) continue;
 
 		l.lock();
-		add_torrent_params p = m_params_model;
+		lt::add_torrent_params p = m_params_model;
 		l.unlock();
 
 		p.ti = ti;

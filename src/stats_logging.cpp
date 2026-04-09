@@ -39,20 +39,20 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/session_stats.hpp"
 #include <filesystem>
 
-namespace libtorrent {
+namespace ltweb {
 
 using namespace std::placeholders;
 
 
-stats_logging::stats_logging(session& s, alert_handler* h)
+stats_logging::stats_logging(lt::session& s, alert_handler* h)
 	: m_alerts(h)
 	, m_ses(s)
 	, m_stats_logger(NULL)
 	, m_log_seq(0)
 {
 	m_alerts->subscribe(this, 0
-		, session_stats_alert::alert_type
-		, stats_alert::alert_type
+		, lt::session_stats_alert::alert_type
+		, lt::stats_alert::alert_type
 		, 0);
 	rotate_stats_log();
 }
@@ -82,14 +82,14 @@ void stats_logging::rotate_stats_log()
 	m_last_log_rotation = lt::clock_type::now();
 	if (m_stats_logger == 0)
 	{
-		fprintf(stderr, "Failed to create session stats log file \"%s\": (%d) %s\n"
+		fprintf(stderr, "Failed to create lt::session stats log file \"%s\": (%d) %s\n"
 			, filename, errno, strerror(errno));
 		return;
 	}
 
-	std::vector<stats_metric> cnts = session_stats_metrics();
+	std::vector<lt::stats_metric> cnts = lt::session_stats_metrics();
 	std::sort(cnts.begin(), cnts.end()
-		, [](stats_metric const& lhs, stats_metric const& rhs)
+		, [](lt::stats_metric const& lhs, lt::stats_metric const& rhs)
 		{ return lhs.value_index < rhs.value_index; });
 
 	int idx = 0;
@@ -110,9 +110,9 @@ void stats_logging::rotate_stats_log()
 	fputs("\n\n", m_stats_logger);
 }
 
-void stats_logging::handle_alert(alert const* a)
+void stats_logging::handle_alert(lt::alert const* a)
 {
-	session_stats_alert const* s = alert_cast<session_stats_alert>(a);
+	lt::session_stats_alert const* s = lt::alert_cast<lt::session_stats_alert>(a);
 
 	if (s == NULL)
 	{
@@ -120,10 +120,10 @@ void stats_logging::handle_alert(alert const* a)
 		return;
 	}
 
-	if (lt::clock_type::now() - m_last_log_rotation > hours(1))
+	if (lt::clock_type::now() - m_last_log_rotation > lt::hours(1))
 		rotate_stats_log();
 
-	fprintf(m_stats_logger, "%f", double(total_microseconds(s->timestamp() - m_last_log_rotation)) / 1000000.0);
+	fprintf(m_stats_logger, "%f", double(lt::total_microseconds(s->timestamp() - m_last_log_rotation)) / 1000000.0);
 	for (auto const v : s->counters())
 		fprintf(m_stats_logger, "\t%" PRId64, v);
 	fprintf(m_stats_logger, "\n");

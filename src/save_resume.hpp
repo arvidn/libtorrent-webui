@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_SAVE_RESUME_HPP
-#define TORRENT_SAVE_RESUME_HPP
+#ifndef LTWEB_SAVE_RESUME_HPP
+#define LTWEB_SAVE_RESUME_HPP
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
@@ -43,42 +43,42 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <sqlite3.h>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct alert_handler;
 
 	struct save_resume : alert_observer
 	{
-		save_resume(session& s, std::string const& resume_file, alert_handler* alerts);
+		save_resume(lt::session& s, std::string const& resume_file, alert_handler* alerts);
 		~save_resume();
 
-		void load(error_code& ec, add_torrent_params model);
+		void load(lt::error_code& ec, lt::add_torrent_params model);
 
 		// implements alert_observer
-		virtual void handle_alert(alert const* a);
+		virtual void handle_alert(lt::alert const* a);
 
 		void save_all();
 		bool ok_to_quit() const;
 
 	private:
 
-		session& m_ses;
+		lt::session& m_ses;
 		alert_handler* m_alerts;
 		sqlite3* m_db;
 
 		// all torrents currently loaded
-		std::unordered_set<torrent_handle> m_torrents;
+		std::unordered_set<lt::torrent_handle> m_torrents;
 
 		// the next torrent to save (may point to end)
-		std::unordered_set<torrent_handle>::iterator m_cursor;
+		std::unordered_set<lt::torrent_handle>::iterator m_cursor;
 
 		// the last time we visited a torrent to potentially
 		// save its fast-resume
-		time_point m_last_save;
+		lt::time_point m_last_save;
 
 		// save resum data for all torrents every X seconds
 		// must be at least 1
-		time_duration m_interval;
+		lt::time_duration m_interval;
 
 		int m_num_in_flight;
 

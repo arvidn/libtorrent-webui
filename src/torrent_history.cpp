@@ -38,7 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cinttypes>
 #include <chrono>
 
-namespace libtorrent
+namespace ltweb
 {
 	torrent_history::torrent_history(alert_handler* h)
 		: m_alerts(h)
@@ -46,9 +46,9 @@ namespace libtorrent
 		, m_deferred_frame_count(false)
 	{
 		m_alerts->subscribe(this, 0
-			, add_torrent_alert::alert_type
-			, torrent_removed_alert::alert_type
-			, state_update_alert::alert_type
+			, lt::add_torrent_alert::alert_type
+			, lt::torrent_removed_alert::alert_type
+			, lt::state_update_alert::alert_type
 			, 0);
 	}
 
@@ -57,11 +57,11 @@ namespace libtorrent
 		m_alerts->unsubscribe(this);
 	}
 
-	void torrent_history::handle_alert(alert const* a) try
+	void torrent_history::handle_alert(lt::alert const* a) try
 	{
-		if (add_torrent_alert const* ta = alert_cast<add_torrent_alert>(a))
+		if (lt::add_torrent_alert const* ta = lt::alert_cast<lt::add_torrent_alert>(a))
 		{
-			torrent_status st = ta->handle.status();
+			lt::torrent_status st = ta->handle.status();
 			TORRENT_ASSERT(st.info_hashes == st.handle.info_hashes());
 			TORRENT_ASSERT(st.handle == ta->handle);
 
@@ -69,7 +69,7 @@ namespace libtorrent
 			m_queue.left.push_front(std::make_pair(m_frame + 1, torrent_history_entry(std::move(st), m_frame + 1)));
 			m_deferred_frame_count = true;
 		}
-		else if (torrent_removed_alert const* td = alert_cast<torrent_removed_alert>(a))
+		else if (lt::torrent_removed_alert const* td = lt::alert_cast<lt::torrent_removed_alert>(a))
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
 
@@ -90,14 +90,14 @@ namespace libtorrent
 
 			m_deferred_frame_count = true;
 		}
-		else if (state_update_alert const* su = alert_cast<state_update_alert>(a))
+		else if (lt::state_update_alert const* su = lt::alert_cast<lt::state_update_alert>(a))
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
 
 			++m_frame;
 			m_deferred_frame_count = false;
 
-			std::vector<torrent_status> const& st = su->status;
+			std::vector<lt::torrent_status> const& st = su->status;
 			for (auto const& t : st)
 			{
 				torrent_history_entry e;
@@ -134,7 +134,7 @@ namespace libtorrent
 		return torrents;
 	}
 
-	void torrent_history::updated_since(frame_t frame, std::vector<torrent_status>& torrents) const
+	void torrent_history::updated_since(frame_t frame, std::vector<lt::torrent_status>& torrents) const
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
 		for (auto const& e : m_queue.left)
@@ -154,7 +154,7 @@ namespace libtorrent
 		}
 	}
 
-	torrent_status torrent_history::get_torrent_status(sha1_hash const& ih) const
+	lt::torrent_status torrent_history::get_torrent_status(lt::sha1_hash const& ih) const
 	{
 		torrent_history_entry st;
 		st.status.info_hashes.v1 = ih;
@@ -166,7 +166,7 @@ namespace libtorrent
 		return st.status;
 	}
 
-	torrent_status torrent_history::get_torrent_status(sha256_hash const& ih) const
+	lt::torrent_status torrent_history::get_torrent_status(lt::sha256_hash const& ih) const
 	{
 		torrent_history_entry st;
 		st.status.info_hashes.v2 = ih;
@@ -179,7 +179,7 @@ namespace libtorrent
         // if we can't find it by the v2 hash, try a truncated v2 hash
 		// (a torrent added via v2-only magnet link may be stored with only the
 		// first 20 bytes of the sha256 in v1, and v2 left empty)
-		st.status.info_hashes = lt::info_hash_t(sha1_hash(ih.data()));
+		st.status.info_hashes = lt::info_hash_t(lt::sha1_hash(ih.data()));
 		it = m_queue.right.find(st);
 		if (it != m_queue.right.end()) return it->first.status;
 		return st.status;
@@ -196,7 +196,7 @@ namespace libtorrent
 		return m_frame;
 	}
 
-	void torrent_history_entry::update_status(torrent_status const& s, frame_t const f)
+	void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t const f)
 	{
 #define CMP_SET(x) if (s.x != status.x) frame[int(x)] = f
 
@@ -278,9 +278,9 @@ namespace libtorrent
 	int fmt(lt::queue_position_t v) { return static_cast<int>(v); }
 	std::int32_t fmt(lt::file_index_t v) { return static_cast<std::int32_t>(v); }
 	std::int64_t fmt(lt::time_duration const d)
-	{ return std::chrono::duration_cast<seconds>(d).count(); }
+	{ return std::chrono::duration_cast<std::chrono::seconds>(d).count(); }
 	std::int64_t fmt(lt::time_point const t)
-	{ return std::chrono::duration_cast<seconds>(t.time_since_epoch()).count(); }
+	{ return std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count(); }
 	char const* fmt(lt::error_code const& ec)
 	{
 		static std::string storage;

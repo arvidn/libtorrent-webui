@@ -40,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 //#define DLOG printf
 #define DLOG if (false) printf
 
-using namespace libtorrent;
+using namespace ltweb;
 
 std::size_t file_requests::hash_value(piece_request const& r) const
 {
@@ -53,9 +53,9 @@ file_requests::file_requests()
 {
 }
 
-void file_requests::on_alert(alert const* a)
+void file_requests::on_alert(lt::alert const* a)
 {
-	read_piece_alert const* p = alert_cast<read_piece_alert>(a);
+	lt::read_piece_alert const* p = lt::alert_cast<lt::read_piece_alert>(a);
 	if (p)
 	{
 		piece_request rq;
@@ -63,7 +63,7 @@ void file_requests::on_alert(alert const* a)
 		rq.piece = p->piece;
 		typedef requests_t::iterator iter;
 
-		DLOG("read_piece_alert: %d (%s)\n", static_cast<int>(p->piece), p->error.message().c_str());
+		DLOG("lt::read_piece_alert: %d (%s)\n", static_cast<int>(p->piece), p->error.message().c_str());
 		std::unique_lock<std::mutex> l(m_mutex);
 		std::pair<iter, iter> range = m_requests.equal_range(rq);
 		if (range.first == m_requests.end()) return;
@@ -90,7 +90,7 @@ void file_requests::on_alert(alert const* a)
 		return;
 	}
 
-	piece_finished_alert const* pf = alert_cast<piece_finished_alert>(a);
+	lt::piece_finished_alert const* pf = lt::alert_cast<lt::piece_finished_alert>(a);
 	if (pf)
 	{
 		DLOG("piece_finished: %d\n", static_cast<int>(pf->piece_index));
@@ -112,8 +112,8 @@ void file_requests::on_alert(alert const* a)
 
 	// if a torrent is stopped or removed, abort any piece requests
 	piece_request rq;
-	torrent_removed_alert const* tr = alert_cast<torrent_removed_alert>(a);
-	torrent_paused_alert const* tp = alert_cast<torrent_paused_alert>(a);
+	lt::torrent_removed_alert const* tr = lt::alert_cast<lt::torrent_removed_alert>(a);
+	lt::torrent_paused_alert const* tp = lt::alert_cast<lt::torrent_paused_alert>(a);
 	if (tr)
 	{
 		rq.info_hash = tr->info_hashes;
@@ -125,12 +125,12 @@ void file_requests::on_alert(alert const* a)
 	else return;
 
 	// remove all requests for the torrent
-	rq.piece = piece_index_t{0};
+	rq.piece = lt::piece_index_t{0};
 	typedef requests_t::iterator iter;
 
 	std::unique_lock<std::mutex> l(m_mutex);
 	iter first = m_requests.lower_bound(rq);
-	rq.piece = piece_index_t{INT_MAX};
+	rq.piece = lt::piece_index_t{INT_MAX};
 	iter last = m_requests.upper_bound(rq);
 	if (first == last) return;
 
@@ -170,11 +170,11 @@ void file_requests::on_tick()
 }
 
 std::shared_future<piece_entry> file_requests::read_piece(
-	torrent_handle const& h
+	lt::torrent_handle const& h
 	, lt::piece_index_t const piece
 	, lt::clock_type::duration const timeout_ms)
 {
-	TORRENT_ASSERT(piece >= piece_index_t{0});
+	TORRENT_ASSERT(piece >= lt::piece_index_t{0});
 	TORRENT_ASSERT(piece < h.torrent_file()->end_piece());
 
 	piece_request rq;

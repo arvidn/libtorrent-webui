@@ -39,7 +39,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "disk_space.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
 std::int64_t free_disk_space(std::string const& path)

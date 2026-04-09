@@ -30,16 +30,16 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_DISK_SPACE_HPP
-#define TORRENT_DISK_SPACE_HPP
+#ifndef LTWEB_DISK_SPACE_HPP
+#define LTWEB_DISK_SPACE_HPP
 
 #include <cstdint>
 #include <string>
 
-namespace libtorrent
+namespace ltweb
 {
 	std::int64_t free_disk_space(std::string const& path);
 }
 
-#endif // TORRENT_DISK_SPACE_HPP
+#endif // LTWEB_DISK_SPACE_HPP
 

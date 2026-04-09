@@ -30,12 +30,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_MIME_PART_HPP
-#define TORRENT_MIME_PART_HPP
+#ifndef LTWEB_MIME_PART_HPP
+#define LTWEB_MIME_PART_HPP
 
 #include <algorithm>
 #include <cctype>
 #include <string>
+
+namespace ltweb {
 
 // Locate the body of a MIME part and extract its Content-Type header value.
 // [start, end) is the raw bytes of a single multipart boundary section.
@@ -78,4 +80,6 @@ inline char const* parse_mime_part(char const* start, char const* end
 	return body;
 }
 
-#endif // TORRENT_MIME_PART_HPP
+} // namespace ltweb
+
+#endif // LTWEB_MIME_PART_HPP

@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_UT_WEBUI_HPP
-#define TORRENT_UT_WEBUI_HPP
+#ifndef LTWEB_UT_WEBUI_HPP
+#define LTWEB_UT_WEBUI_HPP
 
 #include "webui.hpp"
 #include "libtorrent/torrent_handle.hpp"
@@ -42,7 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <set>
 #include <deque>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct auto_load;
 	struct save_settings_interface;
@@ -52,12 +52,12 @@ namespace libtorrent
 
 	struct utorrent_webui : http_handler
 	{
-		utorrent_webui(session& s, save_settings_interface* sett = NULL
+		utorrent_webui(lt::session& s, save_settings_interface* sett = NULL
 			, auto_load* al = NULL, torrent_history* hist = NULL
 			, auth_interface const* auth = NULL);
 		~utorrent_webui();
 
-		void set_params_model(add_torrent_params const& p)
+		void set_params_model(lt::add_torrent_params const& p)
 		{ m_params_model = p; }
 
 		virtual std::string path_prefix() const override { return "/gui"; }
@@ -100,13 +100,13 @@ namespace libtorrent
 */
 	private:
 
-		std::vector<torrent_status> parse_torrents(char const* args) const;
+		std::vector<lt::torrent_status> parse_torrents(char const* args) const;
 		template <typename Fun>
 		void apply_fun(char const* args, Fun const& f);
 
 		time_t m_start_time;
-		session& m_ses;
-		add_torrent_params m_params_model;
+		lt::session& m_ses;
+		lt::add_torrent_params m_params_model;
 		std::string m_webui_cookie;
 
 		// optional auto loader, controllable

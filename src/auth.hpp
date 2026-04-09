@@ -30,12 +30,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_AUTH_HPP
-#define TORRENT_AUTH_HPP
+#ifndef LTWEB_AUTH_HPP
+#define LTWEB_AUTH_HPP
 
 #include "auth_interface.hpp"
 
-#include "libtorrent/peer_id.hpp" // sha1_hash
+#include "libtorrent/peer_id.hpp" // lt::sha1_hash
 #include "libtorrent/error_code.hpp"
 
 #include <mutex> // for mutex
@@ -48,7 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace http = boost::beast::http;
 
-namespace libtorrent
+namespace ltweb
 {
 	permissions_interface const* parse_http_auth(http::request<http::string_body> const& request
 		, auth_interface const* auth);
@@ -68,8 +68,8 @@ namespace libtorrent
 		void remove_account(std::string const& user);
 		std::vector<std::string> users() const;
 
-		void save_accounts(std::string const& filename, error_code& ec) const;
-		void load_accounts(std::string const& filename, error_code& ec);
+		void save_accounts(std::string const& filename, lt::error_code& ec) const;
+		void load_accounts(std::string const& filename, lt::error_code& ec);
 
 		void set_group(int g, permissions_interface const* perms);
 
@@ -79,9 +79,9 @@ namespace libtorrent
 
 		struct account_t
 		{
-			sha1_hash password_hash(std::string const& pwd) const;
+			lt::sha1_hash password_hash(std::string const& pwd) const;
 
-			sha1_hash hash;
+			lt::sha1_hash hash;
 			std::array<char, 10> salt;
 			int group;
 		};

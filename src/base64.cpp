@@ -37,7 +37,7 @@ extern "C" {
 #include "cdecode.h"
 }
 
-namespace libtorrent
+namespace ltweb
 {
 
 std::string base64decode(std::string const& in)

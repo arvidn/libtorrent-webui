@@ -2,7 +2,7 @@
 #include <termios.h>
 #include <stdio.h>
 
-using namespace libtorrent;
+using namespace ltweb;
 
 int main(int argc, char* argv[])
 {
@@ -31,7 +31,7 @@ int main(int argc, char* argv[])
 		password[pwdlen] = '\0';
 	}
 
-	error_code ec;
+	lt::error_code ec;
 	authorizer.load_accounts("./users.conf", ec);
 	authorizer.add_account(argv[1], password, atoi(argv[2]));
 	ec.clear();

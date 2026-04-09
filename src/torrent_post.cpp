@@ -34,23 +34,23 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "mime_part.hpp"
 #include "libtorrent/torrent_info.hpp"
 
-using namespace libtorrent;
+using namespace ltweb;
 
 bool parse_torrent_post(http::request<http::string_body> const& req
-	, add_torrent_params& params, error_code& ec)
+	, lt::add_torrent_params& params, lt::error_code& ec)
 {
 	std::string const& body = req.body();
 	int content_length = static_cast<int>(body.size());
 
 	if (content_length <= 0)
 	{
-		ec = error_code(boost::system::errc::invalid_argument, boost::system::generic_category());
+		ec = lt::error_code(boost::system::errc::invalid_argument, boost::system::generic_category());
 		return false;
 	}
 
 	if (content_length > 10 * 1024 * 1024)
 	{
-		ec = error_code(boost::system::errc::file_too_large, boost::system::generic_category());
+		ec = lt::error_code(boost::system::errc::file_too_large, boost::system::generic_category());
 		return false;
 	}
 
@@ -85,7 +85,7 @@ bool parse_torrent_post(http::request<http::string_body> const& req
 		if (content_type != "application/octet-stream"
 			&& content_type != "application/x-bittorrent") continue;
 
-		params.ti = std::make_shared<torrent_info>(span<char const>{torrent_start, part_end - torrent_start}, ec, from_span);
+		params.ti = std::make_shared<lt::torrent_info>(lt::span<char const>{torrent_start, part_end - torrent_start}, ec, lt::from_span);
 		if (ec) return false;
 		return true;
 	}

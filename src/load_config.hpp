@@ -30,17 +30,17 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_LOAD_CONFIG_HPP
-#define TORRENT_LOAD_CONFIG_HPP
+#ifndef LTWEB_LOAD_CONFIG_HPP
+#define LTWEB_LOAD_CONFIG_HPP
 
 #include <string>
 
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/fwd.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
-	void load_config(std::string const& config_file, settings_pack& pack, error_code& ec);
+	void load_config(std::string const& config_file, lt::settings_pack& pack, lt::error_code& ec);
 }
 
 #endif

@@ -30,15 +30,15 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_STATS_LOGGING_HPP
-#define TORRENT_STATS_LOGGING_HPP
+#ifndef LTWEB_STATS_LOGGING_HPP
+#define LTWEB_STATS_LOGGING_HPP
 
 #include "alert_observer.hpp"
 #include "libtorrent/time.hpp"
 #include "libtorrent/fwd.hpp"
 #include <stdio.h>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct alert_handler;
 
@@ -46,20 +46,20 @@ namespace libtorrent
 /// logs are rotated each hour. Use parse_session_stats.py to parse logs.
 struct stats_logging : alert_observer
 {
-	stats_logging(session& s, alert_handler* h);
+	stats_logging(lt::session& s, alert_handler* h);
 	~stats_logging();
 
 private:
 
 	void rotate_stats_log();
-	void handle_alert(alert const* a);
+	void handle_alert(lt::alert const* a);
 
 	alert_handler* m_alerts;
 
 	// the last time we rotated the log file
-	time_point m_last_log_rotation;
+	lt::time_point m_last_log_rotation;
 
-	session& m_ses;
+	lt::session& m_ses;
 
 	FILE* m_stats_logger;
 	// sequence number for log file. Log files are

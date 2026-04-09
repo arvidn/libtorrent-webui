@@ -34,8 +34,7 @@ void sighandler_forcequit(int s)
 }
 
 using namespace libtorrent;
-
-namespace lt = libtorrent;
+using namespace ltweb;
 
 int main(int argc, char *const argv[])
 {

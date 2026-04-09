@@ -47,7 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 using boost::algorithm::contains;
 namespace fs = std::filesystem;
 
-namespace libtorrent
+namespace ltweb
 {
 
 serve_files::serve_files(std::string_view prefix

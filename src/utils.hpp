@@ -30,14 +30,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_UTILS_HPP
-#define TORRENT_UTILS_HPP
+#ifndef LTWEB_UTILS_HPP
+#define LTWEB_UTILS_HPP
 
 #include <string_view>
 #include <sstream>
 #include <boost/algorithm/string/predicate.hpp>
 
-namespace libtorrent {
+namespace ltweb {
 
 	using boost::algorithm::starts_with;
 

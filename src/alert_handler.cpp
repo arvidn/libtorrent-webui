@@ -42,7 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "alert_handler.hpp"
 #include "alert_observer.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
 	alert_handler::alert_handler(lt::session& ses)
@@ -68,9 +68,9 @@ namespace libtorrent
 		subscribe_impl(types.data(), i, o, flags);
 	}
 
-	void alert_handler::dispatch_alerts(std::vector<alert*>& alerts) const
+	void alert_handler::dispatch_alerts(std::vector<lt::alert*>& alerts) const
 	{
-		for (alert* a : alerts)
+		for (lt::alert* a : alerts)
 		{
 			int const type = a->type();
 
@@ -84,7 +84,7 @@ namespace libtorrent
 
 	void alert_handler::dispatch_alerts() const
 	{
-		std::vector<alert*> alert_queue;
+		std::vector<lt::alert*> alert_queue;
 		m_ses.pop_alerts(&alert_queue);
 		dispatch_alerts(alert_queue);
 	}

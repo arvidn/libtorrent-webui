@@ -30,14 +30,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_PAM_AUTH_HPP
-#define TORRENT_PAM_AUTH_HPP
+#ifndef LTWEB_PAM_AUTH_HPP
+#define LTWEB_PAM_AUTH_HPP
 
 #include "auth_interface.hpp"
 #include <string>
 #include <map>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct pam_auth : auth_interface
 	{

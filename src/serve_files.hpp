@@ -38,7 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "webui.hpp" // for http_handler
 
-namespace libtorrent {
+namespace ltweb {
 
 struct serve_files : http_handler
 {

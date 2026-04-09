@@ -46,7 +46,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 using boost::algorithm::starts_with;
 
-namespace libtorrent
+namespace ltweb
 {
 
 const static read_only_permissions read_perms;
@@ -160,7 +160,7 @@ permissions_interface const* auth::find_user(std::string username, std::string p
 	std::map<std::string, account_t>::const_iterator i = m_accounts.find(username);
 	if (i == m_accounts.end()) return nullptr;
 
-	sha1_hash ph = i->second.password_hash(password);
+	lt::sha1_hash ph = i->second.password_hash(password);
 	if (ph != i->second.hash) return nullptr;
 
 	if (i->second.group < 0 || i->second.group >= int(m_groups.size()))
@@ -169,12 +169,12 @@ permissions_interface const* auth::find_user(std::string username, std::string p
 	return m_groups[i->second.group];
 }
 
-sha1_hash auth::account_t::password_hash(std::string const& pwd) const
+lt::sha1_hash auth::account_t::password_hash(std::string const& pwd) const
 {
-	hasher h;
+	lt::hasher h;
 	h.update(salt);
 	if (pwd.size()) h.update(pwd);
-	sha1_hash ret = h.final();
+	lt::sha1_hash ret = h.final();
 
 	return ret;
 }
@@ -184,12 +184,12 @@ sha1_hash auth::account_t::password_hash(std::string const& pwd) const
   \param filename The file to save the accounts to. If the file exists, it will be overwritten.
   \param ec The error code descibing the error, if the function fails
 */
-void auth::save_accounts(std::string const& filename, error_code& ec) const
+void auth::save_accounts(std::string const& filename, lt::error_code& ec) const
 {
 	FILE* f = fopen(filename.c_str(), "w+");
 	if (f == nullptr)
 	{
-		ec = error_code(errno, system_category());
+		ec = lt::error_code(errno, boost::system::system_category());
 		return;
 	}
 	ec.clear();
@@ -213,12 +213,12 @@ void auth::save_accounts(std::string const& filename, error_code& ec) const
 	\param filename The filename of the file to load accounts from.
 	\param ec The error code describing the error if the function fail.
 */
-void auth::load_accounts(std::string const& filename, error_code& ec)
+void auth::load_accounts(std::string const& filename, lt::error_code& ec)
 {
 	FILE* f = fopen(filename.c_str(), "r");
 	if (f == nullptr)
 	{
-		ec = error_code(errno, system_category());
+		ec = lt::error_code(errno, boost::system::system_category());
 		return;
 	}
 	ec.clear();

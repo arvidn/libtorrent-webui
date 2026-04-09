@@ -34,7 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <security/pam_appl.h>
 #include "libtorrent/string_util.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 	pam_auth::pam_auth(std::string service_name)
 		: m_service_name(service_name)

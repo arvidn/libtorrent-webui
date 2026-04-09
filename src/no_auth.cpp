@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "auth_interface.hpp"
 #include "no_auth.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
 permissions_interface const* no_auth::find_user(std::string username, std::string password) const

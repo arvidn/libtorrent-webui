@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_LIBTORRENT_WEBUI_HPP
-#define TORRENT_LIBTORRENT_WEBUI_HPP
+#ifndef LTWEB_LIBTORRENT_WEBUI_HPP
+#define LTWEB_LIBTORRENT_WEBUI_HPP
 
 #include "torrent_history.hpp" // for frame_t
 #include "libtorrent/torrent_handle.hpp"
@@ -48,7 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <boost/beast/websocket/stream.hpp>
 #include <boost/beast/http.hpp>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct permissions_interface;
 	struct torrent_history;
@@ -64,7 +64,7 @@ namespace libtorrent
 			, auth_interface const* auth, alert_handler* alerts);
 		~libtorrent_webui();
 
-		void set_params_model(add_torrent_params const& p)
+		void set_params_model(lt::add_torrent_params const& p)
 		{ m_params_model = p; }
 
 		// internal
@@ -90,7 +90,7 @@ namespace libtorrent
 		bool get_file_updates(websocket_conn* st, function_call f);
 		bool add_torrent(websocket_conn* st, function_call f);
 
-		bool on_websocket_read(websocket_conn* st, span<char const> data);
+		bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
 	private:
 
@@ -100,7 +100,7 @@ namespace libtorrent
 			, beast::ssl_stream<beast::tcp_stream>& socket
 			, std::function<void(bool)> done) override;
 
-		void handle_alert(alert const* a) override;
+		void handle_alert(lt::alert const* a) override;
 
 		bool respond(websocket_conn* st, function_call f, int error, int val);
 
@@ -111,7 +111,7 @@ namespace libtorrent
 		template <typename Fun>
 		bool apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun);
 
-		session& m_ses;
+		lt::session& m_ses;
 		torrent_history const* m_hist;
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
@@ -124,7 +124,7 @@ namespace libtorrent
 		// are requested
 		frame_t m_stats_frame = 0;
 
-		add_torrent_params m_params_model;
+		lt::add_torrent_params m_params_model;
 	};
 }
 

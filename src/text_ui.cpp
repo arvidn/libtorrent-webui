@@ -40,7 +40,7 @@ extern "C" {
 #include <cdk/cdk.h>
 }
 
-namespace libtorrent
+namespace ltweb
 {
 
 screen::screen()

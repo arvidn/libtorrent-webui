@@ -42,7 +42,7 @@ extern "C" {
 
 #include <boost/cstdint.hpp>
 
-namespace libtorrent {
+namespace ltweb {
 
 jsmntok_t* skip_item(jsmntok_t* i);
 jsmntok_t* find_key(jsmntok_t* tokens, char* buf, char const* key, int type);

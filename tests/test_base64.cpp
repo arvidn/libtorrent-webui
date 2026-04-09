@@ -21,7 +21,7 @@ int main(int argc, char* argv[])
 
 	for (auto const& [input, output] : test_vectors)
 	{
-		TEST_CHECK(libtorrent::base64decode(std::string(output)) == input);
+		TEST_CHECK(ltweb::base64decode(std::string(output)) == input);
 	}
 	return main_ret;
 }

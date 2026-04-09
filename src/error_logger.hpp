@@ -30,24 +30,24 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_ERROR_LOGGER_HPP
-#define TORRENT_ERROR_LOGGER_HPP
+#ifndef LTWEB_ERROR_LOGGER_HPP
+#define LTWEB_ERROR_LOGGER_HPP
 
 #include "alert_observer.hpp"
 #include <string>
 #include <stdio.h> // for FILE
 
-namespace libtorrent
+namespace ltweb
 {
 
 struct alert_handler;
 
-struct error_logger : libtorrent::alert_observer
+struct error_logger : alert_observer
 {
 	error_logger(alert_handler* alerts, std::string const& log_file, bool redirect_stderr);
 	~error_logger();
 
-	void handle_alert(alert const* a);
+	void handle_alert(lt::alert const* a);
 
 private:
 	FILE* m_file;

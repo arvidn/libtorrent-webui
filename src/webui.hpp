@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_WEBUI_HPP
-#define TORRENT_WEBUI_HPP
+#ifndef LTWEB_WEBUI_HPP
+#define LTWEB_WEBUI_HPP
 
 #include <vector>
 #include <string>
@@ -65,7 +65,7 @@ struct http_handler
 
 struct listener;
 
-namespace libtorrent
+namespace ltweb
 {
 	template<typename Body, typename Fields>
 	void send_http(beast::ssl_stream<beast::tcp_stream>& socket

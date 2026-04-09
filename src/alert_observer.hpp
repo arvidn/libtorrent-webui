@@ -31,15 +31,15 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 
-#ifndef TORRENT_ALERT_OBSERVER_HPP_INCLUDED
-#define TORRENT_ALERT_OBSERVER_HPP_INCLUDED
+#ifndef LTWEB_ALERT_OBSERVER_HPP_INCLUDED
+#define LTWEB_ALERT_OBSERVER_HPP_INCLUDED
 
 #include <cstdint>
 #include <array>
 
 #include "libtorrent/fwd.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
 struct alert_observer
@@ -49,7 +49,7 @@ struct alert_observer
 	alert_observer() = default;
 	alert_observer(alert_observer const&) = delete;
 
-	virtual void handle_alert(alert const* a) = 0;
+	virtual void handle_alert(lt::alert const* a) = 0;
 private:
 	std::array<std::uint8_t, 64> types;
 	int num_types = 0;
@@ -58,5 +58,5 @@ private:
 
 }
 
-#endif // TORRENT_ALERT_OBSERVER_HPP_INCLUDED
+#endif // LTWEB_ALERT_OBSERVER_HPP_INCLUDED
 

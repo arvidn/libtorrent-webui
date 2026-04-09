@@ -30,12 +30,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_BASE64_HPP
-#define TORRENT_BASE64_HPP
+#ifndef LTWEB_BASE64_HPP
+#define LTWEB_BASE64_HPP
 
 #include <string>
 
-namespace libtorrent
+namespace ltweb
 {
 	std::string base64decode(std::string const& in);
 }

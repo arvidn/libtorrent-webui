@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_FILE_DOWNLOADER_HPP
-#define TORRENT_FILE_DOWNLOADER_HPP
+#ifndef LTWEB_FILE_DOWNLOADER_HPP
+#define LTWEB_FILE_DOWNLOADER_HPP
 
 #include <memory>
 #include <set>
@@ -41,19 +41,17 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/torrent_handle.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 	struct alert_handler;
 	struct piece_alert_dispatch;
 	struct auth_interface;
 	struct piece_alert_dispatch;
-	struct request_t;
-	class session;
 	struct file_request_conn;
 
 	struct file_downloader : http_handler, alert_observer
 	{
-		file_downloader(session& s, alert_handler* alerts, auth_interface const* auth = nullptr);
+		file_downloader(lt::session& s, alert_handler* alerts, auth_interface const* auth = nullptr);
 		~file_downloader();
 
 		void set_disposition(bool attachment) { m_attachment = attachment; }
@@ -66,9 +64,9 @@ namespace libtorrent
 			, beast::ssl_stream<beast::tcp_stream>& socket
 			, std::function<void(bool)> done) override;
 
-		void handle_alert(alert const* a) override;
+		void handle_alert(lt::alert const* a) override;
 
-		session& m_ses;
+		lt::session& m_ses;
 		auth_interface const* m_auth;
 
 		// controls the content disposition of files. Defaults to true

@@ -40,7 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 using namespace std::literals::chrono_literals;
 
-namespace libtorrent {
+namespace ltweb {
 
 websocket_conn::websocket_conn(libtorrent_webui* parent, permissions_interface const* perms
 	, ws::stream<beast::ssl_stream<beast::tcp_stream>>&& conn
@@ -155,4 +155,4 @@ void websocket_conn::on_shutdown(beast::error_code const& ec)
 	m_done = nullptr;
 }
 
-} // namespace libtorrent
+} // namespace ltweb

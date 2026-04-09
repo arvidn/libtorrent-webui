@@ -50,7 +50,7 @@ namespace {
 
 // Pop and dispatch all pending alerts, returning only after at least `n`
 // alerts of the given `type` have been dispatched.
-void wait_for(lt::session& ses, lt::alert_handler& handler, int n, int const type)
+void wait_for(lt::session& ses, ltweb::alert_handler& handler, int n, int const type)
 {
 	while (n > 0)
 	{
@@ -90,8 +90,8 @@ int main()
 	sp.set_str(lt::settings_pack::listen_interfaces, "127.0.0.1:0");
 	lt::session ses(sp);
 
-	lt::alert_handler handler(ses);
-	lt::torrent_history history(&handler);
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
 
 	// Four distinct hash identities covering all torrent types:
 	//   v1_hash  — v1-only (sha1 only)
@@ -177,17 +177,17 @@ int main()
 	}
 
 	// state_update_alert advances the frame counter
-	lt::frame_t const frame_before_update = history.frame();
+	ltweb::frame_t const frame_before_update = history.frame();
 	ses.post_torrent_updates();
 	wait_for(ses, handler, 1, lt::state_update_alert::alert_type);
 	{
-		lt::frame_t const f = history.frame();
+		ltweb::frame_t const f = history.frame();
 		TEST_CHECK(f > frame_before_update);
 	}
 
 	// updated_since with the current frame returns nothing new
 	{
-		lt::frame_t const f = history.frame();
+		ltweb::frame_t const f = history.frame();
 		std::vector<lt::torrent_status> empty;
 		history.updated_since(f, empty);
 		TEST_CHECK(empty.empty());
@@ -195,7 +195,7 @@ int main()
 
 	// Removing a torrent records it in removed_since
 	{
-		lt::frame_t const f = history.frame();
+		ltweb::frame_t const f = history.frame();
 		ses.remove_torrent(h1);
 		wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
 
