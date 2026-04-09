@@ -230,7 +230,7 @@ void auto_load::on_scan(lt::error_code const& e)
 
 		std::string file_path = (std::filesystem::path(path) / file).string();
 		lt::error_code tec;
-		lt::add_torrent_params p = lt::load_torrent_file(file_path, tec, lt::load_torrent_limits{});
+		lt::add_torrent_params p = lt::load_torrent_file(file_path, tec, {});
 
 		// assume the file isn't fully written yet.
 		if (tec) continue;

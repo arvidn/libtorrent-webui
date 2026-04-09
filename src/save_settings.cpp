@@ -116,8 +116,7 @@ void save_settings::save(lt::error_code& ec) const
 
 	ec.clear();
 
-	lt::entry sett;
-	m_ses.save_state(sett);
+	lt::entry sett = lt::write_session_params(m_ses.session_state());
 
 	for (auto const& i : ints)
 		sett[i.first] = i.second;
@@ -145,7 +144,6 @@ void load_settings_impl(lt::session_params& params, std::string const& filename
 
 	{
 		lt::session_params sp = lt::read_session_params(sett);
-		params.dht_settings = std::move(sp.dht_settings);
 		params.dht_state = std::move(sp.dht_state);
 	}
 

@@ -36,6 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "auth.hpp"
 #include "no_auth.hpp"
 #include "hex.hpp"
+#include "utils.hpp" // for str()
 
 #include <cstring> // for strcmp()
 #include <cstdio>
@@ -46,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/add_torrent_params.hpp"
 #include "libtorrent/torrent_info.hpp"
+#include "libtorrent/file_storage.hpp"
 #include "libtorrent/announce_entry.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/session.hpp"
@@ -832,9 +834,12 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 		file_prio = i->handle.get_file_priorities();
 		std::shared_ptr<const lt::torrent_info> ti = i->torrent_file.lock();
 		if (!ti || !ti->is_valid()) continue;
-		lt::file_storage const& files = ti->files();
+		lt::file_storage const& files = ti->layout();
 
-		appendf(response, ",\"%s\",["+first, to_hex(ti->info_hash()).c_str());
+		// TODO: get_renamed_files() is synchronous, we should use async functions only
+		lt::renamed_files const renames = i->handle.get_renamed_files();
+
+		appendf(response, ",\"%s\",["+first, to_hex(ti->info_hashes().get_best()).c_str());
 		int first_file = 1;
 		for (lt::file_index_t i : files.file_range())
 		{
@@ -844,7 +849,7 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 			if (file_prio[static_cast<int>(i)] == lt::low_priority)
 				file_prio[static_cast<int>(i)] = lt::download_priority_t{2};
 			appendf(response, ",[\"%s\", %" PRId64 ", %" PRId64 ", %d" + first_file
-				, escape_json(files.file_name(i)).c_str()
+				, escape_json(renames.file_name(files, i)).c_str()
 				, files.file_size(i)
 				, progress[static_cast<int>(i)]
 				// uTorrent's web UI uses 4 priority levels, libtorrent uses 8
@@ -1018,19 +1023,23 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 		if (!ti || !ti->is_valid()) continue;
 
 		appendf(response, ",\"%s\",[" + first
-			, to_hex(i->info_hash).c_str());
+			, to_hex(i->info_hashes.get_best()).c_str());
 
 		int first_peer = 1;
 		std::vector<lt::peer_info> peers;
 		i->handle.get_peer_info(peers);
 		for (lt::peer_info const& p : peers)
 		{
+			auto const& addr = p.remote_endpoint().address();
+			std::string const ep = addr.is_v6()
+				? str('[', addr, "]:", p.remote_endpoint().port())
+				: str(addr, ":", p.remote_endpoint().port());
 			appendf(response, ",[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
 				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]" + first_peer
-				, (p.ip.address().to_string() + ":" + std::to_string(p.ip.port())).c_str()
+				, ep.c_str()
 				, ""
 				, bool(p.flags & lt::peer_info::utp_socket)
-				, p.ip.port()
+				, p.remote_endpoint().port()
 				, escape_json(p.client).c_str()
 				, utorrent_peer_flags(p).c_str()
 				, p.num_pieces * 1000 / ti->num_pieces()
@@ -1172,7 +1181,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 	{
 		std::shared_ptr<const lt::torrent_info> ti = t.torrent_file.lock();
 		appendf(response, ",[\"%s\",%d,\"%s\",%" PRId64 ",%d,%" PRId64 ",%" PRId64 ",%f,%d,%d,%d,\"%s\",%d,%d,%d,%d,%d,%d,%" PRId64 "" + first
-			, to_hex(t.info_hash).c_str()
+			, to_hex(t.info_hashes.get_best()).c_str()
 			, utorrent_status(t)
 			, escape_json(t.name).c_str()
 			, ti ? ti->total_size() : 0
@@ -1200,7 +1209,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 			, "" // url this torrent came from
 			, "" // feed URL this torrent belongs to
 			, escape_json(utorrent_message(t)).c_str()
-			, to_hex(t.info_hash).c_str()
+			, to_hex(t.info_hashes.get_best()).c_str()
 			, t.added_time
 			, t.completed_time
 			, "" // app

@@ -52,6 +52,19 @@ namespace s = std::placeholders;
 namespace ltweb
 {
 
+namespace {
+
+// Produce a 40-hex-char key compatible with the existing DB schema.
+// get_best() returns the v1 SHA-1 hash when present, or the first 20 bytes
+// of the v2 SHA-256 hash for v2-only torrents — always 20 bytes / 40 hex chars.
+std::string info_hash_key(lt::info_hash_t const& ih)
+{
+	lt::sha1_hash const best = ih.get_best();
+	return to_hex(lt::span<char const>{best.data(), lt::sha1_hash::size()});
+}
+
+} // anonymous namespace
+
 save_resume::save_resume(lt::session& s, std::string const& resume_file, alert_handler* alerts)
 	: m_ses(s)
 	, m_alerts(alerts)
@@ -141,7 +154,7 @@ void save_resume::handle_alert(lt::alert const* a) try
 			for (i = m_torrents.begin(); i != m_torrents.end(); ++i)
 			{
 				if (!i->is_valid()) continue;
-				if (i->info_hash() == td->info_hash)
+				if (i->info_hashes() == td->info_hashes)
 					break;
 			}
 			if (i == m_torrents.end()) return;
@@ -166,7 +179,7 @@ void save_resume::handle_alert(lt::alert const* a) try
 			printf("failed to prepare remove statement: %s\n", sqlite3_errmsg(m_db));
 			return;
 		}
-		std::string const ih = to_hex(td->info_hash);
+		std::string const ih = info_hash_key(td->info_hashes);
 		ret = sqlite3_bind_text(stmt, 1, ih.c_str(), 40, SQLITE_STATIC);
 		if (ret != SQLITE_OK)
 		{
@@ -201,7 +214,7 @@ void save_resume::handle_alert(lt::alert const* a) try
 			return;
 		}
 
-		std::string const ih = to_hex(sr->params.info_hash);
+		std::string const ih = info_hash_key(sr->params.info_hashes);
 		ret = sqlite3_bind_text(stmt, 1, ih.c_str(), 40, SQLITE_STATIC);
 		if (ret != SQLITE_OK)
 		{

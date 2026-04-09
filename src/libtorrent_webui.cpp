@@ -963,7 +963,7 @@ namespace {
 		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
 		if (!t) return error(st, f, resource_not_found);
 
-		lt::file_storage const& fs = t->files();
+		lt::file_storage const& fs = t->layout();
 
 		// just in case
 		fp.resize(fs.num_files(), 0);

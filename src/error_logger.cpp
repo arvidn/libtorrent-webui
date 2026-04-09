@@ -119,7 +119,7 @@ namespace ltweb
 #endif
 				{
 					fprintf(m_file, "%s\terror [%s] (%s:%d) %s\n", timestamp.data()
-						, endpoint_str(pe->endpoint).c_str(), pe->error.category().name()
+						, endpoint_str(std::get<0>(pe->ep)).c_str(), pe->error.category().name()
 						, pe->error.value(), pe->error.message().c_str());
 				}
 				break;
@@ -156,7 +156,7 @@ namespace ltweb
 					&& pd->error != lt::error_code(lt::errors::timed_out_no_handshake)
 					&& pd->error != lt::error_code(lt::errors::upload_upload_connection))
 					fprintf(m_file, "%s\tdisconnect [%s][%s] (%s:%d) %s\n", timestamp.data()
-						, endpoint_str(pd->endpoint).c_str(), operation_name(pd->op)
+						, endpoint_str(std::get<0>(pd->ep)).c_str(), operation_name(pd->op)
 						, pd->error.category().name(), pd->error.value(), pd->error.message().c_str());
 				break;
 			}

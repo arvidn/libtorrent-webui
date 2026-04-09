@@ -43,6 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/peer_id.hpp" // for lt::sha1_hash
 #include "libtorrent/alert_types.hpp"
+#include "libtorrent/file_storage.hpp"
 
 #include <boost/shared_array.hpp>
 #include <boost/beast/http/write.hpp>
@@ -344,6 +345,7 @@ void file_downloader::handle_http(http::request<http::string_body> request
 
 	lt::file_index_t const file{atoi(std::string(file_str).c_str())};
 
+	// TODO: find_torrent() is synchronous, we should use async functions only
 	lt::torrent_handle h = m_ses.find_torrent(info_hash);
 
 	if (!h.is_valid())
@@ -353,10 +355,10 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	if (!ti || !ti->is_valid())
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
-	if (file < lt::file_index_t{} || file >= ti->files().end_file())
+	if (file < lt::file_index_t{} || file >= ti->layout().end_file())
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
-	std::int64_t const file_size = ti->files().file_size(file);
+	std::int64_t const file_size = ti->layout().file_size(file);
 
 	auto const [range_first_byte, range_last_byte, range_request]
 		= parse_range(request, file_size);
@@ -403,7 +405,7 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	};
 
 	auto freq = std::make_shared<file_request_conn>(socket, std::move(wrap_done)
-		, h, first_piece, end_piece, offset, ti->files().piece_length()
+		, h, first_piece, end_piece, offset, ti->layout().piece_length()
 		, range_last_byte - range_first_byte + 1);
 
 	{
@@ -420,11 +422,14 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	op->res.content_length(range_last_byte - range_first_byte + 1);
 	op->res.keep_alive(request.keep_alive());
 	op->res.set(http::field::accept_ranges, "bytes");
-	op->res.set(http::field::content_type, mime_type(extension(ti->files().file_name(file))));
+	// TODO: get_renamed_files() is synchronous, we should use async functions only
+	lt::renamed_files const renames = h.get_renamed_files();
+	lt::string_view const fname = renames.file_name(ti->layout(), file);
+	op->res.set(http::field::content_type, mime_type(extension(fname)));
 	if (m_attachment)
 	{
 		op->res.set(http::field::content_disposition
-			, str("attachment; filename=", percent_encode(ti->files().file_name(file))));
+			, str("attachment; filename=", percent_encode(fname)));
 	}
 	if (range_request)
 	{
