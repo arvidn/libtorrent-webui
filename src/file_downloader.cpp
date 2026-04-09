@@ -43,8 +43,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/peer_id.hpp" // for sha1_hash
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/aux_/torrent.hpp"
-#include "libtorrent/aux_/escape_string.hpp" // for escape_string
 
 #include <boost/shared_array.hpp>
 #include <boost/beast/http/write.hpp>
@@ -55,6 +53,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <charconv>
 #include <filesystem>
 #include <iostream>
+
+#include "percent_encode.hpp"
 
 namespace libtorrent {
 
@@ -424,7 +424,7 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	if (m_attachment)
 	{
 		op->res.set(http::field::content_disposition
-			, str("attachment; filename=", escape_string(ti->files().file_name(file))));
+			, str("attachment; filename=", percent_encode(ti->files().file_name(file))));
 	}
 	if (range_request)
 	{

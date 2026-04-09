@@ -41,14 +41,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/entry.hpp"
 #include "libtorrent/bencode.hpp"
-#include "libtorrent/aux_/path.hpp"
+#include <filesystem>
 
 namespace libtorrent
 {
 
-// TODO: get rid of these dependencies
-using lt::exists;
-using lt::remove;
 
 std::vector<char> load_file(char const* filename)
 {
@@ -98,14 +95,15 @@ void save_settings::save(error_code& ec) const
 {
 	// back-up current settings file as .bak before saving the new one
 	std::string backup = m_settings_file + ".bak";
-	bool const has_settings = exists(m_settings_file, ec);
-	bool const has_backup = exists(backup, ec);
+	std::error_code fec;
+	bool const has_settings = std::filesystem::exists(m_settings_file, fec);
+	bool const has_backup = std::filesystem::exists(backup, fec);
 
 	if (has_settings && has_backup)
-		remove(backup, ec);
+		std::filesystem::remove(backup, fec);
 
 	if (has_settings)
-		rename(m_settings_file, backup, ec);
+		std::filesystem::rename(m_settings_file, backup, fec);
 
 	ec.clear();
 
@@ -139,16 +137,10 @@ void load_settings_impl(session_params& params, std::string const& filename
 	// load the custom int and string keys
 	if (sett.type() != bdecode_node::dict_t) return;
 
-	bdecode_node dht = sett.dict_find_dict("dht");
-	if (dht)
 	{
-		params.dht_settings = dht::read_dht_settings(dht);
-	}
-
-	bdecode_node dht_state = sett.dict_find_dict("dht state");
-	if (dht_state)
-	{
-		params.dht_state = dht::read_dht_state(dht_state);
+		session_params sp = read_session_params(sett);
+		params.dht_settings = std::move(sp.dht_settings);
+		params.dht_state = std::move(sp.dht_state);
 	}
 
 	int num_items = sett.dict_size();

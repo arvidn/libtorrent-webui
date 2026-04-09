@@ -40,16 +40,16 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/error_code.hpp"
 #include "save_settings.hpp"
 
-#include "libtorrent/aux_/path.hpp"
+#include <filesystem>
+#ifndef TORRENT_WINDOWS
+#include <dirent.h>
+#endif
 
 using namespace std::placeholders;
 
 namespace libtorrent
 {
 
-	// TODO: get rid of these dependencies
-using lt::remove;
-using lt::combine_path;
 
 namespace {
 
@@ -235,15 +235,16 @@ void auto_load::on_scan(error_code const& e)
 		{
 			if (remove_files)
 			{
-				std::string file_path = combine_path(path, file);
-				remove(file_path, ec);
-				if (!ec) m_already_loaded.erase(m_already_loaded.find(file));
+				std::string file_path = (std::filesystem::path(path) / file).string();
+				std::error_code fec;
+				std::filesystem::remove(file_path, fec);
+				if (!fec) m_already_loaded.erase(m_already_loaded.find(file));
 			}
 			continue;
 		}
 
 		error_code tec;
-		std::string file_path = combine_path(path, file);
+		std::string file_path = (std::filesystem::path(path) / file).string();
 		auto ti = std::make_shared<torrent_info>(file_path, std::ref(tec));
 
 		// assume the file isn't fully written yet.
@@ -259,7 +260,10 @@ void auto_load::on_scan(error_code const& e)
 		// TODO: there should be a configuration option to
 		// move the torrent file into a different directory
 		if (remove_files)
-			remove(file_path, ec);
+		{
+			std::error_code fec;
+			std::filesystem::remove(file_path, fec);
+		}
 		else
 			m_already_loaded.insert(file);
 	}

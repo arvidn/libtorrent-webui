@@ -32,15 +32,25 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "error_logger.hpp"
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/aux_/socket_io.hpp"
 #include "libtorrent/error_code.hpp"
 #include <boost/asio/ssl.hpp>
 
 #include "alert_handler.hpp"
 
 #include <string>
+#include <sstream>
 #include <errno.h>
 #include <stdlib.h>
+
+namespace {
+template <typename Endpoint>
+std::string endpoint_str(Endpoint const& ep)
+{
+	std::ostringstream os;
+	os << ep;
+	return os.str();
+}
+}
 
 namespace libtorrent
 {
@@ -109,7 +119,7 @@ namespace libtorrent
 #endif
 				{
 					fprintf(m_file, "%s\terror [%s] (%s:%d) %s\n", timestamp.data()
-						, print_endpoint(pe->endpoint).c_str(), pe->error.category().name()
+						, endpoint_str(pe->endpoint).c_str(), pe->error.category().name()
 						, pe->error.value(), pe->error.message().c_str());
 				}
 				break;
@@ -146,7 +156,7 @@ namespace libtorrent
 					&& pd->error != error_code(libtorrent::errors::timed_out_no_handshake)
 					&& pd->error != error_code(libtorrent::errors::upload_upload_connection))
 					fprintf(m_file, "%s\tdisconnect [%s][%s] (%s:%d) %s\n", timestamp.data()
-						, print_endpoint(pd->endpoint).c_str(), operation_name(pd->op)
+						, endpoint_str(pd->endpoint).c_str(), operation_name(pd->op)
 						, pd->error.category().name(), pd->error.value(), pd->error.message().c_str());
 				break;
 			}
@@ -219,7 +229,7 @@ namespace libtorrent
 				if (ue)
 					fprintf(m_file, "%s\tudp-error (%s:%d) %s %s\n", timestamp.data()
 						, ue->error.category().name(), ue->error.value()
-						, print_endpoint(ue->endpoint).c_str()
+						, endpoint_str(ue->endpoint).c_str()
 						, ue->error.message().c_str());
 			}
 			case listen_failed_alert::alert_type:

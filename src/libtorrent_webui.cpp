@@ -36,13 +36,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string_view>
 
 #include "libtorrent_webui.hpp"
-#include "libtorrent/aux_/buffer.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/session_stats.hpp"
 #include "libtorrent/torrent_info.hpp"
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/aux_/io_bytes.hpp"
-#include "libtorrent/aux_/escape_string.hpp"
 #include "libtorrent/magnet_uri.hpp"
 
 #include "auth.hpp"
@@ -61,7 +58,40 @@ using namespace std::literals::chrono_literals;
 namespace libtorrent {
 namespace {
 
-	namespace io = libtorrent::aux;
+	template <typename It> std::uint8_t read_uint8(It& p) { return static_cast<std::uint8_t>(*p++); }
+	template <typename It> std::uint16_t read_uint16(It& p) {
+		std::uint16_t const hi = read_uint8(p);
+		std::uint16_t const lo = read_uint8(p);
+		return std::uint16_t((hi << 8) | lo);
+	}
+	template <typename It> std::uint32_t read_uint32(It& p) {
+		std::uint32_t const b3 = read_uint8(p);
+		std::uint32_t const b2 = read_uint8(p);
+		std::uint32_t const b1 = read_uint8(p);
+		std::uint32_t const b0 = read_uint8(p);
+		return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+	}
+	template <typename It> std::int32_t read_int32(It& p) { return static_cast<std::int32_t>(read_uint32(p)); }
+	template <typename It> std::uint64_t read_uint64(It& p) {
+		std::uint64_t const hi = read_uint32(p);
+		std::uint64_t const lo = read_uint32(p);
+		return (hi << 32) | lo;
+	}
+	template <typename It> void write_uint8(std::uint8_t v, It& p) { *p++ = static_cast<char>(v); }
+	template <typename It> void write_uint16(std::uint16_t v, It& p) {
+		write_uint8(std::uint8_t(v >> 8), p);
+		write_uint8(std::uint8_t(v), p);
+	}
+	template <typename It> void write_uint32(std::uint32_t v, It& p) {
+		write_uint8(std::uint8_t(v >> 24), p);
+		write_uint8(std::uint8_t(v >> 16), p);
+		write_uint8(std::uint8_t(v >>  8), p);
+		write_uint8(std::uint8_t(v), p);
+	}
+	template <typename It> void write_uint64(std::uint64_t v, It& p) {
+		write_uint32(std::uint32_t(v >> 32), p);
+		write_uint32(std::uint32_t(v), p);
+	}
 
 	struct rpc_entry
 	{
@@ -257,8 +287,8 @@ namespace {
 
 		if (f.len < 12) return error(st, f, truncated_message);
 
-		frame_t const frame = io::read_uint32(f.data);
-		std::uint64_t user_mask = io::read_uint64(f.data);
+		frame_t const frame = read_uint32(f.data);
+		std::uint64_t user_mask = read_uint64(f.data);
 		f.len -= 12;
 
 		std::vector<torrent_history_entry> torrents;
@@ -269,20 +299,20 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
 		// frame number (uint32)
-		io::write_uint32(m_hist->frame(), ptr);
+		write_uint32(m_hist->frame(), ptr);
 
 		// allocate space for torrent count
 		// this will be filled in later when we know
 		int num_torrents = 0;
 		int const num_torrents_pos = response.size();
-		io::write_uint32(num_torrents, ptr);
+		write_uint32(num_torrents, ptr);
 
-		io::write_uint32(removed_torrents.size(), ptr);
+		write_uint32(removed_torrents.size(), ptr);
 
 		for (std::vector<torrent_history_entry>::iterator i = torrents.begin()
 			, end(torrents.end()); i != end; ++i)
@@ -312,7 +342,7 @@ namespace {
 			std::copy(ih.begin(), ih.end(), ptr);
 			// then 64 bits of bitmask, indicating which fields
 			// are included in the update for this torrent
-			io::write_uint64(bitmask, ptr);
+			write_uint64(bitmask, ptr);
 
 			torrent_status const& s = i->status;
 
@@ -345,76 +375,76 @@ namespace {
 							| (s.has_metadata ? 0x10000 : 0)
 							;
 
-						io::write_uint64(flags, ptr);
+						write_uint64(flags, ptr);
 						break;
 					}
 					case 1: // name
 					{
 						std::string name = s.name;
 						if (name.size() > 65535) name.resize(65535);
-						io::write_uint16(name.size(), ptr);
+						write_uint16(name.size(), ptr);
 						std::copy(name.begin(), name.end(), ptr);
 						break;
 					}
 					case 2: // total-uploaded
-						io::write_uint64(s.total_upload, ptr);
+						write_uint64(s.total_upload, ptr);
 						break;
 					case 3: // total-downloaded
-						io::write_uint64(s.total_download, ptr);
+						write_uint64(s.total_download, ptr);
 						break;
 					case 4: // added-time
-						io::write_uint64(s.added_time, ptr);
+						write_uint64(s.added_time, ptr);
 						break;
 					case 5: // completed_time
-						io::write_uint64(s.completed_time, ptr);
+						write_uint64(s.completed_time, ptr);
 						break;
 					case 6: // upload-rate
-						io::write_uint32(s.upload_rate, ptr);
+						write_uint32(s.upload_rate, ptr);
 						break;
 					case 7: // download-rate
-						io::write_uint32(s.download_rate, ptr);
+						write_uint32(s.download_rate, ptr);
 						break;
 					case 8: // progress
-						io::write_uint32(s.progress_ppm, ptr);
+						write_uint32(s.progress_ppm, ptr);
 						break;
 					case 9: // error
 					{
-						std::string e = convert_from_native(s.errc.message());
+						std::string e = s.errc.message();
 						if (e.size() > 65535) e.resize(65535);
-						io::write_uint16(e.size(), ptr);
+						write_uint16(e.size(), ptr);
 						std::copy(e.begin(), e.end(), ptr);
 						break;
 					}
 					case 10: // connected-peers
-						io::write_uint32(s.num_peers, ptr);
+						write_uint32(s.num_peers, ptr);
 						break;
 					case 11: // connected-seeds
-						io::write_uint32(s.num_seeds, ptr);
+						write_uint32(s.num_seeds, ptr);
 						break;
 					case 12: // downloaded-pieces
-						io::write_uint32(s.num_pieces, ptr);
+						write_uint32(s.num_pieces, ptr);
 						break;
 					case 13: // total-done
-						io::write_uint64(s.total_wanted_done, ptr);
+						write_uint64(s.total_wanted_done, ptr);
 						break;
 					case 14: // distributed-copies
-						io::write_uint32(s.distributed_full_copies, ptr);
-						io::write_uint32(s.distributed_fraction, ptr);
+						write_uint32(s.distributed_full_copies, ptr);
+						write_uint32(s.distributed_fraction, ptr);
 						break;
 					case 15: // all-time-upload
-						io::write_uint64(s.all_time_upload, ptr);
+						write_uint64(s.all_time_upload, ptr);
 						break;
 					case 16: // all-time-download
-						io::write_uint32(s.all_time_download, ptr);
+						write_uint32(s.all_time_download, ptr);
 						break;
 					case 17: // unchoked-peers
-						io::write_uint32(s.num_uploads, ptr);
+						write_uint32(s.num_uploads, ptr);
 						break;
 					case 18: // num-connections
-						io::write_uint32(s.num_connections, ptr);
+						write_uint32(s.num_connections, ptr);
 						break;
 					case 19: // queue-position
-						io::write_uint32(static_cast<int>(s.queue_position), ptr);
+						write_uint32(static_cast<int>(s.queue_position), ptr);
 						break;
 					case 20: // state
 					{
@@ -437,14 +467,14 @@ namespace {
 								state = 3; // seeding
 								break;
 						};
-						io::write_uint8(state, ptr);
+						write_uint8(state, ptr);
 						break;
 					}
 					case 21: // failed-bytes
-						io::write_uint64(s.total_failed_bytes, ptr);
+						write_uint64(s.total_failed_bytes, ptr);
 						break;
 					case 22: // redundant-bytes
-						io::write_uint64(s.total_redundant_bytes, ptr);
+						write_uint64(s.total_redundant_bytes, ptr);
 						break;
 					default:
 					TORRENT_ASSERT(false);
@@ -455,7 +485,7 @@ namespace {
 		// now that we know how many torrents we wrote, fill in the
 		// counter
 		char* ptr2 = &response[num_torrents_pos];
-		io::write_uint32(num_torrents, ptr2);
+		write_uint32(num_torrents, ptr2);
 
 		// send list of removed torrents
 		for (auto const& i : removed_torrents)
@@ -471,7 +501,7 @@ namespace {
 	bool libtorrent_webui::apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun)
 	{
 		char const* ptr = f.data;
-		int num_torrents = io::read_uint16(ptr);
+		int num_torrents = read_uint16(ptr);
 
 		// there are only supposed to be one ore more info-hashes as arguments. Each info-hash is
 		// in its binary representation, and hence 20 bytes long.
@@ -619,13 +649,13 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
-		io::write_uint32(settings_pack::num_string_settings, ptr);
-		io::write_uint32(settings_pack::num_int_settings, ptr);
-		io::write_uint32(settings_pack::num_bool_settings, ptr);
+		write_uint32(settings_pack::num_string_settings, ptr);
+		write_uint32(settings_pack::num_int_settings, ptr);
+		write_uint32(settings_pack::num_bool_settings, ptr);
 
 		for (int i = settings_pack::string_type_base;
 			i < settings_pack::max_string_setting_internal; ++i)
@@ -636,10 +666,10 @@ namespace {
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
-			io::write_uint8(len, ptr);
+			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
-			io::write_uint16(i, ptr);
+			write_uint16(i, ptr);
 		}
 
 		for (int i = settings_pack::int_type_base;
@@ -651,10 +681,10 @@ namespace {
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
-			io::write_uint8(len, ptr);
+			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
-			io::write_uint16(i, ptr);
+			write_uint16(i, ptr);
 		}
 
 		for (int i = settings_pack::bool_type_base;
@@ -666,10 +696,10 @@ namespace {
 			char const* n = name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
-			io::write_uint8(len, ptr);
+			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
-			io::write_uint16(i, ptr);
+			write_uint16(i, ptr);
 		}
 		return st->send_packet(&response[0], response.size());
 	}
@@ -679,7 +709,7 @@ namespace {
 		char const* ptr = f.data;
 		if (f.len < 2) return error(st, f, invalid_number_of_args);
 
-		int num_settings = io::read_uint16(ptr);
+		int num_settings = read_uint16(ptr);
 		f.len -= 2;
 
 		settings_pack pack;
@@ -687,7 +717,7 @@ namespace {
 		for (int i = 0; i < num_settings; ++i)
 		{
 			if (f.len < 2) return error(st, f, invalid_number_of_args);
-			int sett = io::read_uint16(ptr);
+			int sett = read_uint16(ptr);
 			f.len -= 2;
 
 			if (!st->perms()->allow_set_settings(sett))
@@ -696,7 +726,7 @@ namespace {
 			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
 			{
 				if (f.len < 2) return error(st, f, invalid_number_of_args);
-				int len = io::read_uint16(ptr);
+				int len = read_uint16(ptr);
 				f.len -= 2;
 				std::string str;
 				str.resize(len);
@@ -708,13 +738,13 @@ namespace {
 			else if (sett >= settings_pack::int_type_base && sett < settings_pack::max_int_setting_internal)
 			{
 				if (f.len < 4) return error(st, f, invalid_number_of_args);
-				pack.set_int(sett, io::read_uint32(ptr));
+				pack.set_int(sett, read_uint32(ptr));
 				f.len -= 4;
 			}
 			else if (sett >= settings_pack::bool_type_base && sett < settings_pack::max_bool_setting_internal)
 			{
 				if (f.len < 1) return error(st, f, invalid_number_of_args);
-				pack.set_bool(sett, io::read_uint8(ptr));
+				pack.set_bool(sett, read_uint8(ptr));
 				f.len -= 1;
 			}
 			else
@@ -732,7 +762,7 @@ namespace {
 	{
 		char const* iptr = f.data;
 		if (f.len < 2) return error(st, f, invalid_number_of_args);
-		int num_settings = io::read_uint16(iptr);
+		int num_settings = read_uint16(iptr);
 		f.len -= 2;
 
 		if (f.len < num_settings * 2) return error(st, f, invalid_argument_type);
@@ -740,17 +770,17 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
-		io::write_uint16(num_settings, ptr);
+		write_uint16(num_settings, ptr);
 
 		settings_pack s = m_ses.get_settings();
 
 		for (int i = 0; i < num_settings; ++i)
 		{
-			int const sett = io::read_uint16(iptr);
+			int const sett = read_uint16(iptr);
 
 			if (!st->perms()->allow_get_settings(sett))
 				return error(st, f, permission_denied);
@@ -758,16 +788,16 @@ namespace {
 			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
 			{
 				std::string const& v = s.get_str(sett);
-				io::write_uint16(v.length(), ptr);
+				write_uint16(v.length(), ptr);
 				std::copy(v.begin(), v.end(), ptr);
 			}
 			else if (sett >= settings_pack::int_type_base && sett < settings_pack::max_int_setting_internal)
 			{
-				io::write_uint32(s.get_int(sett), ptr);
+				write_uint32(s.get_int(sett), ptr);
 			}
 			else if (sett >= settings_pack::bool_type_base && sett < settings_pack::max_bool_setting_internal)
 			{
-				io::write_uint8(s.get_bool(sett), ptr);
+				write_uint8(s.get_bool(sett), ptr);
 			}
 			else
 			{
@@ -786,20 +816,20 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
 		std::vector<stats_metric> stats = session_stats_metrics();
-		io::write_uint16(stats.size(), ptr);
+		write_uint16(stats.size(), ptr);
 
 		for (auto const& s : stats)
 		{
-			io::write_uint16(s.value_index, ptr);
-			io::write_uint8(s.type, ptr);
+			write_uint16(s.value_index, ptr);
+			write_uint8(static_cast<std::uint8_t>(s.type), ptr);
 			int len = strlen(s.name);
 			TORRENT_ASSERT(len < 256);
-			io::write_uint8(len, ptr);
+			write_uint8(len, ptr);
 			std::copy(s.name, s.name + len, ptr);
 		}
 
@@ -836,12 +866,12 @@ namespace {
 
 			char rpc[4];
 			char* ptr = &rpc[0];
-			io::write_uint8(ud->function_id | 0x80, ptr);
-			io::write_uint16(ud->transaction_id, ptr);
+			write_uint8(ud->function_id | 0x80, ptr);
+			write_uint16(ud->transaction_id, ptr);
 			if (at->error)
-				io::write_uint8(failed, ptr);
+				write_uint8(failed, ptr);
 			else
-				io::write_uint8(no_error, ptr);
+				write_uint8(no_error, ptr);
 
 			ud->st->send_packet(rpc, sizeof(rpc));
 		}
@@ -854,8 +884,8 @@ namespace {
 
 		char const* iptr = f.data;
 		if (f.len < 6) return error(st, f, invalid_number_of_args);
-		frame_t const frame = io::read_uint32(iptr);
-		int num_stats = io::read_uint16(iptr);
+		frame_t const frame = read_uint32(iptr);
+		int num_stats = read_uint16(iptr);
 		f.len -= 6;
 
 		if (f.len < num_stats * 2) return error(st, f, invalid_number_of_args);
@@ -869,27 +899,27 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
 		std::unique_lock<std::mutex> l(m_stats_mutex);
-		io::write_uint32(m_stats_frame, ptr);
+		write_uint32(m_stats_frame, ptr);
 
 		// we'll fill in the counter later
 		int const counter_pos = response.size();
-		io::write_uint16(0, ptr);
+		write_uint16(0, ptr);
 
 		int num_updates = 0;
 		for (int i = 0; i < num_stats; ++i)
 		{
-			int c = io::read_uint16(iptr);
+			int c = read_uint16(iptr);
 			if (c < 0 || c > int(m_stats.size()))
 				return error(st, f, invalid_argument);
 
 			if (m_stats[c].second <= frame) continue;
-			io::write_uint16(c, ptr);
-			io::write_uint64(m_stats[c].first, ptr);
+			write_uint16(c, ptr);
+			write_uint64(m_stats[c].first, ptr);
 			++num_updates;
 		}
 
@@ -897,7 +927,7 @@ namespace {
 
 		// now that we know what the number of updates is, fill it in
 		char* counter_ptr = &response[counter_pos];
-		io::write_uint16(num_updates, counter_ptr);
+		write_uint16(num_updates, counter_ptr);
 
 		return st->send_packet(&response[0], response.size());
 	}
@@ -911,7 +941,7 @@ namespace {
 		if (f.len != 24) return error(st, f, invalid_number_of_args);
 		sha1_hash ih(iptr);
 		iptr += 20;
-		frame_t const frame = io::read_int32(iptr);
+		frame_t const frame = read_int32(iptr);
 		(void)frame;
 
 		torrent_handle h = m_ses.find_torrent(ih);
@@ -920,9 +950,9 @@ namespace {
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
 
 		std::vector<std::int64_t> fp;
 		h.file_progress(fp, torrent_handle::piece_granularity);
@@ -936,10 +966,10 @@ namespace {
 		fp.resize(fs.num_files(), 0);
 
 		// frame number
-		io::write_uint32(0, ptr);
+		write_uint32(0, ptr);
 
 		// number of files
-		io::write_uint32(fs.num_files(), ptr);
+		write_uint32(fs.num_files(), ptr);
 
 		// TODO: we should really just send differences since last time
 		// for now, just send full updates
@@ -950,26 +980,26 @@ namespace {
 				std::uint8_t mask = 0xff;
 				if (fs.num_files() - static_cast<int>(fi) < 8)
 					mask <<= 8 - fs.num_files() + static_cast<int>(fi);
-				io::write_uint8(mask, ptr);
+				write_uint8(mask, ptr);
 			}
 
 			// file update bitmask (all 4 fields)
-			io::write_uint16(0xf, ptr);
+			write_uint16(0xf, ptr);
 
 			// flags
-			io::write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
+			write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
 
 			// name
 			std::string name = fs.file_path(fi);
 			if (name.size() > 65535) name.resize(65535);
-			io::write_uint16(name.size(), ptr);
+			write_uint16(name.size(), ptr);
 			std::copy(name.begin(), name.end(), ptr);
 
 			// total-size
-			io::write_uint64(fs.file_size(fi), ptr);
+			write_uint64(fs.file_size(fi), ptr);
 
 			// total downloaded
-			io::write_uint64(fp[static_cast<int>(fi)], ptr);
+			write_uint64(fp[static_cast<int>(fi)], ptr);
 		}
 
 		return st->send_packet(&response[0], response.size());
@@ -987,7 +1017,7 @@ namespace {
 		// magnet:?xt=urn:btih:<40 bytes info-hash>
 		if (len < 62) return error(st, f, truncated_message);
 
-		int magnet_len = io::read_uint16(iptr);
+		int magnet_len = read_uint16(iptr);
 		len -= 2;
 		if (len < magnet_len)
 			return error(st, f, truncated_message);
@@ -1035,8 +1065,8 @@ namespace {
 
 		function_call f;
 		f.data = data.data();
-		f.function_id = io::read_uint8(f.data);
-		f.transaction_id = io::read_uint16(f.data);
+		f.function_id = read_uint8(f.data);
+		f.transaction_id = read_uint16(f.data);
 
 		if (f.function_id & 0x80)
 		{
@@ -1047,7 +1077,7 @@ namespace {
 					, int(data.size()));
 				return false;
 			}
-			int status = io::read_uint8(f.data);
+			int status = read_uint8(f.data);
 			// this is a response to a function call
 			fprintf(stderr, "RETURNED: %s (status: %d)\n", fun_name(f.function_id & 0x7f), status);
 		}
@@ -1074,10 +1104,10 @@ namespace {
 		char rpc[6];
 		char* ptr = rpc;
 
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(no_error, ptr);
-		io::write_uint16(val, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
+		write_uint16(val, ptr);
 
 		return st->send_packet(rpc, sizeof(rpc));
 	}
@@ -1086,9 +1116,9 @@ namespace {
 	{
 		char rpc[4];
 		char* ptr = &rpc[0];
-		io::write_uint8(f.function_id | 0x80, ptr);
-		io::write_uint16(f.transaction_id, ptr);
-		io::write_uint8(error, ptr);
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(error, ptr);
 
 		return st->send_packet(rpc, sizeof(rpc));
 	}

@@ -275,9 +275,8 @@ namespace libtorrent
 	template <typename T, typename V>
 	T fmt(lt::flags::bitfield_flag<T, V> const f)
 	{ return static_cast<T>(f); }
-	template <typename T, typename V>
-	T fmt(lt::aux::strong_typedef<T, V> const v)
-	{ return static_cast<T>(v); }
+	int fmt(lt::queue_position_t v) { return static_cast<int>(v); }
+	std::int32_t fmt(lt::file_index_t v) { return static_cast<std::int32_t>(v); }
 	std::int64_t fmt(lt::time_duration const d)
 	{ return std::chrono::duration_cast<seconds>(d).count(); }
 	std::int64_t fmt(lt::time_point const t)
