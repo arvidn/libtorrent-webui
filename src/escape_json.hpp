@@ -30,15 +30,16 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_ESCAPE_JSON_HPP
-#define TORRENT_ESCAPE_JSON_HPP
+#ifndef LTWEB_ESCAPE_JSON_HPP
+#define LTWEB_ESCAPE_JSON_HPP
 
 #include <string>
+#include "libtorrent/fwd.hpp"
 #include "libtorrent/string_view.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
-	std::string escape_json(string_view in);
+	std::string escape_json(lt::string_view in);
 }
 
 #endif

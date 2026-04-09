@@ -41,7 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/extensions.hpp"
-#include "libtorrent/peer_id.hpp" // for sha1_hash
+#include "libtorrent/peer_id.hpp" // for lt::sha1_hash
 #include "libtorrent/alert_types.hpp"
 
 #include <boost/shared_array.hpp>
@@ -56,7 +56,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "percent_encode.hpp"
 
-namespace libtorrent {
+namespace ltweb {
 
 namespace fs = std::filesystem;
 
@@ -66,8 +66,8 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 		beast::ssl_stream<beast::tcp_stream>& socket
 		, std::function<void(bool)> done
 		, lt::torrent_handle th
-		, piece_index_t next_piece
-		, piece_index_t end_piece
+		, lt::piece_index_t next_piece
+		, lt::piece_index_t end_piece
 		, int offset
 		, int piece_size
 		, std::int64_t left_to_send)
@@ -158,14 +158,14 @@ private:
 		if (m_stopped) return;
 
 		// this 4 MiB should be picked in a more sophisticated way
-		piece_index_t::diff_type const prefetch(std::max(1, 4 * 1024 * 1024 / m_piece_size));
+		lt::piece_index_t::diff_type const prefetch(std::max(1, 4 * 1024 * 1024 / m_piece_size));
 		int deadline = 1;
 		while (m_next_priority_piece - m_next_piece < prefetch
 			&& m_next_priority_piece < m_end_piece)
 		{
 			std::cout << "set piece deadline: " << m_next_priority_piece << '\n';
 			m_torrent.set_piece_deadline(m_next_priority_piece, deadline
-				, torrent_handle::alert_when_available);
+				, lt::torrent_handle::alert_when_available);
 			++deadline;
 			++m_next_priority_piece;
 		}
@@ -176,7 +176,7 @@ private:
 		if (m_stopped) return;
 		m_stopped = true;
 		m_out_of_order.clear();
-		for (piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
+		for (lt::piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
 			std::cout << "reset piece deadline: " << i << '\n';
 			m_torrent.reset_piece_deadline(i);
 		}
@@ -209,15 +209,15 @@ private:
 
 	// pieces we may receive out of order. store them here until it's time
 	// to send them
-	std::map<piece_index_t, boost::shared_array<char>> m_out_of_order;
+	std::map<lt::piece_index_t, boost::shared_array<char>> m_out_of_order;
 
 	// we use this to keep a reference to the buffer currently in the
 	// async_write() call, to keep it alive.
 	boost::shared_array<char> m_currently_sending;
 
-	piece_index_t m_next_piece;
-	piece_index_t m_next_priority_piece;
-	piece_index_t m_end_piece;
+	lt::piece_index_t m_next_piece;
+	lt::piece_index_t m_next_priority_piece;
+	lt::piece_index_t m_end_piece;
 
 	// the number of bytes left to send
 	std::int64_t m_left_to_send;
@@ -230,7 +230,7 @@ private:
 
 	// we need this in order to keep updating file priorities and deadlines
 	// as we receive pieces
-	torrent_handle m_torrent;
+	lt::torrent_handle m_torrent;
 
 	int m_piece_size;
 
@@ -291,7 +291,7 @@ parse_range(http::request<http::string_body> const& req, std::int64_t file_size)
 	return {first_byte, last_byte, true};
 }
 
-file_downloader::file_downloader(session& s
+file_downloader::file_downloader(lt::session& s
 	, alert_handler* alert
 	, auth_interface const* auth)
 	: m_ses(s)
@@ -299,7 +299,7 @@ file_downloader::file_downloader(session& s
 	, m_attachment(true)
 	, m_alert(alert)
 {
-	m_alert->subscribe(this, 0, read_piece_alert::alert_type, 0);
+	m_alert->subscribe(this, 0, lt::read_piece_alert::alert_type, 0);
 }
 
 file_downloader::~file_downloader()
@@ -312,12 +312,12 @@ std::string file_downloader::path_prefix() const
 	return "/download/";
 }
 
-void file_downloader::handle_alert(alert const* a)
+void file_downloader::handle_alert(lt::alert const* a)
 {
 	lt::read_piece_alert const* rp = lt::alert_cast<lt::read_piece_alert>(a);
 	if (!rp) return;
 
-	torrent_handle h = rp->handle;
+	lt::torrent_handle h = rp->handle;
 	std::lock_guard<std::mutex> l(m_mutex);
 	auto requests = m_outstanding_requests.equal_range(h);
 	for (auto i = requests.first; i != requests.second; ++i) {
@@ -338,22 +338,22 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	if (info_hash_str.size() != 40)
 		return send_http(socket, std::move(done), http_error(request, http::status::bad_request));
 
-	sha1_hash info_hash;
+	lt::sha1_hash info_hash;
 	if (!from_hex(info_hash_str, info_hash.data()))
 		return send_http(socket, std::move(done), http_error(request, http::status::bad_request));
 
-	file_index_t const file{atoi(std::string(file_str).c_str())};
+	lt::file_index_t const file{atoi(std::string(file_str).c_str())};
 
-	torrent_handle h = m_ses.find_torrent(info_hash);
+	lt::torrent_handle h = m_ses.find_torrent(info_hash);
 
 	if (!h.is_valid())
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
-	std::shared_ptr<torrent_info const> ti = h.torrent_file();
+	std::shared_ptr<lt::torrent_info const> ti = h.torrent_file();
 	if (!ti || !ti->is_valid())
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
-	if (file < file_index_t{} || file >= ti->files().end_file())
+	if (file < lt::file_index_t{} || file >= ti->files().end_file())
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
 	std::int64_t const file_size = ti->files().file_size(file);
@@ -379,9 +379,9 @@ void file_downloader::handle_http(http::request<http::string_body> request
 		std::cout << "GET range: " << range_first_byte << " - " << range_last_byte << '\n';
 	}
 
-	peer_request const req = ti->map_file(file, range_first_byte, 0);
-	piece_index_t const first_piece = req.piece;
-	piece_index_t const end_piece = next(ti->map_file(file, range_last_byte, 0).piece);
+	lt::peer_request const req = ti->map_file(file, range_first_byte, 0);
+	lt::piece_index_t const first_piece = req.piece;
+	lt::piece_index_t const end_piece = next(ti->map_file(file, range_last_byte, 0).piece);
 	int offset = req.start;
 
 	// wrap the done callback to also remove the file_downloader_conn from the

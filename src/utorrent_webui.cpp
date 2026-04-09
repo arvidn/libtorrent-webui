@@ -62,10 +62,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "url_decode.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
-utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
+utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface* sett
 	, auto_load* al, torrent_history* hist
 	, auth_interface const* auth)
 	: m_ses(s)
@@ -84,7 +84,7 @@ utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 	m_start_time = time(nullptr);
 	m_version = 1;
 
-	std::uint64_t seed = clock_type::now().time_since_epoch().count();
+	std::uint64_t seed = lt::clock_type::now().time_since_epoch().count();
 	auto hash = lt::hasher(reinterpret_cast<char const*>(&seed), sizeof(seed)).final();
 	m_token = to_hex(hash);
 
@@ -95,15 +95,15 @@ utorrent_webui::utorrent_webui(session& s, save_settings_interface* sett
 	{
 		m_params_model.save_path = m_settings->get_str("save_path", ".");
 		m_params_model.flags
-			= (m_settings->get_int("start_paused", 0) ? torrent_flags::paused : torrent_flags::auto_managed)
-			| torrent_flags::update_subscribe;
+			= (m_settings->get_int("start_paused", 0) ? lt::torrent_flags::paused : lt::torrent_flags::auto_managed)
+			| lt::torrent_flags::update_subscribe;
 		m_webui_cookie = m_settings->get_str("ut_webui_cookie", "{}");
 		int port = m_settings->get_int("listen_port", -1);
 		if (port != -1)
 		{
-			settings_pack pack;
+			lt::settings_pack pack;
 			std::string const listen_interface = "0.0.0.0:" + std::to_string(port);
-			pack.set_str(settings_pack::listen_interfaces, listen_interface.c_str());
+			pack.set_str(lt::settings_pack::listen_interfaces, listen_interface.c_str());
 			m_ses.apply_settings(pack);
 		}
 	}
@@ -267,8 +267,8 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 				send_http(socket, done, std::move(res));
 				return;
 			}
-			add_torrent_params p = m_params_model;
-			error_code ec;
+			lt::add_torrent_params p = m_params_model;
+			lt::error_code ec;
 			if (!parse_torrent_post(request, p, ec))
 			{
 				http::response<http::string_body> res{http::status::bad_request, request.version()};
@@ -313,8 +313,8 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 template <typename Fun>
 void utorrent_webui::apply_fun(char const* args, Fun const& f)
 {
-	std::vector<torrent_status> t = parse_torrents(args);
-	for (torrent_status const& st : t)
+	std::vector<lt::torrent_status> t = parse_torrents(args);
+	for (lt::torrent_status const& st : t)
 		f(st);
 }
 
@@ -322,10 +322,10 @@ void utorrent_webui::start(std::vector<char>&, char const* args, permissions_int
 {
 	if (!p->allow_start()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.clear_error();
-		st.handle.unset_flags(torrent_flags::upload_mode);
-		st.handle.set_flags(torrent_flags::auto_managed);
+		st.handle.unset_flags(lt::torrent_flags::upload_mode);
+		st.handle.set_flags(lt::torrent_flags::auto_managed);
 		st.handle.resume();
 	});
 }
@@ -334,8 +334,8 @@ void utorrent_webui::stop(std::vector<char>&, char const* args, permissions_inte
 {
 	if (!p->allow_stop()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
-		st.handle.unset_flags(torrent_flags::auto_managed);
+	apply_fun(args, [](lt::torrent_status const& st) {
+		st.handle.unset_flags(lt::torrent_flags::auto_managed);
 		st.handle.pause();
 	});
 }
@@ -344,8 +344,8 @@ void utorrent_webui::force_start(std::vector<char>&, char const* args, permissio
 {
 	if (!p->allow_start()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
-		st.handle.unset_flags(torrent_flags::auto_managed);
+	apply_fun(args, [](lt::torrent_status const& st) {
+		st.handle.unset_flags(lt::torrent_flags::auto_managed);
 		st.handle.resume();
 	});
 }
@@ -354,7 +354,7 @@ void utorrent_webui::recheck(std::vector<char>&, char const* args, permissions_i
 {
 	if (!p->allow_recheck()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.force_recheck();
 	});
 }
@@ -363,7 +363,7 @@ void utorrent_webui::queue_up(std::vector<char>&, char const* args, permissions_
 {
 	if (!p->allow_queue_change()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.queue_position_up();
 	});
 }
@@ -372,7 +372,7 @@ void utorrent_webui::queue_down(std::vector<char>&, char const* args, permission
 {
 	if (!p->allow_queue_change()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.queue_position_down();
 	});
 }
@@ -381,7 +381,7 @@ void utorrent_webui::queue_top(std::vector<char>&, char const* args, permissions
 {
 	if (!p->allow_queue_change()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.queue_position_top();
 	});
 }
@@ -390,7 +390,7 @@ void utorrent_webui::queue_bottom(std::vector<char>&, char const* args, permissi
 {
 	if (!p->allow_queue_change()) return;
 
-	apply_fun(args, [](torrent_status const& st) {
+	apply_fun(args, [](lt::torrent_status const& st) {
 		st.handle.queue_position_bottom();
 	});
 }
@@ -399,7 +399,7 @@ void utorrent_webui::remove_torrent(std::vector<char>&, char const* args, permis
 {
 	if (!p->allow_remove()) return;
 
-	apply_fun(args, [this](torrent_status const& st) {
+	apply_fun(args, [this](lt::torrent_status const& st) {
 		m_ses.remove_torrent(st.handle);
 	});
 }
@@ -414,7 +414,7 @@ void utorrent_webui::set_file_priority(std::vector<char>&, char const* args, per
 	int prio = atoi(url_decode(*prio_val).c_str());
 	prio *= 2;
 
-	std::vector<file_index_t> files;
+	std::vector<lt::file_index_t> files;
 	for (char const* f = strstr(args, "&f="); f; f = strstr(f, "&f="))
 	{
 		f += 3;
@@ -427,8 +427,8 @@ void utorrent_webui::set_file_priority(std::vector<char>&, char const* args, per
 		}
 	}
 
-	apply_fun(args, [&](torrent_status const& st) {
-		for (file_index_t const j : files)
+	apply_fun(args, [&](lt::torrent_status const& st) {
+		for (lt::file_index_t const j : files)
 			st.handle.file_priority(j, lt::download_priority_t(prio));
 	});
 }
@@ -437,8 +437,8 @@ void utorrent_webui::remove_torrent_and_data(std::vector<char>&, char const* arg
 {
 	if (!p->allow_remove() || !p->allow_remove_data()) return;
 
-	apply_fun(args, [this](torrent_status const& st) {
-		m_ses.remove_torrent(st.handle, session::delete_files);
+	apply_fun(args, [this](lt::torrent_status const& st) {
+		m_ses.remove_torrent(st.handle, lt::session::delete_files);
 	});
 }
 
@@ -451,7 +451,7 @@ void utorrent_webui::list_dirs(std::vector<char>& response, char const* args, pe
 
 char const* settings_name(int s)
 {
-	return name_for_setting(s);
+	return lt::name_for_setting(s);
 }
 
 void utorrent_webui::get_settings(std::vector<char>& response, char const* args
@@ -459,49 +459,49 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 {
 	appendf(response, ", \"settings\": [");
 
-	settings_pack sett = m_ses.get_settings();
+	lt::settings_pack sett = m_ses.get_settings();
 
 	// type: 0 = int, 1= bool, 2=string
 	int first = 1;
-	for (int i = 0; i < settings_pack::num_string_settings; ++i)
+	for (int i = 0; i < lt::settings_pack::num_string_settings; ++i)
 	{
-		if (!p->allow_get_settings(settings_pack::string_type_base + i)) continue;
+		if (!p->allow_get_settings(lt::settings_pack::string_type_base + i)) continue;
 
-		int s = settings_pack::string_type_base + i;
+		int s = lt::settings_pack::string_type_base + i;
 		appendf(response, ",[\"%s\",2,\"%s\",{\"access\":\"%c\"}]\n" + first
 			, settings_name(s), escape_json(sett.get_str(s)).c_str()
 			, p->allow_set_settings(s) ? 'Y' : 'R');
 		first = 0;
 	}
 
-	for (int i = 0; i < settings_pack::num_bool_settings; ++i)
+	for (int i = 0; i < lt::settings_pack::num_bool_settings; ++i)
 	{
-		int s = settings_pack::bool_type_base + i;
+		int s = lt::settings_pack::bool_type_base + i;
 		if (!p->allow_get_settings(s)) continue;
 
 		char const* sname;
 		bool value;
-		if (s == settings_pack::enable_dht)
+		if (s == lt::settings_pack::enable_dht)
 		{
 			sname = "dht";
 			value = sett.get_bool(s);
 		}
-		else if (s == settings_pack::enable_lsd)
+		else if (s == lt::settings_pack::enable_lsd)
 		{
 			sname = "lsd";
 			value = sett.get_bool(s);
 		}
-		else if (s == settings_pack::enable_natpmp)
+		else if (s == lt::settings_pack::enable_natpmp)
 		{
 			sname = "natpmp";
 			value = sett.get_bool(s);
 		}
-		else if (s == settings_pack::enable_upnp)
+		else if (s == lt::settings_pack::enable_upnp)
 		{
 			sname = "upnp";
 			value = sett.get_bool(s);
 		}
-		else if (s == settings_pack::auto_manage_prefer_seeds)
+		else if (s == lt::settings_pack::auto_manage_prefer_seeds)
 		{
 			sname = "seeds_prioritized";
 			value = sett.get_bool(s);
@@ -517,44 +517,44 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		first = 0;
 	}
 
-	for (int i = 0; i < settings_pack::num_int_settings; ++i)
+	for (int i = 0; i < lt::settings_pack::num_int_settings; ++i)
 	{
-		int s = settings_pack::int_type_base + i;
+		int s = lt::settings_pack::int_type_base + i;
 		if (!p->allow_get_settings(s)) continue;
 
 		char const* sname;
 		std::int64_t value;
-/*		if (s == settings_pack::cache_size)
+/*		if (s == lt::settings_pack::cache_size)
 		{
 			sname = "cache.override_size";
 			value = std::int64_t(sett.get_int(s)) * 16 / 1024;
 		}
 		else
 */
-		if (s == settings_pack::upload_rate_limit)
+		if (s == lt::settings_pack::upload_rate_limit)
 		{
 			sname = "max_ul_rate";
 			value = std::int64_t(sett.get_int(s)) / 1024;
 		}
-		else if (s == settings_pack::download_rate_limit)
+		else if (s == lt::settings_pack::download_rate_limit)
 		{
 			sname = "max_dl_rate";
 			value = std::int64_t(sett.get_int(s)) / 1024;
 		}
-		else if (s == settings_pack::connections_limit)
+		else if (s == lt::settings_pack::connections_limit)
 		{
 			sname = "conns_globally";
 			value = sett.get_int(s);
 		}
-		else if (s == settings_pack::active_downloads)
+		else if (s == lt::settings_pack::active_downloads)
 		{
 			sname = "max_active_downloads";
 			value = sett.get_int(s);
 		}
-		else if (s == settings_pack::active_limit)
+		else if (s == lt::settings_pack::active_limit)
 		{
 			sname = "max_active_torrent";
-			value = (std::min)(sett.get_int(s), sett.get_int(settings_pack::active_seeds));
+			value = (std::min)(sett.get_int(s), sett.get_int(lt::settings_pack::active_seeds));
 		}
 		else
 		{
@@ -568,7 +568,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 	}
 
 	appendf(response, ",[\"torrents_start_stopped\",1,\"%s\",{\"access\":\"%c\"}]\n" + first
-		, m_params_model.flags & torrent_flags::paused ? "true" : "false"
+		, m_params_model.flags & lt::torrent_flags::paused ? "true" : "false"
 		, p->allow_stop() ? 'Y' : 'R');
 	first = 0;
 
@@ -584,21 +584,21 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		first = 0;
 	}
 
-	if (p->allow_get_settings(settings_pack::enable_outgoing_tcp)
-		&& p->allow_get_settings(settings_pack::enable_outgoing_utp)
-		&& p->allow_get_settings(settings_pack::enable_incoming_tcp)
-		&& p->allow_get_settings(settings_pack::enable_incoming_utp))
+	if (p->allow_get_settings(lt::settings_pack::enable_outgoing_tcp)
+		&& p->allow_get_settings(lt::settings_pack::enable_outgoing_utp)
+		&& p->allow_get_settings(lt::settings_pack::enable_incoming_tcp)
+		&& p->allow_get_settings(lt::settings_pack::enable_incoming_utp))
 	{
 		appendf(response,
 			",[\"bt.transp_disposition\",0,\"%d\",{\"access\":\"%c\"}]\n" + first
-			, (sett.get_bool(settings_pack::enable_outgoing_tcp) ? 1 : 0)
-				+ (sett.get_bool(settings_pack::enable_outgoing_utp) ? 2 : 0)
-				+ (sett.get_bool(settings_pack::enable_incoming_tcp) ? 4 : 0)
-				+ (sett.get_bool(settings_pack::enable_incoming_utp) ? 8 : 0)
-				, (p->allow_set_settings(settings_pack::enable_outgoing_tcp)
-					&& p->allow_set_settings(settings_pack::enable_outgoing_utp)
-					&& p->allow_set_settings(settings_pack::enable_incoming_tcp)
-					&& p->allow_set_settings(settings_pack::enable_incoming_utp))
+			, (sett.get_bool(lt::settings_pack::enable_outgoing_tcp) ? 1 : 0)
+				+ (sett.get_bool(lt::settings_pack::enable_outgoing_utp) ? 2 : 0)
+				+ (sett.get_bool(lt::settings_pack::enable_incoming_tcp) ? 4 : 0)
+				+ (sett.get_bool(lt::settings_pack::enable_incoming_utp) ? 8 : 0)
+				, (p->allow_set_settings(lt::settings_pack::enable_outgoing_tcp)
+					&& p->allow_set_settings(lt::settings_pack::enable_outgoing_utp)
+					&& p->allow_set_settings(lt::settings_pack::enable_incoming_tcp)
+					&& p->allow_set_settings(lt::settings_pack::enable_incoming_utp))
 				? 'Y' : 'R');
 		first = 0;
 	}
@@ -646,7 +646,7 @@ bool to_bool(std::string const& s)
 
 void utorrent_webui::set_settings(std::vector<char>& response, char const* args, permissions_interface const* p)
 {
-	settings_pack pack;
+	lt::settings_pack pack;
 
 	std::set<std::string> duplicates;
 	for (char const* s = strstr(args, "&s="); s; s = strstr(s, "&s="))
@@ -660,8 +660,8 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 
 		std::string key(s, key_end - s);
 		std::string value(key_end + 3, v_end - key_end - 3);
-		error_code ec;
-		value = ::url_decode(value, ec);
+		lt::error_code ec;
+		value = url_decode(value, ec);
 
 		// ignore duplicate settings
 		if (duplicates.count(key)) continue;
@@ -673,7 +673,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 
 		if (key == "webui.cookie")
 		{
-			// TODO: store this in some session-specific store, so multiple
+			// TODO: store this in some lt::session-specific store, so multiple
 			// users don't clobber each other
 			m_webui_cookie = value;
 			if (m_settings) m_settings->set_str("ut_webui_cookie", value);
@@ -683,44 +683,44 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			if (!p->allow_set_settings(-1)) continue;
 			int port = atoi(value.c_str());
 			std::string const listen_interface = "0.0.0.0:" + std::to_string(port);
-			pack.set_str(settings_pack::listen_interfaces, listen_interface.c_str());
+			pack.set_str(lt::settings_pack::listen_interfaces, listen_interface.c_str());
 			if (m_settings) m_settings->set_int("listen_port", port);
 		}
 		else if (key == "bt.transp_disposition")
 		{
-			if (!p->allow_set_settings(settings_pack::enable_outgoing_tcp)
-			|| !p->allow_set_settings(settings_pack::enable_outgoing_utp)
-			|| !p->allow_set_settings(settings_pack::enable_incoming_tcp)
-			|| !p->allow_set_settings(settings_pack::enable_incoming_utp))
+			if (!p->allow_set_settings(lt::settings_pack::enable_outgoing_tcp)
+			|| !p->allow_set_settings(lt::settings_pack::enable_outgoing_utp)
+			|| !p->allow_set_settings(lt::settings_pack::enable_incoming_tcp)
+			|| !p->allow_set_settings(lt::settings_pack::enable_incoming_utp))
 				continue;
 
 			int mask = atoi(value.c_str());
-			pack.set_bool(settings_pack::enable_outgoing_tcp, mask & 1);
-			pack.set_bool(settings_pack::enable_outgoing_utp, mask & 2);
-			pack.set_bool(settings_pack::enable_incoming_tcp, mask & 4);
-			pack.set_bool(settings_pack::enable_incoming_utp, mask & 8);
+			pack.set_bool(lt::settings_pack::enable_outgoing_tcp, mask & 1);
+			pack.set_bool(lt::settings_pack::enable_outgoing_utp, mask & 2);
+			pack.set_bool(lt::settings_pack::enable_incoming_tcp, mask & 4);
+			pack.set_bool(lt::settings_pack::enable_incoming_utp, mask & 8);
 		}
 		else if (key == "conns_globally")
 		{
-			if (!p->allow_set_settings(settings_pack::connections_limit)) continue;
-			pack.set_int(settings_pack::connections_limit, atoi(value.c_str()));
+			if (!p->allow_set_settings(lt::settings_pack::connections_limit)) continue;
+			pack.set_int(lt::settings_pack::connections_limit, atoi(value.c_str()));
 		}
 		else if (key == "max_active_downloads")
 		{
-			if (!p->allow_set_settings(settings_pack::active_downloads)) continue;
-			pack.set_int(settings_pack::active_downloads, atoi(value.c_str()));
+			if (!p->allow_set_settings(lt::settings_pack::active_downloads)) continue;
+			pack.set_int(lt::settings_pack::active_downloads, atoi(value.c_str()));
 		}
 		else if (key == "max_active_torrent")
 		{
-			if (!p->allow_set_settings(settings_pack::active_limit)) continue;
-			if (!p->allow_set_settings(settings_pack::active_seeds)) continue;
-			pack.set_int(settings_pack::active_limit, atoi(value.c_str()));
-			pack.set_int(settings_pack::active_seeds, atoi(value.c_str()));
+			if (!p->allow_set_settings(lt::settings_pack::active_limit)) continue;
+			if (!p->allow_set_settings(lt::settings_pack::active_seeds)) continue;
+			pack.set_int(lt::settings_pack::active_limit, atoi(value.c_str()));
+			pack.set_int(lt::settings_pack::active_seeds, atoi(value.c_str()));
 		}
 		else if (key == "seeds_prioritized")
 		{
-			if (!p->allow_set_settings(settings_pack::auto_manage_prefer_seeds)) continue;
-			pack.set_bool(settings_pack::auto_manage_prefer_seeds, to_bool(value));
+			if (!p->allow_set_settings(lt::settings_pack::auto_manage_prefer_seeds)) continue;
+			pack.set_bool(lt::settings_pack::auto_manage_prefer_seeds, to_bool(value));
 		}
 		else if (key == "torrents_start_stopped")
 		{
@@ -729,14 +729,14 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			if (b)
 			{
 				m_params_model.flags = (m_params_model.flags
-					& ~torrent_flags::auto_managed)
-					| torrent_flags::paused;
+					& ~lt::torrent_flags::auto_managed)
+					| lt::torrent_flags::paused;
 			}
 			else
 			{
 				m_params_model.flags = (m_params_model.flags
-					| torrent_flags::auto_managed)
-					& ~torrent_flags::paused;
+					| lt::torrent_flags::auto_managed)
+					& ~lt::torrent_flags::paused;
 			}
 			if (m_al)
 				m_al->set_params_model(m_params_model);
@@ -763,41 +763,41 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 /*
 		else if (key == "cache.override_size")
 		{
-			if (!p->allow_set_settings(settings_pack::cache_size)) continue;
+			if (!p->allow_set_settings(lt::settings_pack::cache_size)) continue;
 
 			int size = atoi(value.c_str()) * 1024 / 16;
-			pack.set_int(settings_pack::cache_size, size);
+			pack.set_int(lt::settings_pack::cache_size, size);
 		}
 */
 		else if (key == "max_ul_rate")
 		{
-			if (!p->allow_set_settings(settings_pack::upload_rate_limit)) continue;
-			pack.set_int(settings_pack::upload_rate_limit, atoi(value.c_str()) * 1024);
+			if (!p->allow_set_settings(lt::settings_pack::upload_rate_limit)) continue;
+			pack.set_int(lt::settings_pack::upload_rate_limit, atoi(value.c_str()) * 1024);
 		}
 		else if (key == "max_dl_rate")
 		{
-			if (!p->allow_set_settings(settings_pack::download_rate_limit)) continue;
-			pack.set_int(settings_pack::download_rate_limit, atoi(value.c_str()) * 1024);
+			if (!p->allow_set_settings(lt::settings_pack::download_rate_limit)) continue;
+			pack.set_int(lt::settings_pack::download_rate_limit, atoi(value.c_str()) * 1024);
 		}
 		else if (key == "dht")
 		{
-			if (!p->allow_set_settings(settings_pack::enable_dht)) continue;
-			pack.set_bool(settings_pack::enable_dht, to_bool(value));
+			if (!p->allow_set_settings(lt::settings_pack::enable_dht)) continue;
+			pack.set_bool(lt::settings_pack::enable_dht, to_bool(value));
 		}
 		else if (key == "natpmp")
 		{
-			if (!p->allow_set_settings(settings_pack::enable_natpmp)) continue;
-			pack.set_bool(settings_pack::enable_natpmp, to_bool(value));
+			if (!p->allow_set_settings(lt::settings_pack::enable_natpmp)) continue;
+			pack.set_bool(lt::settings_pack::enable_natpmp, to_bool(value));
 		}
 		else if (key == "upnp")
 		{
-			if (!p->allow_set_settings(settings_pack::enable_upnp)) continue;
-			pack.set_bool(settings_pack::enable_upnp, to_bool(value));
+			if (!p->allow_set_settings(lt::settings_pack::enable_upnp)) continue;
+			pack.set_bool(lt::settings_pack::enable_upnp, to_bool(value));
 		}
 		else if (key == "lsd")
 		{
-			if (!p->allow_set_settings(settings_pack::enable_lsd)) continue;
-			pack.set_bool(settings_pack::enable_lsd, to_bool(value));
+			if (!p->allow_set_settings(lt::settings_pack::enable_lsd)) continue;
+			pack.set_bool(lt::settings_pack::enable_lsd, to_bool(value));
 		}
 		else if (key == "gui.default_del_action" && m_settings)
 		{
@@ -805,23 +805,23 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		}
 		else
 		{
-			int field = setting_by_name(key.c_str());
+			int field = lt::setting_by_name(key.c_str());
 			if (field < 0)
 			{
 				fprintf(stderr, "unknown setting: %s\n", key.c_str());
 				continue;
 			}
-			switch (field & settings_pack::type_mask)
+			switch (field & lt::settings_pack::type_mask)
 			{
-				case settings_pack::string_type_base:
+				case lt::settings_pack::string_type_base:
 					if (!p->allow_set_settings(field)) continue;
 					pack.set_str(field, value.c_str());
 					break;
-				case settings_pack::int_type_base:
+				case lt::settings_pack::int_type_base:
 					if (!p->allow_set_settings(field)) continue;
 					pack.set_int(field, atoi(value.c_str()));
 					break;
-				case settings_pack::bool_type_base:
+				case lt::settings_pack::bool_type_base:
 					if (!p->allow_set_settings(field)) continue;
 					pack.set_bool(field, to_bool(value));
 					break;
@@ -830,7 +830,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 	}
 	m_ses.apply_settings(pack);
 
-	error_code ec;
+	lt::error_code ec;
 	if (m_settings) m_settings->save(ec);
 }
 
@@ -838,29 +838,29 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 {
 	if (!p->allow_list()) return;
 
-	std::vector<torrent_status> t = parse_torrents(args);
+	std::vector<lt::torrent_status> t = parse_torrents(args);
 	appendf(response, ",\"files\":[");
 	int first = 1;
 	std::vector<std::int64_t> progress;
 	std::vector<lt::download_priority_t> file_prio;
-	for (std::vector<torrent_status>::iterator i = t.begin()
+	for (std::vector<lt::torrent_status>::iterator i = t.begin()
 		, end(t.end()); i != end; ++i)
 	{
 		i->handle.file_progress(progress);
 		file_prio = i->handle.get_file_priorities();
-		std::shared_ptr<const torrent_info> ti = i->torrent_file.lock();
+		std::shared_ptr<const lt::torrent_info> ti = i->torrent_file.lock();
 		if (!ti || !ti->is_valid()) continue;
-		file_storage const& files = ti->files();
+		lt::file_storage const& files = ti->files();
 
 		appendf(response, ",\"%s\",["+first, to_hex(ti->info_hash()).c_str());
 		int first_file = 1;
-		for (file_index_t i : files.file_range())
+		for (lt::file_index_t i : files.file_range())
 		{
 			int first_piece = files.file_offset(i) / files.piece_length();
 			int last_piece = (files.file_offset(i) + files.file_size(i)) / files.piece_length();
 			// don't round 1 down to 0. 0 is special (do-not-download)
 			if (file_prio[static_cast<int>(i)] == lt::low_priority)
-				file_prio[static_cast<int>(i)] = download_priority_t{2};
+				file_prio[static_cast<int>(i)] = lt::download_priority_t{2};
 			appendf(response, ",[\"%s\", %" PRId64 ", %" PRId64 ", %d" + first_file
 				, escape_json(files.file_name(i)).c_str()
 				, files.file_size(i)
@@ -888,12 +888,12 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 	response.push_back(']');
 }
 
-std::string trackers_as_string(torrent_handle h)
+std::string trackers_as_string(lt::torrent_handle h)
 {
 	std::string ret;
-	std::vector<announce_entry> trackers = h.trackers();
+	std::vector<lt::announce_entry> trackers = h.trackers();
 	int last_tier = 0;
-	for (std::vector<announce_entry>::iterator i = trackers.begin()
+	for (std::vector<lt::announce_entry>::iterator i = trackers.begin()
 		, end(trackers.end()); i != end; ++i)
 	{
 		if (last_tier != i->tier) ret += "\\r\\n";
@@ -913,7 +913,7 @@ void utorrent_webui::add_url(std::vector<char>&, char const* args, permissions_i
 	if (!url_val) return;
 	std::string const url_str = url_decode(*url_val);
 
-	add_torrent_params atp = parse_magnet_uri(url_str);
+	lt::add_torrent_params atp = lt::parse_magnet_uri(url_str);
 	atp.save_path = m_params_model.save_path;
 
 	m_ses.async_add_torrent(atp);
@@ -923,14 +923,14 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 {
 	if (!p->allow_list()) return;
 
-	std::vector<torrent_status> t = parse_torrents(args);
+	std::vector<lt::torrent_status> t = parse_torrents(args);
 	appendf(response, ",\"props\":[");
 	int first = 1;
-	for (std::vector<torrent_status>::iterator i = t.begin()
+	for (std::vector<lt::torrent_status>::iterator i = t.begin()
 		, end(t.end()); i != end; ++i)
 	{
-		torrent_status const& st = *i;
-		std::shared_ptr<const torrent_info> ti = st.torrent_file.lock();
+		lt::torrent_status const& st = *i;
+		std::shared_ptr<const lt::torrent_info> ti = st.torrent_file.lock();
 		appendf(response, ",{\"hash\":\"%s\","
 			"\"trackers\":\"%s\","
 			"\"ulrate\":%d,"
@@ -947,7 +947,7 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 			, trackers_as_string(i->handle).c_str()
 			, st.handle.download_limit()
 			, st.handle.upload_limit()
-			, bool(st.flags & torrent_flags::super_seeding)
+			, bool(st.flags & lt::torrent_flags::super_seeding)
 			, ti && ti->priv() ? 0 : m_ses.is_dht_running()
 			, ti && ti->priv() ? 0 : 1
 			, 0
@@ -961,59 +961,59 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 	response.push_back(']');
 }
 
-std::string utorrent_peer_flags(peer_info const& pi)
+std::string utorrent_peer_flags(lt::peer_info const& pi)
 {
 	std::string ret;
-	if (pi.flags & peer_info::remote_interested)
+	if (pi.flags & lt::peer_info::remote_interested)
 	{
-		ret += (pi.flags & peer_info::choked) ? 'u' : 'U';
+		ret += (pi.flags & lt::peer_info::choked) ? 'u' : 'U';
 	}
-	else if (!(pi.flags & peer_info::choked))
+	else if (!(pi.flags & lt::peer_info::choked))
 	{
 		// ERROR: we're unchoking someone that isn't interested
 		ret += '?';
 	}
 
-	if (pi.flags & peer_info::interesting)
+	if (pi.flags & lt::peer_info::interesting)
 	{
-		ret += (pi.flags & peer_info::remote_choked) ? 'd' : 'D';
+		ret += (pi.flags & lt::peer_info::remote_choked) ? 'd' : 'D';
 	}
-	else if (!(pi.flags & peer_info::remote_choked))
+	else if (!(pi.flags & lt::peer_info::remote_choked))
 	{
 		// ERROR: we're being unchoked even though we're not interested
 		ret += 'K';
 	}
 
-	if (pi.flags & peer_info::optimistic_unchoke)
+	if (pi.flags & lt::peer_info::optimistic_unchoke)
 		ret += 'O';
 
-	if (pi.flags & peer_info::snubbed)
+	if (pi.flags & lt::peer_info::snubbed)
 		ret += 'S';
 
 	// separate flags from sources with a space
 	ret += ' ';
 
-	if (!(pi.source & peer_info::incoming))
+	if (!(pi.source & lt::peer_info::incoming))
 		ret += 'I';
 
-	if ((pi.source & peer_info::dht))
+	if ((pi.source & lt::peer_info::dht))
 		ret += 'H';
 
-	if ((pi.source & peer_info::pex))
+	if ((pi.source & lt::peer_info::pex))
 		ret += 'X';
 
-	if ((pi.source & peer_info::lsd))
+	if ((pi.source & lt::peer_info::lsd))
 		ret += 'L';
 
-	if ((pi.flags & peer_info::rc4_encrypted))
+	if ((pi.flags & lt::peer_info::rc4_encrypted))
 		ret += 'E';
-	else if ((pi.flags & peer_info::plaintext_encrypted))
+	else if ((pi.flags & lt::peer_info::plaintext_encrypted))
 		ret += 'e';
 
-	if ((pi.flags & peer_info::on_parole))
+	if ((pi.flags & lt::peer_info::on_parole))
 		ret += 'F';
 
-	if (pi.flags & peer_info::utp_socket)
+	if (pi.flags & lt::peer_info::utp_socket)
 		ret += 'P';
 	return ret;
 }
@@ -1022,28 +1022,28 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 {
 	if (!p->allow_list()) return;
 
-	std::vector<torrent_status> torrents = parse_torrents(args);
+	std::vector<lt::torrent_status> torrents = parse_torrents(args);
 	appendf(response, ",\"peers\":[");
 	int first = 1;
-	for (std::vector<torrent_status>::iterator i = torrents.begin()
+	for (std::vector<lt::torrent_status>::iterator i = torrents.begin()
 		, end(torrents.end()); i != end; ++i)
 	{
-		std::shared_ptr<const torrent_info> ti = i->torrent_file.lock();
+		std::shared_ptr<const lt::torrent_info> ti = i->torrent_file.lock();
 		if (!ti || !ti->is_valid()) continue;
 
 		appendf(response, ",\"%s\",[" + first
 			, to_hex(i->info_hash).c_str());
 
 		int first_peer = 1;
-		std::vector<peer_info> peers;
+		std::vector<lt::peer_info> peers;
 		i->handle.get_peer_info(peers);
-		for (peer_info const& p : peers)
+		for (lt::peer_info const& p : peers)
 		{
 			appendf(response, ",[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
 				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]" + first_peer
 				, (p.ip.address().to_string() + ":" + std::to_string(p.ip.port())).c_str()
 				, ""
-				, bool(p.flags & peer_info::utp_socket)
+				, bool(p.flags & lt::peer_info::utp_socket)
 				, p.ip.port()
 				, escape_json(p.client).c_str()
 				, utorrent_peer_flags(p).c_str()
@@ -1052,7 +1052,7 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 				, p.up_speed
 				, p.download_queue_length
 				, p.upload_queue_length
-				, total_seconds(p.last_request)
+				, lt::total_seconds(p.last_request)
 				, p.total_upload
 				, p.total_download
 				, p.num_hashfails
@@ -1060,7 +1060,7 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 				, 0
 				, 0
 				, p.send_buffer_size
-				, total_seconds(p.last_active)
+				, lt::total_seconds(p.last_active)
 				, 0
 				);
 			first_peer = 0;
@@ -1074,8 +1074,8 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 
 void utorrent_webui::get_version(std::vector<char>& response, char const* args, permissions_interface const* p)
 {
-	settings_pack const sett = m_ses.get_settings();
-	auto const our_peer_id = sett.get_str(settings_pack::peer_fingerprint);
+	lt::settings_pack const sett = m_ses.get_settings();
+	auto const our_peer_id = sett.get_str(lt::settings_pack::peer_fingerprint);
 	appendf(response, ",\"version\":{\"engine_version\": \"%s\""
 		",\"major_version\": %d"
 		",\"minor_version\": %d"
@@ -1084,7 +1084,7 @@ void utorrent_webui::get_version(std::vector<char>& response, char const* args, 
 		",\"product_code\": \"server\""
 		"}"
 		, LIBTORRENT_REVISION, LIBTORRENT_VERSION_MAJOR, LIBTORRENT_VERSION_MINOR
-		, to_hex(our_peer_id).c_str(), m_ses.get_settings().get_str(settings_pack::user_agent).c_str());
+		, to_hex(our_peer_id).c_str(), m_ses.get_settings().get_str(lt::settings_pack::user_agent).c_str());
 }
 
 enum ut_state_t
@@ -1099,69 +1099,69 @@ enum ut_state_t
 	LOADED = 128
 };
 
-int utorrent_status(torrent_status const& st)
+int utorrent_status(lt::torrent_status const& st)
 {
 	int ret = 0;
 	if (st.has_metadata) ret |= LOADED;
-	if (!(st.flags & torrent_flags::paused) && (st.state == torrent_status::downloading
-		|| st.state == torrent_status::downloading_metadata
-		|| st.state == torrent_status::seeding
-		|| st.state == torrent_status::finished))
+	if (!(st.flags & lt::torrent_flags::paused) && (st.state == lt::torrent_status::downloading
+		|| st.state == lt::torrent_status::downloading_metadata
+		|| st.state == lt::torrent_status::seeding
+		|| st.state == lt::torrent_status::finished))
 		ret |= STARTED;
 
-	if (!(st.flags & torrent_flags::paused) && st.state == torrent_status::checking_files)
+	if (!(st.flags & lt::torrent_flags::paused) && st.state == lt::torrent_status::checking_files)
 		ret |= CHECKING;
 	else
 		ret |= CHECKED;
 	if (st.errc) ret |= ERROR;
-	if (st.flags & torrent_flags::auto_managed) ret |= AUTO;
+	if (st.flags & lt::torrent_flags::auto_managed) ret |= AUTO;
 	return ret;
 }
 
-std::string utorrent_message(torrent_status const& st)
+std::string utorrent_message(lt::torrent_status const& st)
 {
 	if (st.errc) return "Error: " + st.errc.message();
-	if (st.flags & torrent_flags::upload_mode) return "Upload Mode";
+	if (st.flags & lt::torrent_flags::upload_mode) return "Upload Mode";
 
-	if (st.state == torrent_status::checking_resume_data)
+	if (st.state == lt::torrent_status::checking_resume_data)
 		return "Checking";
 
-	if (st.state == torrent_status::checking_files)
+	if (st.state == lt::torrent_status::checking_files)
 	{
 		char msg[200];
 		snprintf(msg, sizeof(msg), "Checking (%d.%1d%%)"
 			, st.progress_ppm / 10000, st.progress_ppm % 10000);
 		return msg;
 	}
-	if (st.state == torrent_status::downloading)
+	if (st.state == lt::torrent_status::downloading)
 	{
-		if (st.flags & torrent_flags::auto_managed)
+		if (st.flags & lt::torrent_flags::auto_managed)
 		{
-			return (st.flags & torrent_flags::paused) ? "Queued" : "Downloading";
+			return (st.flags & lt::torrent_flags::paused) ? "Queued" : "Downloading";
 		}
 		else
 		{
-			return (st.flags & torrent_flags::paused) ? "Stopped" : "[F] Downloading";
+			return (st.flags & lt::torrent_flags::paused) ? "Stopped" : "[F] Downloading";
 		}
 	}
 
-	if (st.state == torrent_status::seeding
-		|| st.state == torrent_status::finished)
+	if (st.state == lt::torrent_status::seeding
+		|| st.state == lt::torrent_status::finished)
 	{
-		if (st.flags & torrent_flags::auto_managed)
+		if (st.flags & lt::torrent_flags::auto_managed)
 		{
-			return (st.flags & torrent_flags::paused) ? "Queued Seed" : "Seeding";
+			return (st.flags & lt::torrent_flags::paused) ? "Queued Seed" : "Seeding";
 		}
 		else
 		{
-			return (st.flags & torrent_flags::paused) ? "Finished" : "[F] Seeding";
+			return (st.flags & lt::torrent_flags::paused) ? "Finished" : "[F] Seeding";
 		}
 	}
 
-	if (st.state == torrent_status::downloading_metadata)
+	if (st.state == lt::torrent_status::downloading_metadata)
 		return "Downloading metadata";
 
-//	if (st.state == torrent_status::allocating)
+//	if (st.state == lt::torrent_status::allocating)
 //		return "Allocating";
 
 	assert(false);
@@ -1178,13 +1178,13 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 
 	appendf(response, cid > 0 ? ",\"torrentp\":[" : ",\"torrents\":[");
 
-	std::vector<torrent_status> torrents;
+	std::vector<lt::torrent_status> torrents;
 	m_hist->updated_since(cid, torrents);
 
 	int first = 1;
-	for (torrent_status const& t : torrents)
+	for (lt::torrent_status const& t : torrents)
 	{
-		std::shared_ptr<const torrent_info> ti = t.torrent_file.lock();
+		std::shared_ptr<const lt::torrent_info> ti = t.torrent_file.lock();
 		appendf(response, ",[\"%s\",%d,\"%s\",%" PRId64 ",%d,%" PRId64 ",%" PRId64 ",%f,%d,%d,%d,\"%s\",%d,%d,%d,%d,%d,%d,%" PRId64 "" + first
 			, to_hex(t.info_hash).c_str()
 			, utorrent_status(t)
@@ -1248,9 +1248,9 @@ void utorrent_webui::send_rss_list(std::vector<char>& response, char const* args
 	appendf(response, ",\"rssfeeds\":[],\"rssfeedm\":[],\"rssfilters\":[],\"rssfilterm\":[]");
 }
 
-std::vector<torrent_status> utorrent_webui::parse_torrents(char const* args) const
+std::vector<lt::torrent_status> utorrent_webui::parse_torrents(char const* args) const
 {
-	std::vector<torrent_status> ret;
+	std::vector<lt::torrent_status> ret;
 
 	for (char const* hash = strstr(args, "&hash="); hash; hash = strstr(hash, "&hash="))
 	{
@@ -1258,10 +1258,10 @@ std::vector<torrent_status> utorrent_webui::parse_torrents(char const* args) con
 		char const* end = strchr(hash, '&');
 		if (end != nullptr && end - hash != 40) continue;
 		if (end == nullptr && strlen(hash) != 40) continue;
-		sha1_hash h;
+		lt::sha1_hash h;
 		bool ok = from_hex({hash, 40}, h.data());
 		if (!ok) continue;
-		torrent_status ts = m_hist->get_torrent_status(h);
+		lt::torrent_status ts = m_hist->get_torrent_status(h);
 		if (!ts.handle.is_valid()) continue;
 		ret.push_back(ts);
 	}

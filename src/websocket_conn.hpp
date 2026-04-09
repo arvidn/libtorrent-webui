@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_WEBSOCKET_CONN_HPP
-#define TORRENT_WEBSOCKET_CONN_HPP
+#ifndef LTWEB_WEBSOCKET_CONN_HPP
+#define LTWEB_WEBSOCKET_CONN_HPP
 
 #include <memory> // enable_shared_from_this
 #include <functional>
@@ -41,7 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/http.hpp>
 
-namespace libtorrent {
+namespace ltweb {
 
 namespace ws = boost::beast::websocket;
 namespace http = boost::beast::http;

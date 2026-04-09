@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_ALERT_HANDLER_HPP_INCLUDED
-#define TORRENT_ALERT_HANDLER_HPP_INCLUDED
+#ifndef LTWEB_ALERT_HANDLER_HPP_INCLUDED
+#define LTWEB_ALERT_HANDLER_HPP_INCLUDED
 
 #include <vector>
 #include <memory>
@@ -41,7 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/fwd.hpp"
 #include "libtorrent/alert_types.hpp" // for num_alert_types
 
-namespace libtorrent
+namespace ltweb
 {
 
 struct alert_observer;
@@ -57,7 +57,7 @@ struct TORRENT_EXPORT alert_handler
 	// the corresponding category of alerts in the session somehow
 	// TODO: 3 make this a variadic template
 	void subscribe(alert_observer* o, int flags = 0, ...);
-	void dispatch_alerts(std::vector<alert*>& alerts) const;
+	void dispatch_alerts(std::vector<lt::alert*>& alerts) const;
 	void dispatch_alerts() const;
 	void unsubscribe(alert_observer* o);
 
@@ -67,17 +67,17 @@ private:
 
 	void subscribe_impl(int const* type_list, int num_types, alert_observer* o, int flags);
 
-	std::array<std::vector<alert_observer*>, num_alert_types> m_observers;
+	std::array<std::vector<alert_observer*>, lt::num_alert_types> m_observers;
 
 	// when set to true, all outstanding (std::future-based) subscriptions
 	// are cancelled, and new such subscriptions are disabled, by failing
 	// immediately
 	bool m_abort;
 
-	session& m_ses;
+	lt::session& m_ses;
 };
 
 }
 
-#endif // TORRENT_ALERT_HANDLER_HPP_INCLUDED
+#endif // LTWEB_ALERT_HANDLER_HPP_INCLUDED
 

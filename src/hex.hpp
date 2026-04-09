@@ -30,19 +30,19 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_HEX_HPP
-#define TORRENT_HEX_HPP
+#ifndef LTWEB_HEX_HPP
+#define LTWEB_HEX_HPP
 
 #include "libtorrent/span.hpp"
 #include "libtorrent/info_hash.hpp"
 #include <string>
 #include <type_traits>
 
-namespace libtorrent {
+namespace ltweb {
 
-	std::string to_hex(span<char const> in);
-	void to_hex(span<char const> in, char* out);
-	bool from_hex(span<char const> in, char* out);
+	std::string to_hex(lt::span<char const> in);
+	void to_hex(lt::span<char const> in, char* out);
+	bool from_hex(lt::span<char const> in, char* out);
 
 	template <typename T>
 	typename std::enable_if<std::is_same<T, lt::info_hash_t>::value, std::string>::type

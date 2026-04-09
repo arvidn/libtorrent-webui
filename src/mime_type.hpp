@@ -35,7 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <string_view>
 
-namespace libtorrent {
+namespace ltweb {
 
 std::string_view mime_type(std::string_view ext);
 

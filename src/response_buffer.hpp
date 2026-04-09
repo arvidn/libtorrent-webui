@@ -30,13 +30,13 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_RESPONSE_BUFFER_HPP
-#define TORRENT_RESPONSE_BUFFER_HPP
+#ifndef LTWEB_RESPONSE_BUFFER_HPP
+#define LTWEB_RESPONSE_BUFFER_HPP
 
 #include <vector>
 #include <stdarg.h>
 
-namespace libtorrent
+namespace ltweb
 {
 	inline void appendf(std::vector<char>& target, char const* fmt, ...)
 	{

@@ -41,10 +41,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "escape_json.hpp"
 #include "libtorrent/assert.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
-std::string escape_json(string_view input)
+std::string escape_json(lt::string_view input)
 {
 	if (input.empty()) return "";
 	std::string ret;

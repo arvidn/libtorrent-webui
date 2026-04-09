@@ -30,13 +30,15 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_URL_DECODE_HPP
-#define TORRENT_URL_DECODE_HPP
+#ifndef LTWEB_URL_DECODE_HPP
+#define LTWEB_URL_DECODE_HPP
 
 #include <cstdlib>
 #include <string>
 #include <boost/system/error_code.hpp>
 #include <boost/system/errc.hpp>
+
+namespace ltweb {
 
 // Decode a percent-encoded URL string (application/x-www-form-urlencoded).
 // '+' is decoded as space; %XX sequences are decoded as bytes.
@@ -73,4 +75,6 @@ inline std::string url_decode(std::string const& s, boost::system::error_code& e
 	return out;
 }
 
-#endif // TORRENT_URL_DECODE_HPP
+} // namespace ltweb
+
+#endif // LTWEB_URL_DECODE_HPP

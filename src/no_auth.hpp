@@ -30,14 +30,14 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_NO_AUTH_HPP
-#define TORRENT_NO_AUTH_HPP
+#ifndef LTWEB_NO_AUTH_HPP
+#define LTWEB_NO_AUTH_HPP
 
 #include <string>
 
 #include "auth_interface.hpp"
 
-namespace libtorrent
+namespace ltweb
 {
 
 struct no_auth : auth_interface
@@ -48,5 +48,5 @@ struct no_auth : auth_interface
 
 }
 
-#endif // TORRENT_NO_AUTH_HPP
+#endif // LTWEB_NO_AUTH_HPP
 

@@ -30,15 +30,15 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_TORRENT_POST_HPP
-#define TORRENT_TORRENT_POST_HPP
+#ifndef LTWEB_TORRENT_POST_HPP
+#define LTWEB_TORRENT_POST_HPP
 
 #include "webui.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
 #include "libtorrent/add_torrent_params.hpp"
 
-bool parse_torrent_post(http::request<http::string_body> const& req, libtorrent::add_torrent_params& p, libtorrent::error_code& ec);
+bool parse_torrent_post(http::request<http::string_body> const& req, lt::add_torrent_params& p, lt::error_code& ec);
 
 #endif
 

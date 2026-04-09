@@ -42,13 +42,13 @@ namespace {
 std::string decode(std::string const& s)
 {
 	boost::system::error_code ec;
-	return url_decode(s, ec);
+	return ltweb::url_decode(s, ec);
 }
 
 bool decode_fails(std::string const& s)
 {
 	boost::system::error_code ec;
-	url_decode(s, ec);
+	ltweb::url_decode(s, ec);
 	return !!ec;
 }
 

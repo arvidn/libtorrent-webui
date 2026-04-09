@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_TORRENT_HISTORY_HPP
-#define TORRENT_TORRENT_HISTORY_HPP
+#ifndef LTWEB_TORRENT_HISTORY_HPP
+#define LTWEB_TORRENT_HISTORY_HPP
 
 #include "alert_observer.hpp"
 #include "libtorrent/torrent_status.hpp"
@@ -43,22 +43,22 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <boost/bimap/list_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
-namespace libtorrent
+namespace ltweb
 {
 	struct alert_handler;
 
 	using frame_t = std::uint32_t;
 
 	// this is the type that keeps track of frame counters for each
-	// field in torrent_status. The frame counters indicate which frame
+	// field in lt::torrent_status. The frame counters indicate which frame
 	// they were last modified in. This is used to send minimal updates
 	// of changes to torrents.
 	struct torrent_history_entry
 	{
 		// this is the current state of the torrent
-		torrent_status status;
+		lt::torrent_status status;
 
-		void update_status(torrent_status const& s, frame_t frame);
+		void update_status(lt::torrent_status const& s, frame_t frame);
 
 		bool operator==(torrent_history_entry const& e) const { return e.status.info_hashes == status.info_hashes; }
 
@@ -136,7 +136,7 @@ namespace libtorrent
 
 		torrent_history_entry() {}
 
-		torrent_history_entry(torrent_status const& st, frame_t const f)
+		torrent_history_entry(lt::torrent_status const& st, frame_t const f)
 			: status(st)
 		{
 			frame.fill(f);
@@ -158,19 +158,19 @@ namespace libtorrent
 		// removed since the specified frame number
 		std::vector<lt::info_hash_t> removed_since(frame_t frame) const;
 
-		// returns the torrent_status structures for the torrents
+		// returns the lt::torrent_status structures for the torrents
 		// that have changed since the specified frame number
-		void updated_since(frame_t frame, std::vector<torrent_status>& torrents) const;
+		void updated_since(frame_t frame, std::vector<lt::torrent_status>& torrents) const;
 
 		void updated_fields_since(frame_t frame, std::vector<torrent_history_entry>& torrents) const;
 
-		torrent_status get_torrent_status(sha1_hash const& ih) const;
-		torrent_status get_torrent_status(sha256_hash const& ih) const;
+		lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
+		lt::torrent_status get_torrent_status(lt::sha256_hash const& ih) const;
 
 		// the current frame number
 		frame_t frame() const;
 
-		virtual void handle_alert(alert const* a);
+		virtual void handle_alert(lt::alert const* a);
 
 	private:
 

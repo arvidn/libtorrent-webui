@@ -40,10 +40,10 @@ int main_ret = 0;
 
 namespace {
 
-// Call parse_mime_part on a std::string_view for convenience.
+// Call ltweb::parse_mime_part on a std::string_view for convenience.
 char const* parse(std::string_view part, std::string& ct)
 {
-	return parse_mime_part(part.data(), part.data() + part.size(), ct);
+	return ltweb::parse_mime_part(part.data(), part.data() + part.size(), ct);
 }
 
 } // anonymous namespace

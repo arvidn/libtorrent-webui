@@ -30,8 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_TEXT_UI_HPP
-#define TORRENT_TEXT_UI_HPP
+#ifndef LTWEB_TEXT_UI_HPP
+#define LTWEB_TEXT_UI_HPP
 
 #include <string>
 #include "alert_observer.hpp"
@@ -41,7 +41,7 @@ extern "C" {
 #include <cdk/cdk.h>
 }
 
-namespace libtorrent
+namespace ltweb
 {
 	struct alert_handler;
 

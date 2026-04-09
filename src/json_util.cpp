@@ -35,7 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string.h> // for strcmp()
 #include <stdlib.h> // for strtoll()
 
-namespace libtorrent {
+namespace ltweb {
 
 // skip i. if i points to an object or an array, this function
 // needs to make recursive calls to skip its members too

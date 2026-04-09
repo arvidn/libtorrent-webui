@@ -54,8 +54,9 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace ws = boost::beast::websocket;
 
 using namespace std::literals::chrono_literals;
+using namespace lt::literals;
 
-namespace libtorrent {
+namespace ltweb {
 namespace {
 
 	template <typename It> std::uint8_t read_uint8(It& p) { return static_cast<std::uint8_t>(*p++); }
@@ -226,7 +227,7 @@ namespace {
 		int len;
 	};
 
-	libtorrent_webui::libtorrent_webui(session& ses, torrent_history const* hist
+	libtorrent_webui::libtorrent_webui(lt::session& ses, torrent_history const* hist
 		, auth_interface const* auth, alert_handler* alert)
 		: m_ses(ses)
 		, m_hist(hist)
@@ -235,13 +236,13 @@ namespace {
 	{
 		m_params_model.save_path = ".";
 
-		if (m_stats.size() < counters::num_counters)
-			m_stats.resize(counters::num_counters
+		if (m_stats.size() < lt::counters::num_counters)
+			m_stats.resize(lt::counters::num_counters
 				, std::pair<std::int64_t, frame_t>(0, 0));
 
 		m_alert->subscribe(this, 0
-			, session_stats_alert::alert_type
-			, add_torrent_alert::alert_type
+			, lt::session_stats_alert::alert_type
+			, lt::add_torrent_alert::alert_type
 			, 0);
 	}
 
@@ -344,7 +345,7 @@ namespace {
 			// are included in the update for this torrent
 			write_uint64(bitmask, ptr);
 
-			torrent_status const& s = i->status;
+			lt::torrent_status const& s = i->status;
 
 			for (int f = 0; f < 23; ++f)
 			{
@@ -356,18 +357,18 @@ namespace {
 					case 0: // flags
 					{
 						std::uint64_t const flags =
-							((s.flags & torrent_flags::paused) ? 0x001 : 0)
-							| ((s.flags & torrent_flags::auto_managed) ? 0x002 : 0)
-							| ((s.flags & torrent_flags::sequential_download) ? 0x004 : 0)
+							((s.flags & lt::torrent_flags::paused) ? 0x001 : 0)
+							| ((s.flags & lt::torrent_flags::auto_managed) ? 0x002 : 0)
+							| ((s.flags & lt::torrent_flags::sequential_download) ? 0x004 : 0)
 							| (s.is_seeding ? 0x008 : 0)
 							| (s.is_finished ? 0x010 : 0)
 							// 0x20 is unused
 							| (s.has_metadata ? 0x040 : 0)
 							| (s.has_incoming ? 0x080 : 0)
-							| ((s.flags & torrent_flags::seed_mode) ? 0x100 : 0)
-							| ((s.flags & torrent_flags::upload_mode) ? 0x200 : 0)
-							| ((s.flags & torrent_flags::share_mode) ? 0x400 : 0)
-							| ((s.flags & torrent_flags::super_seeding) ? 0x800 : 0)
+							| ((s.flags & lt::torrent_flags::seed_mode) ? 0x100 : 0)
+							| ((s.flags & lt::torrent_flags::upload_mode) ? 0x200 : 0)
+							| ((s.flags & lt::torrent_flags::share_mode) ? 0x400 : 0)
+							| ((s.flags & lt::torrent_flags::super_seeding) ? 0x800 : 0)
 							| (s.moving_storage  ? 0x1000 : 0)
 							| (s.announcing_to_trackers ? 0x2000 : 0)
 							| (s.announcing_to_lsd ? 0x4000 : 0)
@@ -451,19 +452,19 @@ namespace {
 						int state;
 						switch (s.state)
 						{
-							case torrent_status::checking_files:
-							case torrent_status::checking_resume_data:
+							case lt::torrent_status::checking_files:
+							case lt::torrent_status::checking_resume_data:
 								state = 0; // checking-files
 								break;
-							case torrent_status::downloading_metadata:
+							case lt::torrent_status::downloading_metadata:
 								state = 1; // downloading-metadata
 								break;
-							case torrent_status::downloading:
+							case lt::torrent_status::downloading:
 							default:
 								state = 2; // downloading
 								break;
-							case torrent_status::finished:
-							case torrent_status::seeding:
+							case lt::torrent_status::finished:
+							case lt::torrent_status::seeding:
 								state = 3; // seeding
 								break;
 						};
@@ -514,9 +515,9 @@ namespace {
 			// TODO: we should use short, 32 bit, indices for torrents, rather
 			// than the full info-hash. This would also simplify support for
 			// bittorrent-v2
-			sha1_hash const h(ptr + i*20);
+			lt::sha1_hash const h(ptr + i*20);
 
-			torrent_status ts = m_hist->get_torrent_status(h);
+			lt::torrent_status ts = m_hist->get_torrent_status(h);
 			if (!ts.handle.is_valid()) continue;
 			fun(ts.handle);
 			++counter;
@@ -529,8 +530,8 @@ namespace {
 		if (!st->perms()->allow_start())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.set_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.set_flags(lt::torrent_flags::auto_managed);
 			handle.clear_error();
 			handle.resume();
 		});
@@ -541,8 +542,8 @@ namespace {
 		if (!st->perms()->allow_stop())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.unset_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.unset_flags(lt::torrent_flags::auto_managed);
 			handle.pause();
 		});
 	}
@@ -552,8 +553,8 @@ namespace {
 		if (!st->perms()->allow_stop())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.set_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.set_flags(lt::torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::clear_auto_managed(websocket_conn* st, function_call f)
@@ -561,8 +562,8 @@ namespace {
 		if (!st->perms()->allow_start())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.unset_flags(torrent_flags::auto_managed);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.unset_flags(lt::torrent_flags::auto_managed);
 		});
 	}
 	bool libtorrent_webui::queue_up(websocket_conn* st, function_call f)
@@ -570,7 +571,7 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
 			handle.queue_position_up();
 		});
 	}
@@ -579,7 +580,7 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
 			handle.queue_position_down();
 		});
 	}
@@ -588,7 +589,7 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
 			handle.queue_position_top();
 		});
 	}
@@ -597,7 +598,7 @@ namespace {
 		if (!st->perms()->allow_queue_change())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
 			handle.queue_position_bottom();
 		});
 	}
@@ -606,7 +607,7 @@ namespace {
 		if (!st->perms()->allow_remove())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [this](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [this](lt::torrent_handle const& handle) {
 			m_ses.remove_torrent(handle);
 		});
 	}
@@ -616,8 +617,8 @@ namespace {
 			|| !st->perms()->allow_remove_data())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [this](torrent_handle const& handle) {
-			m_ses.remove_torrent(handle, session::delete_files);
+		return apply_torrent_fun(st, f, [this](lt::torrent_handle const& handle) {
+			m_ses.remove_torrent(handle, lt::session::delete_files);
 		});
 	}
 	bool libtorrent_webui::force_recheck(websocket_conn* st, function_call f)
@@ -625,22 +626,22 @@ namespace {
 		if (!st->perms()->allow_recheck())
 			return error(st, f, permission_denied);
 
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
 			handle.force_recheck();
 		});
 	}
 	bool libtorrent_webui::set_sequential_download(websocket_conn* st, function_call f)
 	{
 		// TODO: permissions
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.set_flags(torrent_flags::sequential_download);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.set_flags(lt::torrent_flags::sequential_download);
 		});
 	}
 	bool libtorrent_webui::clear_sequential_download(websocket_conn* st, function_call f)
 	{
 		// TODO: permissions
-		return apply_torrent_fun(st, f, [](torrent_handle const& handle) {
-			handle.unset_flags(torrent_flags::sequential_download);
+		return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+			handle.unset_flags(lt::torrent_flags::sequential_download);
 		});
 	}
 
@@ -653,17 +654,17 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
-		write_uint32(settings_pack::num_string_settings, ptr);
-		write_uint32(settings_pack::num_int_settings, ptr);
-		write_uint32(settings_pack::num_bool_settings, ptr);
+		write_uint32(lt::settings_pack::num_string_settings, ptr);
+		write_uint32(lt::settings_pack::num_int_settings, ptr);
+		write_uint32(lt::settings_pack::num_bool_settings, ptr);
 
-		for (int i = settings_pack::string_type_base;
-			i < settings_pack::max_string_setting_internal; ++i)
+		for (int i = lt::settings_pack::string_type_base;
+			i < lt::settings_pack::max_string_setting_internal; ++i)
 		{
 			if (!st->perms()->allow_get_settings(i))
 				continue;
 
-			char const* n = name_for_setting(i);
+			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
@@ -672,13 +673,13 @@ namespace {
 			write_uint16(i, ptr);
 		}
 
-		for (int i = settings_pack::int_type_base;
-			i < settings_pack::max_int_setting_internal; ++i)
+		for (int i = lt::settings_pack::int_type_base;
+			i < lt::settings_pack::max_int_setting_internal; ++i)
 		{
 			if (!st->perms()->allow_get_settings(i))
 				continue;
 
-			char const* n = name_for_setting(i);
+			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
@@ -687,13 +688,13 @@ namespace {
 			write_uint16(i, ptr);
 		}
 
-		for (int i = settings_pack::bool_type_base;
-			i < settings_pack::max_bool_setting_internal; ++i)
+		for (int i = lt::settings_pack::bool_type_base;
+			i < lt::settings_pack::max_bool_setting_internal; ++i)
 		{
 			if (!st->perms()->allow_get_settings(i))
 				continue;
 
-			char const* n = name_for_setting(i);
+			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
@@ -712,7 +713,7 @@ namespace {
 		int num_settings = read_uint16(ptr);
 		f.len -= 2;
 
-		settings_pack pack;
+		lt::settings_pack pack;
 
 		for (int i = 0; i < num_settings; ++i)
 		{
@@ -723,7 +724,7 @@ namespace {
 			if (!st->perms()->allow_set_settings(sett))
 				return error(st, f, permission_denied);
 
-			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
+			if (sett >= lt::settings_pack::string_type_base && sett < lt::settings_pack::max_string_setting_internal)
 			{
 				if (f.len < 2) return error(st, f, invalid_number_of_args);
 				int len = read_uint16(ptr);
@@ -735,13 +736,13 @@ namespace {
 				ptr += len;
 				pack.set_str(sett, str);
 			}
-			else if (sett >= settings_pack::int_type_base && sett < settings_pack::max_int_setting_internal)
+			else if (sett >= lt::settings_pack::int_type_base && sett < lt::settings_pack::max_int_setting_internal)
 			{
 				if (f.len < 4) return error(st, f, invalid_number_of_args);
 				pack.set_int(sett, read_uint32(ptr));
 				f.len -= 4;
 			}
-			else if (sett >= settings_pack::bool_type_base && sett < settings_pack::max_bool_setting_internal)
+			else if (sett >= lt::settings_pack::bool_type_base && sett < lt::settings_pack::max_bool_setting_internal)
 			{
 				if (f.len < 1) return error(st, f, invalid_number_of_args);
 				pack.set_bool(sett, read_uint8(ptr));
@@ -776,7 +777,7 @@ namespace {
 
 		write_uint16(num_settings, ptr);
 
-		settings_pack s = m_ses.get_settings();
+		lt::settings_pack s = m_ses.get_settings();
 
 		for (int i = 0; i < num_settings; ++i)
 		{
@@ -785,17 +786,17 @@ namespace {
 			if (!st->perms()->allow_get_settings(sett))
 				return error(st, f, permission_denied);
 
-			if (sett >= settings_pack::string_type_base && sett < settings_pack::max_string_setting_internal)
+			if (sett >= lt::settings_pack::string_type_base && sett < lt::settings_pack::max_string_setting_internal)
 			{
 				std::string const& v = s.get_str(sett);
 				write_uint16(v.length(), ptr);
 				std::copy(v.begin(), v.end(), ptr);
 			}
-			else if (sett >= settings_pack::int_type_base && sett < settings_pack::max_int_setting_internal)
+			else if (sett >= lt::settings_pack::int_type_base && sett < lt::settings_pack::max_int_setting_internal)
 			{
 				write_uint32(s.get_int(sett), ptr);
 			}
-			else if (sett >= settings_pack::bool_type_base && sett < settings_pack::max_bool_setting_internal)
+			else if (sett >= lt::settings_pack::bool_type_base && sett < lt::settings_pack::max_bool_setting_internal)
 			{
 				write_uint8(s.get_bool(sett), ptr);
 			}
@@ -820,7 +821,7 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
-		std::vector<stats_metric> stats = session_stats_metrics();
+		std::vector<lt::stats_metric> stats = lt::session_stats_metrics();
 		write_uint16(stats.size(), ptr);
 
 		for (auto const& s : stats)
@@ -836,17 +837,17 @@ namespace {
 		return st->send_packet(&response[0], response.size());
 	}
 
-	void libtorrent_webui::handle_alert(alert const* a)
+	void libtorrent_webui::handle_alert(lt::alert const* a)
 	{
-		if (auto* ss = alert_cast<session_stats_alert>(a))
+		if (auto* ss = lt::alert_cast<lt::session_stats_alert>(a))
 		{
 			std::unique_lock<std::mutex> l(m_stats_mutex);
 
 			++m_stats_frame;
-			span<std::int64_t const> stats = ss->counters();
+			lt::span<std::int64_t const> stats = ss->counters();
 
 			// first update our copy of the stats, and update their frame counters
-			for (int i = 0; i < counters::num_counters; ++i)
+			for (int i = 0; i < lt::counters::num_counters; ++i)
 			{
 				if (m_stats[i].first != stats[i])
 				{
@@ -857,7 +858,7 @@ namespace {
 
 			// TODO: notify handler?
 		}
-		else if (auto* at = alert_cast<add_torrent_alert>(a))
+		else if (auto* at = lt::alert_cast<lt::add_torrent_alert>(a))
 		{
 			auto* ud = static_cast<add_torrent_user_data*>(at->params.userdata);
 			if (ud == nullptr) return;
@@ -893,7 +894,7 @@ namespace {
 		m_ses.post_session_stats();
 
 		// TODO: have a queue of calls to be made the next time we receive a
-		// session_stats_alert (that holds owning websocket_conn pointers). Don't
+		// lt::session_stats_alert (that holds owning websocket_conn pointers). Don't
 		// respond right now, but when we actually get fresh numbers
 
 		std::vector<char> response;
@@ -939,12 +940,12 @@ namespace {
 
 		char const* iptr = f.data;
 		if (f.len != 24) return error(st, f, invalid_number_of_args);
-		sha1_hash ih(iptr);
+		lt::sha1_hash ih(iptr);
 		iptr += 20;
 		frame_t const frame = read_int32(iptr);
 		(void)frame;
 
-		torrent_handle h = m_ses.find_torrent(ih);
+		lt::torrent_handle h = m_ses.find_torrent(ih);
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::vector<char> response;
@@ -955,12 +956,12 @@ namespace {
 		write_uint8(no_error, ptr);
 
 		std::vector<std::int64_t> fp;
-		h.file_progress(fp, torrent_handle::piece_granularity);
+		h.file_progress(fp, lt::torrent_handle::piece_granularity);
 
-		std::shared_ptr<const torrent_info> t = h.torrent_file();
+		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
 		if (!t) return error(st, f, resource_not_found);
 
-		file_storage const& fs = t->files();
+		lt::file_storage const& fs = t->files();
 
 		// just in case
 		fp.resize(fs.num_files(), 0);
@@ -1024,14 +1025,14 @@ namespace {
 
 		lt::string_view magnet_link(iptr, magnet_len);
 
-		add_torrent_params atp = m_params_model;
+		lt::add_torrent_params atp = m_params_model;
 
 		lt::error_code ec;
-		parse_magnet_uri(magnet_link, atp, ec);
+		lt::parse_magnet_uri(magnet_link, atp, ec);
 		if (ec) return error(st, f, parse_error);
 
 		atp.save_path = m_params_model.save_path;
-		atp.flags |= torrent_flags::duplicate_is_error;
+		atp.flags |= lt::torrent_flags::duplicate_is_error;
 
 		atp.userdata = new add_torrent_user_data{st->shared_from_this()
 			, f.function_id
@@ -1051,7 +1052,7 @@ namespace {
 	}
 
 	// TODO: this should take a span
-	bool libtorrent_webui::on_websocket_read(websocket_conn* st, span<char const> data)
+	bool libtorrent_webui::on_websocket_read(websocket_conn* st, lt::span<char const> data)
 	{
 		// parse RPC message
 

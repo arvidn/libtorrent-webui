@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "hex.hpp"
 #include <string>
 
-namespace libtorrent {
+namespace ltweb {
 
 	int hex_to_int(char in)
 	{
@@ -43,7 +43,7 @@ namespace libtorrent {
 		return -1;
 	}
 
-	bool is_hex(span<char const> in)
+	bool is_hex(lt::span<char const> in)
 	{
 		for (char const c : in)
 		{
@@ -53,7 +53,7 @@ namespace libtorrent {
 		return true;
 	}
 
-	bool from_hex(span<char const> in, char* out)
+	bool from_hex(lt::span<char const> in, char* out)
 	{
 		for (auto i = in.begin(), end = in.end(); i != end; ++i, ++out)
 		{
@@ -81,7 +81,7 @@ namespace libtorrent {
 		}
 	}
 
-	std::string to_hex(span<char const> in)
+	std::string to_hex(lt::span<char const> in)
 	{
 		std::string ret;
 		if (!in.empty())
@@ -92,7 +92,7 @@ namespace libtorrent {
 		return ret;
 	}
 
-	void to_hex(span<char const> in, char* out)
+	void to_hex(lt::span<char const> in, char* out)
 	{
 		to_hex(in.data(), in.size(), out);
 		out[in.size() * 2] = '\0';

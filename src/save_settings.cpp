@@ -43,7 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/bencode.hpp"
 #include <filesystem>
 
-namespace libtorrent
+namespace ltweb
 {
 
 
@@ -61,37 +61,37 @@ int save_file(std::string const& filename, std::vector<char> const& v)
 	return !f.fail();
 }
 
-save_settings::save_settings(session& s, settings_pack const& sett
+save_settings::save_settings(lt::session& s, lt::settings_pack const& sett
 	, std::string const& settings_file)
 	: m_ses(s)
 	, m_settings_file(settings_file)
 {
-	for (int i = settings_pack::string_type_base;
-		i < settings_pack::string_type_base
-		+ settings_pack::num_string_settings; ++i)
+	for (int i = lt::settings_pack::string_type_base;
+		i < lt::settings_pack::string_type_base
+		+ lt::settings_pack::num_string_settings; ++i)
 	{
 		if (!sett.has_val(i)) continue;
-		m_strings[name_for_setting(i)] = sett.get_str(i);
+		m_strings[lt::name_for_setting(i)] = sett.get_str(i);
 	}
-	for (int i = settings_pack::bool_type_base;
-		i < settings_pack::bool_type_base
-		+ settings_pack::num_bool_settings; ++i)
+	for (int i = lt::settings_pack::bool_type_base;
+		i < lt::settings_pack::bool_type_base
+		+ lt::settings_pack::num_bool_settings; ++i)
 	{
 		if (!sett.has_val(i)) continue;
-		m_ints[name_for_setting(i)] = sett.get_bool(i);
+		m_ints[lt::name_for_setting(i)] = sett.get_bool(i);
 	}
-	for (int i = settings_pack::int_type_base;
-		i < settings_pack::int_type_base
-		+ settings_pack::num_int_settings; ++i)
+	for (int i = lt::settings_pack::int_type_base;
+		i < lt::settings_pack::int_type_base
+		+ lt::settings_pack::num_int_settings; ++i)
 	{
 		if (!sett.has_val(i)) continue;
-		m_ints[name_for_setting(i)] = sett.get_int(i);
+		m_ints[lt::name_for_setting(i)] = sett.get_int(i);
 	}
 }
 
 save_settings::~save_settings() {}
 
-void save_settings::save(error_code& ec) const
+void save_settings::save(lt::error_code& ec) const
 {
 	// back-up current settings file as .bak before saving the new one
 	std::string backup = m_settings_file + ".bak";
@@ -107,7 +107,7 @@ void save_settings::save(error_code& ec) const
 
 	ec.clear();
 
-	entry sett;
+	lt::entry sett;
 	m_ses.save_state(sett);
 
 	for (auto const& i : m_ints)
@@ -120,25 +120,25 @@ void save_settings::save(error_code& ec) const
 		sett[i.first] = i.second;
 	}
 	std::vector<char> buf;
-	bencode(std::back_inserter(buf), sett);
+	lt::bencode(std::back_inserter(buf), sett);
 	save_file(m_settings_file, buf);
 }
 
 namespace {
-void load_settings_impl(session_params& params, std::string const& filename
-	, error_code& ec)
+void load_settings_impl(lt::session_params& params, std::string const& filename
+	, lt::error_code& ec)
 {
 	ec.clear();
 	std::vector<char> buf = load_file(filename.c_str());
 
-	bdecode_node sett = bdecode(buf, ec);
+	lt::bdecode_node sett = lt::bdecode(buf, ec);
 	if (ec) return;
 
 	// load the custom int and string keys
-	if (sett.type() != bdecode_node::dict_t) return;
+	if (sett.type() != lt::bdecode_node::dict_t) return;
 
 	{
-		session_params sp = read_session_params(sett);
+		lt::session_params sp = lt::read_session_params(sett);
 		params.dht_settings = std::move(sp.dht_settings);
 		params.dht_state = std::move(sp.dht_state);
 	}
@@ -146,34 +146,34 @@ void load_settings_impl(session_params& params, std::string const& filename
 	int num_items = sett.dict_size();
 	for (int i = 0; i < num_items; ++i)
 	{
-		bdecode_node item;
-		string_view key;
+		lt::bdecode_node item;
+		lt::string_view key;
 		boost::tie(key, item) = sett.dict_at(i);
 
-		int const n = setting_by_name(std::string(key));
+		int const n = lt::setting_by_name(std::string(key));
 		if (n < 0) continue;
-		if ((n & settings_pack::type_mask) == settings_pack::int_type_base)
+		if ((n & lt::settings_pack::type_mask) == lt::settings_pack::int_type_base)
 		{
-			if (item.type() != bdecode_node::int_t) continue;
+			if (item.type() != lt::bdecode_node::int_t) continue;
 			params.settings.set_int(n, item.int_value());
 		}
-		else if ((n & settings_pack::type_mask) == settings_pack::bool_type_base)
+		else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::bool_type_base)
 		{
-			if (item.type() != bdecode_node::int_t) continue;
+			if (item.type() != lt::bdecode_node::int_t) continue;
 			params.settings.set_bool(n, item.int_value() != 0);
 		}
-		else if ((n & settings_pack::type_mask) == settings_pack::string_type_base)
+		else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::string_type_base)
 		{
-			if (item.type() != bdecode_node::string_t) continue;
+			if (item.type() != lt::bdecode_node::string_t) continue;
 			params.settings.set_str(n, std::string(item.string_value()));
 		}
 	}
 }
 }
 
-void load_settings(session_params& params
+void load_settings(lt::session_params& params
 	, std::string const& filename
-	, error_code& ec)
+	, lt::error_code& ec)
 {
 	ec.clear();
 	load_settings_impl(params, filename, ec);

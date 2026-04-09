@@ -51,8 +51,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "webui.hpp"
 
 using namespace std::literals::chrono_literals;
-using libtorrent::send_http;
-using libtorrent::http_error;
+using ltweb::send_http;
+using ltweb::http_error;
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -277,7 +277,7 @@ private:
 	bool m_stopped = false;
 };
 
-libtorrent::webui_base::~webui_base()
+ltweb::webui_base::~webui_base()
 {
 	m_listener->stop();
 //	m_ioc.run_for(2s);
@@ -289,7 +289,7 @@ libtorrent::webui_base::~webui_base()
 		t.join();
 }
 
-void libtorrent::webui_base::remove_handler(http_handler* h)
+void ltweb::webui_base::remove_handler(http_handler* h)
 {
 	auto const i = std::find_if(m_handlers.begin(), m_handlers.end()
 		, [h](std::pair<std::string, http_handler*> v)
@@ -297,13 +297,13 @@ void libtorrent::webui_base::remove_handler(http_handler* h)
 	if (i != m_handlers.end()) m_handlers.erase(i);
 }
 
-void libtorrent::webui_base::add_handler(http_handler* h)
+void ltweb::webui_base::add_handler(http_handler* h)
 {
 	std::string prefix = h->path_prefix();
 	m_handlers.emplace_back(std::move(prefix), h);
 }
 
-libtorrent::webui_base::webui_base(int const port, char const* cert_path, int const num_threads)
+ltweb::webui_base::webui_base(int const port, char const* cert_path, int const num_threads)
 	: m_ioc(num_threads)
 	, m_ctx(ssl::context::tls)
 {

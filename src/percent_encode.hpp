@@ -30,13 +30,15 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_PERCENT_ENCODE_HPP
-#define TORRENT_PERCENT_ENCODE_HPP
+#ifndef LTWEB_PERCENT_ENCODE_HPP
+#define LTWEB_PERCENT_ENCODE_HPP
 
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <string_view>
+
+namespace ltweb {
 
 // Percent-encode a string for use in a Content-Disposition filename parameter.
 // Characters in the unreserved set (RFC 3986) are passed through unchanged;
@@ -63,4 +65,6 @@ inline std::string percent_encode(std::string_view s)
 	return out;
 }
 
-#endif // TORRENT_PERCENT_ENCODE_HPP
+} // namespace ltweb
+
+#endif // LTWEB_PERCENT_ENCODE_HPP

@@ -30,12 +30,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_PERM_INTERFACE_HPP
-#define TORRENT_PERM_INTERFACE_HPP
+#ifndef LTWEB_PERM_INTERFACE_HPP
+#define LTWEB_PERM_INTERFACE_HPP
 
 #include <string>
 
-namespace libtorrent
+namespace ltweb
 {
 
 	/**
@@ -74,12 +74,12 @@ namespace libtorrent
 		virtual bool allow_queue_change() const = 0;
 
 		/// If returning true, the user may GET the specified setting
-		/// \param name is the constant used in libtorrent::settings_pack
+		/// \param name is the constant used in lt::settings_pack
 		/// or -1 for settings that don't fit a libtorrent setting
 		virtual bool allow_get_settings(int name) const = 0;
 
 		/// If returning true, the user may SET the specified setting
-		/// \param name is the constant used in libtorrent::settings_pack
+		/// \param name is the constant used in lt::settings_pack
 		/// or -1 for settings that don't fit a libtorrent setting
 		virtual bool allow_set_settings(int name) const = 0;
 
@@ -166,5 +166,5 @@ namespace libtorrent
 
 }
 
-#endif // TORRENT_PERM_INTERFACE_HPP
+#endif // LTWEB_PERM_INTERFACE_HPP
 
