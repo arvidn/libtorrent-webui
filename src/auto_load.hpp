@@ -49,9 +49,6 @@ namespace ltweb
 		auto_load(lt::session& s, save_settings_interface* sett = NULL);
 		~auto_load();
 
-		void set_params_model(lt::add_torrent_params const& p);
-		lt::add_torrent_params params_model() const;
-
 		void set_auto_load_dir(std::string const& dir);
 		std::string const& auto_load_dir() const { return m_dir; }
 
@@ -81,13 +78,12 @@ namespace ltweb
 		// add them again
 		std::set<std::string> m_already_loaded;
 
-		lt::add_torrent_params m_params_model;
 		std::string m_dir;
 		std::chrono::seconds m_scan_interval;
 		bool m_abort;
 
-		// used to protect m_abort, m_scan_interval, m_dir,
-		// m_remove_files and m_params_model
+		// used to protect m_abort, m_scan_interval, m_dir
+		// and m_remove_files
 		mutable std::mutex m_mutex;
 
 		// this needs to be last in order to be initialized

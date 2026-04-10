@@ -293,17 +293,18 @@ bool save_resume::ok_to_quit() const
 	return m_num_in_flight == 0;
 }
 
-void save_resume::load(lt::error_code& ec, lt::add_torrent_params model)
+void save_resume::load(lt::error_code& ec)
 {
+	ec.clear();
 	sqlite3_stmt* stmt = nullptr;
 	int ret = sqlite3_prepare_v2(m_db, "SELECT RESUME FROM TORRENTS;", -1, &stmt, nullptr);
 	if (ret != SQLITE_OK)
 	{
+		// TODO: improve error reporting
 		fprintf(stderr, "failed to prepare select statement: %s\n", sqlite3_errmsg(m_db));
 		return;
 	}
 
-	lt::add_torrent_params p = model;
 	ret = sqlite3_step(stmt);
 	while (ret == SQLITE_ROW)
 	{
@@ -312,15 +313,16 @@ void save_resume::load(lt::error_code& ec, lt::add_torrent_params model)
 		{
 			void const* buffer = sqlite3_column_blob(stmt, 0);
 			lt::error_code ec;
-			p = lt::read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
+			lt::add_torrent_params p = lt::read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
 			if (ec) continue;
-			m_ses.async_add_torrent(p);
+			m_ses.async_add_torrent(std::move(p));
 		}
 
 		ret = sqlite3_step(stmt);
 	}
 	if (ret != SQLITE_DONE)
 	{
+		// TODO: improve error reporting
 		printf("failed to step select statement: %s\n", sqlite3_errmsg(m_db));
 		sqlite3_finalize(stmt);
 		return;

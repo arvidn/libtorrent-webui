@@ -69,6 +69,7 @@ namespace ltweb
 
 		lt::session& m_ses;
 		std::string m_settings_file;
+		mutable std::mutex m_mutex;
 		std::map<std::string, int> m_ints;
 		std::map<std::string, std::string> m_strings;
 	};

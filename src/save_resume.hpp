@@ -52,7 +52,7 @@ namespace ltweb
 		save_resume(lt::session& s, std::string const& resume_file, alert_handler* alerts);
 		~save_resume();
 
-		void load(lt::error_code& ec, lt::add_torrent_params model);
+		void load(lt::error_code& ec);
 
 		// implements alert_observer
 		virtual void handle_alert(lt::alert const* a);

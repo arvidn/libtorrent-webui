@@ -55,17 +55,16 @@ namespace ltweb
 	struct auth_interface;
 	struct alert_handler;
 	struct websocket_conn;
+	struct save_settings_interface;
 
 	struct function_call;
 
 	struct libtorrent_webui : http_handler, alert_observer
 	{
 		libtorrent_webui(lt::session& ses, torrent_history const* hist
-			, auth_interface const* auth, alert_handler* alerts);
+			, auth_interface const* auth, alert_handler* alerts
+			, save_settings_interface* sett = nullptr);
 		~libtorrent_webui();
-
-		void set_params_model(lt::add_torrent_params const& p)
-		{ m_params_model = p; }
 
 		// internal
 		bool get_torrent_updates(websocket_conn* st, function_call f);
@@ -115,6 +114,7 @@ namespace ltweb
 		torrent_history const* m_hist;
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
+		save_settings_interface* m_settings;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class
@@ -123,8 +123,6 @@ namespace ltweb
 		// the current stats frame (incremented every time) stats
 		// are requested
 		frame_t m_stats_frame = 0;
-
-		lt::add_torrent_params m_params_model;
 	};
 }
 

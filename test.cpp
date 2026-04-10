@@ -63,9 +63,8 @@ int main(int argc, char *const argv[])
 //	pam_auth authorizer("bittorrent");
 
 	save_resume resume(ses, "resume.dat", &alerts);
-	add_torrent_params p;
-	p.save_path = sett.get_str("save_path", ".");
-	resume.load(ec, p);
+	resume.load(ec);
+	// TODO: log error if ec is set
 
 	stats_logging log(ses, &alerts);
 
@@ -77,7 +76,7 @@ int main(int argc, char *const argv[])
 
 	// websocket access to controlling the bittorrent client exposed at HTTP
 	// path /bt/control
-	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts);
+	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts, &sett);
 	webport.add_handler(&lt_handler);
 
 	// allows requesting files from within torrents exposed at HTTP path
