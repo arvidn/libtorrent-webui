@@ -261,14 +261,9 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 				send_http(socket, done, std::move(res));
 				return;
 			}
-			lt::add_torrent_params p;
-			p.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
-			if (m_settings && m_settings->get_int("start_paused", 0))
-				p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
-			else
-				p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
 			lt::error_code ec;
-			if (!parse_torrent_post(request, p, ec))
+			lt::add_torrent_params p = parse_torrent_post(request, ec);
+			if (ec)
 			{
 				http::response<http::string_body> res{http::status::bad_request, request.version()};
 				res.body() = ec.message();
@@ -277,7 +272,12 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 				return;
 			}
 
-			m_ses.async_add_torrent(p);
+			p.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+			if (m_settings && m_settings->get_int("start_paused", 0))
+				p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
+			else
+				p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
+			m_ses.async_add_torrent(std::move(p));
 		}
 		else
 		{
