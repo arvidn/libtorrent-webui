@@ -71,7 +71,6 @@ save_resume::save_resume(lt::session& s, std::string const& resume_file, alert_h
 
 	m_alerts->subscribe(this, 0, lt::add_torrent_alert::alert_type
 		, lt::torrent_removed_alert::alert_type
-		, lt::stats_alert::alert_type // just to get woken up regularly
 		, lt::save_resume_data_alert::alert_type
 		, lt::save_resume_data_failed_alert::alert_type
 		, lt::metadata_received_alert::alert_type
@@ -233,7 +232,11 @@ void save_resume::handle_alert(lt::alert const* a) try
 		TORRENT_ASSERT(m_num_in_flight > 0);
 		--m_num_in_flight;
 	}
-	
+}
+catch (std::exception const&) {}
+
+void save_resume::tick() try
+{
 	// is it time to save resume data for another torrent?
 	if (m_torrents.empty()) return;
 
