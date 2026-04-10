@@ -35,8 +35,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "alert_handler.hpp"
 #include "libtorrent/units.hpp"
 #include "libtorrent/flags.hpp"
-#include <cinttypes>
 #include <chrono>
+#include <iostream>
 
 namespace ltweb
 {
@@ -266,103 +266,95 @@ namespace ltweb
 		status = s;
 	}
 
-	char const* fmt(std::string const& s) { return s.c_str(); }
-	float fmt(float v) { return v; }
-	std::int64_t fmt(bool v) { return v; }
-	template <class T>
-	typename std::enable_if<std::is_integral<T>::value, std::int64_t>::type
-		fmt(T v) { return std::uint64_t(v); }
-	template <typename T, typename V>
-	T fmt(lt::flags::bitfield_flag<T, V> const f)
-	{ return static_cast<T>(f); }
-	int fmt(lt::queue_position_t v) { return static_cast<int>(v); }
-	std::int32_t fmt(lt::file_index_t v) { return static_cast<std::int32_t>(v); }
-	std::int64_t fmt(lt::time_duration const d)
-	{ return std::chrono::duration_cast<std::chrono::seconds>(d).count(); }
-	std::int64_t fmt(lt::time_point const t)
-	{ return std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count(); }
-	char const* fmt(lt::error_code const& ec)
-	{
-		static std::string storage;
-		storage = ec.message();
-		return storage.c_str();
-	}
-	int fmt(lt::storage_mode_t const s)
-	{ return static_cast<int>(s); }
-	int fmt(lt::torrent_status::state_t const s)
-	{ return static_cast<int>(s); }
+namespace {
+	std::ostream& operator<<(std::ostream& os, lt::torrent_status::state_t s)
+	{ return os << static_cast<int>(s); }
+
+	std::ostream& operator<<(std::ostream& os, lt::time_duration const d)
+	{ return os << std::chrono::duration_cast<std::chrono::seconds>(d).count(); }
+
+	std::ostream& operator<<(std::ostream& os, lt::time_point const t)
+	{ return os << std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count(); }
+
+	std::ostream& operator<<(std::ostream& os, lt::storage_mode_t s)
+	{ return os << static_cast<int>(s); }
+} // anonymous namespace
 
 	void torrent_history_entry::debug_print(frame_t const current_frame) const
 	{
-		int frame_diff;
+		std::ostream& os = std::cout;
 
-#define PRINT(x, type) frame_diff = (std::min)(current_frame - frame[x], 20u); \
-		printf("%s\x1b[38;5;%dm%" type "\x1b[0m ", frame[x] >= current_frame  ? "\x1b[41m" : "", 255 - frame_diff, fmt(status.x));
+#define PRINT(x) do { \
+		int const frame_diff = (std::min)(current_frame - frame[x], 20u); \
+		os << (frame[x] >= current_frame ? "\x1b[41m" : "") \
+		   << "\x1b[38;5;" << (255 - frame_diff) << 'm' \
+		   << status.x << "\x1b[0m "; \
+		} while(0)
 
-		PRINT(state, "d");
-		PRINT(flags, PRId64);
-		PRINT(is_seeding, PRId64);
-		PRINT(is_finished, PRId64);
-		PRINT(has_metadata, PRId64);
-		PRINT(progress, "f");
-		PRINT(progress_ppm, PRId64);
-		PRINT(errc, "s");
-		PRINT(error_file, "d");
-//		PRINT(save_path, "s");
-		PRINT(name, "s");
-//		PRINT(next_announce, PRId64);
-		PRINT(current_tracker, "s");
-		PRINT(total_download, PRId64);
-		PRINT(total_upload, PRId64);
-		PRINT(total_payload_download, PRId64);
-		PRINT(total_payload_upload, PRId64);
-		PRINT(total_failed_bytes, PRId64);
-		PRINT(total_redundant_bytes, PRId64);
-		PRINT(download_rate, PRId64);
-		PRINT(upload_rate, PRId64);
-		PRINT(download_payload_rate, PRId64);
-		PRINT(upload_payload_rate, PRId64);
-		PRINT(num_seeds, PRId64);
-		PRINT(num_peers, PRId64);
-		PRINT(num_complete, PRId64);
-		PRINT(num_incomplete, PRId64);
-		PRINT(list_seeds, PRId64);
-		PRINT(list_peers, PRId64);
-		PRINT(connect_candidates, PRId64);
-		PRINT(num_pieces, PRId64);
-		PRINT(total_done, PRId64);
-		PRINT(total, PRId64);
-		PRINT(total_wanted_done, PRId64);
-		PRINT(total_wanted, PRId64);
-		PRINT(distributed_full_copies, PRId64);
-		PRINT(distributed_fraction, PRId64);
-		PRINT(block_size, PRId64);
-		PRINT(num_uploads, PRId64);
-		PRINT(num_connections, PRId64);
-		PRINT(uploads_limit, PRId64);
-		PRINT(connections_limit, PRId64);
-		PRINT(storage_mode, "d");
-		PRINT(up_bandwidth_queue, PRId64);
-		PRINT(down_bandwidth_queue, PRId64);
-		PRINT(all_time_upload, PRId64);
-		PRINT(all_time_download, PRId64);
-		PRINT(active_duration, PRId64);
-		PRINT(finished_duration, PRId64);
-		PRINT(seeding_duration, PRId64);
-		PRINT(seed_rank, PRId64);
-		PRINT(has_incoming, PRId64);
-		PRINT(added_time, PRId64);
-		PRINT(completed_time, PRId64);
-		PRINT(last_seen_complete, PRId64);
-		PRINT(last_upload, PRId64);
-		PRINT(last_download, PRId64);
-		PRINT(queue_position, "d");
-		PRINT(moving_storage, PRId64);
-		PRINT(announcing_to_trackers, PRId64);
-		PRINT(announcing_to_lsd, PRId64);
-		PRINT(announcing_to_dht, PRId64);
+		PRINT(state);
+		PRINT(flags);
+		PRINT(is_seeding);
+		PRINT(is_finished);
+		PRINT(has_metadata);
+		PRINT(progress);
+		PRINT(progress_ppm);
+		PRINT(errc);
+		PRINT(error_file);
+//		PRINT(save_path);
+		PRINT(name);
+//		PRINT(next_announce);
+		PRINT(current_tracker);
+		PRINT(total_download);
+		PRINT(total_upload);
+		PRINT(total_payload_download);
+		PRINT(total_payload_upload);
+		PRINT(total_failed_bytes);
+		PRINT(total_redundant_bytes);
+		PRINT(download_rate);
+		PRINT(upload_rate);
+		PRINT(download_payload_rate);
+		PRINT(upload_payload_rate);
+		PRINT(num_seeds);
+		PRINT(num_peers);
+		PRINT(num_complete);
+		PRINT(num_incomplete);
+		PRINT(list_seeds);
+		PRINT(list_peers);
+		PRINT(connect_candidates);
+		PRINT(num_pieces);
+		PRINT(total_done);
+		PRINT(total);
+		PRINT(total_wanted_done);
+		PRINT(total_wanted);
+		PRINT(distributed_full_copies);
+		PRINT(distributed_fraction);
+		PRINT(block_size);
+		PRINT(num_uploads);
+		PRINT(num_connections);
+		PRINT(uploads_limit);
+		PRINT(connections_limit);
+		PRINT(storage_mode);
+		PRINT(up_bandwidth_queue);
+		PRINT(down_bandwidth_queue);
+		PRINT(all_time_upload);
+		PRINT(all_time_download);
+		PRINT(active_duration);
+		PRINT(finished_duration);
+		PRINT(seeding_duration);
+		PRINT(seed_rank);
+		PRINT(has_incoming);
+		PRINT(added_time);
+		PRINT(completed_time);
+		PRINT(last_seen_complete);
+		PRINT(last_upload);
+		PRINT(last_download);
+		PRINT(queue_position);
+		PRINT(moving_storage);
+		PRINT(announcing_to_trackers);
+		PRINT(announcing_to_lsd);
+		PRINT(announcing_to_dht);
 
-		printf("\x1b[0m\n");
+		os << "\x1b[0m\n";
 	}
 }
 
