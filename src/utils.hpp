@@ -71,7 +71,8 @@ namespace ltweb {
 
 	inline bool is_whitespace(char const c)
 	{
-		return c == ' ' || c == '\t';
+		static std::string_view const whitespace = " \t\r\n";
+		return whitespace.find(c) != std::string_view::npos;
 	}
 
 	template <typename StringView>
