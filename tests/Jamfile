@@ -19,3 +19,4 @@ run test_percent_encode.cpp ;
 run test_url_decode.cpp ;
 run test_utils.cpp ;
 run test_torrent_history.cpp ;
+run test_torrent_post.cpp ;
