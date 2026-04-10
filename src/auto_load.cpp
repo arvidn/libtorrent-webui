@@ -41,9 +41,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "save_settings.hpp"
 
 #include <filesystem>
-#ifndef TORRENT_WINDOWS
-#include <dirent.h>
-#endif
 
 using namespace std::placeholders;
 
@@ -53,55 +50,25 @@ namespace ltweb
 
 namespace {
 
-std::vector<std::string> list_dir(std::string path
+std::vector<std::string> list_dir(std::string const& path
 	, bool (*filter_fun)(lt::string_view)
 	, lt::error_code& ec)
 {
 	std::vector<std::string> ret;
-#ifdef TORRENT_WINDOWS
-	if (!path.empty() && path[path.size()-1] != '\\') path += "\\*";
-	else path += "*";
-
-	WIN32_FIND_DATAA fd;
-	HANDLE handle = FindFirstFileA(path.c_str(), &fd);
-	if (handle == INVALID_HANDLE_VALUE)
+	std::error_code fec;
+	std::filesystem::directory_iterator it(path
+		, std::filesystem::directory_options::skip_permission_denied, fec);
+	if (fec)
 	{
-		ec.assign(GetLastError(), boost::system::system_category());
+		ec.assign(fec.value(), boost::system::system_category());
 		return ret;
 	}
-
-	do
+	for (auto const& entry : it)
 	{
-		lt::string_view p = fd.cFileName;
-		if (filter_fun(p))
-			ret.push_back(std::string(p));
-
-	} while (FindNextFileA(handle, &fd));
-	FindClose(handle);
-#else
-
-	if (!path.empty() && path[path.size()-1] == '/')
-		path.resize(path.size()-1);
-
-	DIR* handle = opendir(path.c_str());
-	if (handle == nullptr)
-	{
-		ec.assign(errno, boost::system::system_category());
-		return ret;
+		std::string const name = entry.path().filename().string();
+		if (filter_fun(lt::string_view(name.data(), name.size())))
+			ret.push_back(name);
 	}
-
-	struct dirent de;
-	dirent* dummy;
-	while (readdir_r(handle, &de, &dummy) == 0)
-	{
-		if (dummy == nullptr) break;
-
-		lt::string_view p(de.d_name);
-		if (filter_fun(p))
-			ret.push_back(std::string(p));
-	}
-	closedir(handle);
-#endif
 	return ret;
 }
 }
