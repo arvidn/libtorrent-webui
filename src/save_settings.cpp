@@ -93,6 +93,15 @@ save_settings::~save_settings() {}
 
 void save_settings::save(lt::error_code& ec) const
 {
+	// snapshot the maps before doing any I/O
+	std::map<std::string, int> ints;
+	std::map<std::string, std::string> strings;
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		ints = m_ints;
+		strings = m_strings;
+	}
+
 	// back-up current settings file as .bak before saving the new one
 	std::string backup = m_settings_file + ".bak";
 	std::error_code fec;
@@ -110,15 +119,12 @@ void save_settings::save(lt::error_code& ec) const
 	lt::entry sett;
 	m_ses.save_state(sett);
 
-	for (auto const& i : m_ints)
-	{
+	for (auto const& i : ints)
 		sett[i.first] = i.second;
-	}
 
-	for (auto const& i : m_strings)
-	{
+	for (auto const& i : strings)
 		sett[i.first] = i.second;
-	}
+
 	std::vector<char> buf;
 	lt::bencode(std::back_inserter(buf), sett);
 	save_file(m_settings_file, buf);
@@ -184,23 +190,27 @@ void load_settings(lt::session_params& params
 
 void save_settings::set_int(char const* key, int val)
 {
+	std::lock_guard<std::mutex> l(m_mutex);
 	m_ints[key] = val;
 }
 
 void save_settings::set_str(char const* key, std::string val)
 {
-	m_strings[key] = val;
+	std::lock_guard<std::mutex> l(m_mutex);
+	m_strings[key] = std::move(val);
 }
 
 int save_settings::get_int(char const* key, int def) const
 {
-	std::map<std::string, int>::const_iterator i = m_ints.find(key);
+	std::lock_guard<std::mutex> l(m_mutex);
+	auto const i = m_ints.find(key);
 	if (i == m_ints.end()) return def;
 	return i->second;
 }
 
 std::string save_settings::get_str(char const* key, char const* def) const
 {
+	std::lock_guard<std::mutex> l(m_mutex);
 	auto const i = m_strings.find(key);
 	if (i == m_strings.end()) return def;
 	return i->second;

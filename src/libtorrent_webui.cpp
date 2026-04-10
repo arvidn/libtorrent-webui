@@ -43,6 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/magnet_uri.hpp"
 
 #include "auth.hpp"
+#include "save_settings.hpp"
 #include "torrent_history.hpp"
 #include "websocket_conn.hpp"
 
@@ -228,13 +229,14 @@ namespace {
 	};
 
 	libtorrent_webui::libtorrent_webui(lt::session& ses, torrent_history const* hist
-		, auth_interface const* auth, alert_handler* alert)
+		, auth_interface const* auth, alert_handler* alert
+		, save_settings_interface* sett)
 		: m_ses(ses)
 		, m_hist(hist)
 		, m_auth(auth)
 		, m_alert(alert)
+		, m_settings(sett)
 	{
-		m_params_model.save_path = ".";
 
 		if (m_stats.size() < lt::counters::num_counters)
 			m_stats.resize(lt::counters::num_counters
@@ -1025,13 +1027,17 @@ namespace {
 
 		lt::string_view magnet_link(iptr, magnet_len);
 
-		lt::add_torrent_params atp = m_params_model;
+		lt::add_torrent_params atp;
 
 		lt::error_code ec;
 		lt::parse_magnet_uri(magnet_link, atp, ec);
 		if (ec) return error(st, f, parse_error);
 
-		atp.save_path = m_params_model.save_path;
+		atp.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+		if (m_settings && m_settings->get_int("start_paused", 0))
+			atp.flags = (atp.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
+		else
+			atp.flags = (atp.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
 		atp.flags |= lt::torrent_flags::duplicate_is_error;
 
 		atp.userdata = new add_torrent_user_data{st->shared_from_this()
@@ -1051,7 +1057,6 @@ namespace {
 		return functions[function_id].name;
 	}
 
-	// TODO: this should take a span
 	bool libtorrent_webui::on_websocket_read(websocket_conn* st, lt::span<char const> data)
 	{
 		// parse RPC message

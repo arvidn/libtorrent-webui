@@ -35,7 +35,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "webui.hpp"
 #include "libtorrent/torrent_handle.hpp"
-#include "libtorrent/add_torrent_params.hpp"
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -56,9 +55,6 @@ namespace ltweb
 			, auto_load* al = NULL, torrent_history* hist = NULL
 			, auth_interface const* auth = NULL);
 		~utorrent_webui();
-
-		void set_params_model(lt::add_torrent_params const& p)
-		{ m_params_model = p; }
 
 		virtual std::string path_prefix() const override { return "/gui"; }
 		virtual void handle_http(http::request<http::string_body> request
@@ -106,7 +102,6 @@ namespace ltweb
 
 		time_t m_start_time;
 		lt::session& m_ses;
-		lt::add_torrent_params m_params_model;
 		std::string m_webui_cookie;
 
 		// optional auto loader, controllable

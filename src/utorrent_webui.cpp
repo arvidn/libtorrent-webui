@@ -88,15 +88,10 @@ utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface* sett
 	auto hash = lt::hasher(reinterpret_cast<char const*>(&seed), sizeof(seed)).final();
 	m_token = to_hex(hash);
 
-	m_params_model.save_path = ".";
 	m_webui_cookie = "{}";
 
 	if (m_settings)
 	{
-		m_params_model.save_path = m_settings->get_str("save_path", ".");
-		m_params_model.flags
-			= (m_settings->get_int("start_paused", 0) ? lt::torrent_flags::paused : lt::torrent_flags::auto_managed)
-			| lt::torrent_flags::update_subscribe;
 		m_webui_cookie = m_settings->get_str("ut_webui_cookie", "{}");
 		int port = m_settings->get_int("listen_port", -1);
 		if (port != -1)
@@ -108,7 +103,6 @@ utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface* sett
 		}
 	}
 
-	if (m_al) m_al->set_params_model(m_params_model);
 }
 
 utorrent_webui::~utorrent_webui() {}
@@ -267,7 +261,12 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 				send_http(socket, done, std::move(res));
 				return;
 			}
-			lt::add_torrent_params p = m_params_model;
+			lt::add_torrent_params p;
+			p.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+			if (m_settings && m_settings->get_int("start_paused", 0))
+				p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
+			else
+				p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
 			lt::error_code ec;
 			if (!parse_torrent_post(request, p, ec))
 			{
@@ -444,9 +443,10 @@ void utorrent_webui::remove_torrent_and_data(std::vector<char>&, char const* arg
 
 void utorrent_webui::list_dirs(std::vector<char>& response, char const* args, permissions_interface const* p)
 {
+	std::string const save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
 	appendf(response, ", \"download-dirs\": [{\"path\":\"%s\",\"available\":%" PRId64 "}]"
-		, escape_json(m_params_model.save_path).c_str()
-		, free_disk_space(m_params_model.save_path) / 1024 / 1024);
+		, escape_json(save_path).c_str()
+		, free_disk_space(save_path) / 1024 / 1024);
 }
 
 char const* settings_name(int s)
@@ -568,7 +568,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 	}
 
 	appendf(response, ",[\"torrents_start_stopped\",1,\"%s\",{\"access\":\"%c\"}]\n" + first
-		, m_params_model.flags & lt::torrent_flags::paused ? "true" : "false"
+		, (m_settings && m_settings->get_int("start_paused", 0)) ? "true" : "false"
 		, p->allow_stop() ? 'Y' : 'R');
 	first = 0;
 
@@ -609,7 +609,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 			",[\"dir_active_download\",2,\"%s\",{\"access\":\"%c\"}]\n"
 			",[\"bind_port\",0,\"%d\",{\"access\":\"%c\"}]\n"
 			+ first
-			, escape_json(m_params_model.save_path).c_str()
+			, escape_json(m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads").c_str()
 			, p->allow_set_settings(-1) ? 'Y' : 'R'
 			, m_ses.listen_port()
 			, p->allow_set_settings(-1) ? 'Y' : 'R');
@@ -725,22 +725,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		else if (key == "torrents_start_stopped")
 		{
 			if (!p->allow_stop()) continue;
-			bool b = to_bool(value);
-			if (b)
-			{
-				m_params_model.flags = (m_params_model.flags
-					& ~lt::torrent_flags::auto_managed)
-					| lt::torrent_flags::paused;
-			}
-			else
-			{
-				m_params_model.flags = (m_params_model.flags
-					| lt::torrent_flags::auto_managed)
-					& ~lt::torrent_flags::paused;
-			}
-			if (m_al)
-				m_al->set_params_model(m_params_model);
-			m_settings->set_int("start_paused", b);
+			if (m_settings) m_settings->set_int("start_paused", to_bool(value));
 		}
 		else if (key == "dir_autoload" && m_al)
 		{
@@ -755,9 +740,6 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		else if (key == "dir_active_download")
 		{
 			if (!p->allow_set_settings(-1)) continue;
-			m_params_model.save_path = value;
-			if (m_al)
-				m_al->set_params_model(m_params_model);
 			if (m_settings) m_settings->set_str("save_path", value);
 		}
 /*
@@ -914,9 +896,13 @@ void utorrent_webui::add_url(std::vector<char>&, char const* args, permissions_i
 	std::string const url_str = url_decode(*url_val);
 
 	lt::add_torrent_params atp = lt::parse_magnet_uri(url_str);
-	atp.save_path = m_params_model.save_path;
+	atp.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+	if (m_settings && m_settings->get_int("start_paused", 0))
+		atp.flags = (atp.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
+	else
+		atp.flags = (atp.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
 
-	m_ses.async_add_torrent(atp);
+	m_ses.async_add_torrent(std::move(atp));
 }
 
 void utorrent_webui::get_properties(std::vector<char>& response, char const* args, permissions_interface const* p)

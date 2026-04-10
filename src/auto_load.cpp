@@ -116,8 +116,6 @@ auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 	, m_abort(false)
 	, m_thread(std::bind(&auto_load::thread_fun, this))
 {
-	m_params_model.save_path = ".";
-
 	if (m_settings)
 	{
 		int const interval = m_settings->get_int("autoload_interval", -1);
@@ -126,7 +124,6 @@ auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 		if (!path.empty()) set_auto_load_dir(path);
 		int remove_files = m_settings->get_int("autoload_remove", -1);
 		if (remove_files != -1) set_remove_files(remove_files);
-		m_params_model.save_path = m_settings->get_str("save_path", ".");
 	}
 }
 
@@ -150,18 +147,6 @@ bool auto_load::remove_files() const
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 	return m_remove_files;
-}
-
-void auto_load::set_params_model(lt::add_torrent_params const& p)
-{
-	std::unique_lock<std::mutex> l(m_mutex);
-	m_params_model = p;
-}
-
-lt::add_torrent_params auto_load::params_model() const
-{
-	std::unique_lock<std::mutex> l(m_mutex);
-	return m_params_model;
 }
 
 void auto_load::set_auto_load_dir(std::string const& dir)
@@ -221,7 +206,7 @@ void auto_load::on_scan(lt::error_code const& e)
 
 	// interval of 0 means disabled
 	if (m_scan_interval == std::chrono::seconds(0)) return;
-	
+
 	std::string path = m_dir;
 	bool remove_files = m_remove_files;
 	l.unlock();
@@ -250,10 +235,12 @@ void auto_load::on_scan(lt::error_code const& e)
 		// assume the file isn't fully written yet.
 		if (tec) continue;
 
-		l.lock();
-		lt::add_torrent_params p = m_params_model;
-		l.unlock();
-
+		lt::add_torrent_params p;
+		p.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+		if (m_settings && m_settings->get_int("start_paused", 0))
+			p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
+		else
+			p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
 		p.ti = ti;
 		m_ses.async_add_torrent(p);
 
