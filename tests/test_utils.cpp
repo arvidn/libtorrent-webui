@@ -47,8 +47,8 @@ int main()
 	TEST_CHECK(is_whitespace(' '));
 	TEST_CHECK(is_whitespace('\t'));
 	TEST_CHECK(!is_whitespace('a'));
-	TEST_CHECK(is_whitespace('\n'));
-	TEST_CHECK(is_whitespace('\r'));
+	TEST_CHECK(!is_whitespace('\n'));
+	TEST_CHECK(!is_whitespace('\r'));
 	TEST_CHECK(!is_whitespace('\0'));
 
 	// trim()
@@ -146,6 +146,70 @@ int main()
 		TEST_CHECK(a == "");
 		TEST_CHECK(b == "");
 	}
+
+	// parse_quoted_string()
+
+	// basic value
+	TEST_CHECK(parse_quoted_string("\"hello\""sv) == "hello");
+
+	// empty quoted string
+	TEST_CHECK(parse_quoted_string("\"\""sv) == "");
+
+	// escaped backslash: \\ -> single backslash
+	TEST_CHECK(parse_quoted_string("\"a\\\\b\""sv) == "a\\b");
+
+	// escaped quote: \" -> "
+	TEST_CHECK(parse_quoted_string("\"fo\\\"o\""sv) == "fo\"o");
+
+	// OWS after closing quote is allowed
+	TEST_CHECK(parse_quoted_string("\"X\"  "sv) == "X");
+
+	// not a quoted string (no opening quote)
+	TEST_CHECK(parse_quoted_string("hello"sv) == std::nullopt);
+
+	// unterminated: no closing quote
+	TEST_CHECK(parse_quoted_string("\"foo"sv) == std::nullopt);
+
+	// trailing backslash: no char to escape
+	TEST_CHECK(parse_quoted_string("\"X\\"sv) == std::nullopt);
+
+	// junk after closing quote
+	TEST_CHECK(parse_quoted_string("\"X\"junk"sv) == std::nullopt);
+
+	// ci_find()
+
+	// exact match
+	TEST_CHECK(ci_find("multipart/form-data"sv, "multipart/form-data"sv) == 0);
+
+	// needle all-lowercase, haystack mixed case
+	TEST_CHECK(ci_find("Multipart/Form-Data"sv, "multipart/form-data"sv) == 0);
+
+	// needle mixed case, haystack lowercase
+	TEST_CHECK(ci_find("multipart/form-data"sv, "Multipart/Form-Data"sv) == 0);
+
+	// match in the middle
+	TEST_CHECK(ci_find("multipart/form-data; boundary=X"sv, "boundary="sv) == 21);
+
+	// match at the end
+	TEST_CHECK(ci_find("foo BOUNDARY="sv, "boundary="sv) == 4);
+
+	// case-insensitive match with all-uppercase haystack
+	TEST_CHECK(ci_find("MULTIPART/FORM-DATA; BOUNDARY=X"sv, "boundary="sv) == 21);
+
+	// needle not present
+	TEST_CHECK(ci_find("multipart/form-data"sv, "boundary="sv) == std::string_view::npos);
+
+	// haystack too short for needle
+	TEST_CHECK(ci_find("abc"sv, "abcd"sv) == std::string_view::npos);
+
+	// empty haystack
+	TEST_CHECK(ci_find(""sv, "x"sv) == std::string_view::npos);
+
+	// empty needle matches at position 0
+	TEST_CHECK(ci_find("hello"sv, ""sv) == 0);
+
+	// both empty: hay.begin() == hay.end(), so the not-found check triggers -> npos
+	TEST_CHECK(ci_find(""sv, ""sv) == std::string_view::npos);
 
 	// str()
 

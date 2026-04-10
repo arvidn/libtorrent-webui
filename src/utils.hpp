@@ -33,12 +33,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef LTWEB_UTILS_HPP
 #define LTWEB_UTILS_HPP
 
+#include <optional>
+#include <string>
 #include <string_view>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
 #include <boost/algorithm/string/predicate.hpp>
 
 namespace ltweb {
 
+	using boost::algorithm::iequals;
 	using boost::algorithm::starts_with;
 
 	template <typename... Elems>
@@ -71,7 +76,8 @@ namespace ltweb {
 
 	inline bool is_whitespace(char const c)
 	{
-		static std::string_view const whitespace = " \t\r\n";
+		// whitespace according to RFC 7230 §3.2.3
+		static std::string_view const whitespace = " \t";
 		return whitespace.find(c) != std::string_view::npos;
 	}
 
@@ -86,6 +92,47 @@ namespace ltweb {
 			input.remove_suffix(1);
 		return input;
 	}
+
+	// Parse an RFC 7230 quoted-string (input must include the surrounding DQUOTE).
+	// Handles backslash-escaped characters (quoted-pair). Returns the unescaped
+	// content, or nullopt if the input is malformed: unterminated string, trailing
+	// backslash, or non-OWS characters after the closing quote.
+	inline std::optional<std::string> parse_quoted_string(std::string_view input)
+	{
+		if (input.empty() || input.front() != '"') return std::nullopt;
+		input.remove_prefix(1);
+		std::string result;
+		for (std::size_t i = 0; i < input.size(); ++i)
+		{
+			if (input[i] == '\\')
+			{
+				if (++i == input.size()) return std::nullopt; // trailing backslash
+				result += input[i];
+			}
+			else if (input[i] == '"')
+			{
+				for (std::size_t j = i + 1; j < input.size(); ++j)
+					if (!is_whitespace(input[j])) return std::nullopt;
+				return result;
+			}
+			else
+			{
+				result += input[i];
+			}
+		}
+		return std::nullopt; // unterminated
+	}
+
+	inline std::size_t ci_find(std::string_view hay, std::string_view needle)
+	{
+		auto const it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+			[](char a, char b) {
+				return std::tolower(static_cast<unsigned char>(a))
+					== std::tolower(static_cast<unsigned char>(b));
+			});
+		return (it == hay.end()) ? std::string_view::npos : std::size_t(it - hay.begin());
+	};
+
 }
 
 #endif

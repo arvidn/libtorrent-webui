@@ -32,6 +32,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "torrent_post.hpp"
 #include "mime_part.hpp"
+#include "utils.hpp"
 #include "libtorrent/load_torrent.hpp"
 
 #include <string_view>
@@ -58,11 +59,46 @@ lt::add_torrent_params parse_torrent_post(http::request<http::string_body> const
 
 	// expect a multipart message here
 	std::string_view const ct{req[http::field::content_type]};
-	if (ct.find("multipart/form-data") == std::string_view::npos) return invalid();
 
-	auto const boundary_pos = ct.find("boundary=");
-	if (boundary_pos == std::string_view::npos) return invalid();
-	std::string_view const boundary = ct.substr(boundary_pos + 9);
+	// extract the media-type token (everything before the first ;), trim OWS,
+	// then compare exactly -- a substring search would accept e.g. text/multipart/form-data
+	auto const first_semi = ct.find(';');
+	std::string_view const media_type = trim(
+		(first_semi == std::string_view::npos) ? ct : ct.substr(0, first_semi));
+	if (!iequals(media_type, "multipart/form-data")) return invalid();
+
+	// scan Content-Type parameters (split on ;) for one whose name is exactly "boundary"
+	std::string boundary;
+	std::string_view params = (first_semi == std::string_view::npos)
+		? std::string_view{} : ct.substr(first_semi + 1);
+	while (!params.empty())
+	{
+		auto const semi = params.find(';');
+		std::string_view const param = trim(
+			(semi == std::string_view::npos) ? params : params.substr(0, semi));
+
+		auto const eq = param.find('=');
+		if (eq != std::string_view::npos && iequals(trim(param.substr(0, eq)), "boundary"))
+		{
+			std::string_view value = trim(param.substr(eq + 1));
+			if (!value.empty() && value.front() == '"')
+			{
+				auto unquoted = parse_quoted_string(value);
+				if (!unquoted) return invalid();
+				boundary = std::move(*unquoted);
+			}
+			else
+			{
+				boundary = std::string(value);
+			}
+			break;
+		}
+
+		if (semi == std::string_view::npos) break;
+		params = params.substr(semi + 1);
+	}
+
+	if (boundary.empty()) return invalid();
 
 	// find the first boundary marker in the body
 	auto const first = body.find(boundary);
