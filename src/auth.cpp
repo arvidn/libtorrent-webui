@@ -265,7 +265,7 @@ permissions_interface const* parse_http_auth(http::request<http::string_body> co
 	if (it != request.end())
 	{
 		auto auth = trim(it->value());
-		if (starts_with(auth, "basic "))
+		if (boost::algorithm::istarts_with(auth, "basic "))
 		{
 			// skip "basic "
 			auth = trim(auth.substr(6));
