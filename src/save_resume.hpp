@@ -37,9 +37,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/error_code.hpp"
 #include "alert_observer.hpp"
 
+#include <set>
 #include <string>
 #include <mutex>
-#include <unordered_set>
 
 #include <sqlite3.h>
 
@@ -57,6 +57,7 @@ namespace ltweb
 		// implements alert_observer
 		virtual void handle_alert(lt::alert const* a);
 
+		void tick();
 		void save_all();
 		bool ok_to_quit() const;
 
@@ -67,10 +68,10 @@ namespace ltweb
 		sqlite3* m_db;
 
 		// all torrents currently loaded
-		std::unordered_set<lt::torrent_handle> m_torrents;
+		std::set<lt::torrent_handle> m_torrents;
 
 		// the next torrent to save (may point to end)
-		std::unordered_set<lt::torrent_handle>::iterator m_cursor;
+		std::set<lt::torrent_handle>::iterator m_cursor;
 
 		// the last time we visited a torrent to potentially
 		// save its fast-resume

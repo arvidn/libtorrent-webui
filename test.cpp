@@ -103,6 +103,7 @@ int main(int argc, char *const argv[])
 			signal(SIGTERM, &sighandler_forcequit);
 			signal(SIGINT, &sighandler_forcequit);
 		}
+		if (!quit) resume.tick();
 		if (force_quit)
 		{
 			fprintf(stderr, "force quitting\n");
