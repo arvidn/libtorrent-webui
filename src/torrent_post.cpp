@@ -32,26 +32,27 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "torrent_post.hpp"
 #include "mime_part.hpp"
-#include "libtorrent/torrent_info.hpp"
+#include "libtorrent/load_torrent.hpp"
 
 using namespace ltweb;
 
-bool parse_torrent_post(http::request<http::string_body> const& req
-	, lt::add_torrent_params& params, lt::error_code& ec)
+lt::add_torrent_params parse_torrent_post(http::request<http::string_body> const& req
+	, lt::error_code& ec)
 {
+	auto const invalid = [&]() -> lt::add_torrent_params {
+		ec = lt::error_code(boost::system::errc::invalid_argument, boost::system::generic_category());
+		return {};
+	};
+
 	std::string const& body = req.body();
 	int content_length = static_cast<int>(body.size());
 
-	if (content_length <= 0)
-	{
-		ec = lt::error_code(boost::system::errc::invalid_argument, boost::system::generic_category());
-		return false;
-	}
+	if (content_length <= 0) return invalid();
 
 	if (content_length > 10 * 1024 * 1024)
 	{
 		ec = lt::error_code(boost::system::errc::file_too_large, boost::system::generic_category());
-		return false;
+		return {};
 	}
 
 	char const* body_start = body.c_str();
@@ -60,15 +61,15 @@ bool parse_torrent_post(http::request<http::string_body> const& req
 	// expect a multipart message here
 	std::string const content_type_str = std::string(req[http::field::content_type]);
 	char const* content_type = content_type_str.c_str();
-	if (strstr(content_type, "multipart/form-data") == nullptr) return false;
+	if (strstr(content_type, "multipart/form-data") == nullptr) return invalid();
 
 	char const* boundary = strstr(content_type, "boundary=");
-	if (boundary == nullptr) return false;
+	if (boundary == nullptr) return invalid();
 
 	boundary += 9;
 
 	char const* part_start = strstr(body_start, boundary);
-	if (part_start == nullptr) return false;
+	if (part_start == nullptr) return invalid();
 
 	part_start += strlen(boundary);
 	char const* part_end = nullptr;
@@ -85,10 +86,9 @@ bool parse_torrent_post(http::request<http::string_body> const& req
 		if (content_type != "application/octet-stream"
 			&& content_type != "application/x-bittorrent") continue;
 
-		params.ti = std::make_shared<lt::torrent_info>(lt::span<char const>{torrent_start, part_end - torrent_start}, ec, lt::from_span);
-		if (ec) return false;
-		return true;
+		return lt::load_torrent_buffer(
+			lt::span<char const>{torrent_start, part_end - torrent_start}, ec, lt::load_torrent_limits{});
 	}
 
-	return false;
+	return invalid();
 }

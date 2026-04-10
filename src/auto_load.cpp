@@ -35,7 +35,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <functional>
 
 #include "libtorrent/add_torrent_params.hpp"
-#include "libtorrent/torrent_info.hpp"
+#include "libtorrent/load_torrent.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
 #include "save_settings.hpp"
@@ -228,21 +228,19 @@ void auto_load::on_scan(lt::error_code const& e)
 			continue;
 		}
 
-		lt::error_code tec;
 		std::string file_path = (std::filesystem::path(path) / file).string();
-		auto ti = std::make_shared<lt::torrent_info>(file_path, std::ref(tec));
+		lt::error_code tec;
+		lt::add_torrent_params p = lt::load_torrent_file(file_path, tec, lt::load_torrent_limits{});
 
 		// assume the file isn't fully written yet.
 		if (tec) continue;
 
-		lt::add_torrent_params p;
 		p.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
 		if (m_settings && m_settings->get_int("start_paused", 0))
 			p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
 		else
 			p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
-		p.ti = ti;
-		m_ses.async_add_torrent(p);
+		m_ses.async_add_torrent(std::move(p));
 
 		// TODO: there should be a configuration option to
 		// move the torrent file into a different directory
