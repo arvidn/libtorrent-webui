@@ -36,46 +36,47 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <string_view>
 
 namespace ltweb {
 
 // Locate the body of a MIME part and extract its Content-Type header value.
-// [start, end) is the raw bytes of a single multipart boundary section.
-// Returns a pointer to the first body byte (immediately after the blank
-// header line \r\n\r\n), or nullptr if the part is malformed.
+// Returns a string_view of the body (immediately after the blank header line
+// \r\n\r\n), or a null string_view (data() == nullptr) if the part is malformed.
 // content_type is set to the value of the Content-Type header if found.
-inline char const* parse_mime_part(char const* start, char const* end
-	, std::string& content_type)
+inline std::string_view parse_mime_part(std::string_view part, std::string& content_type)
 {
 	// find the blank line separating headers from body
-	char const* body = nullptr;
-	for (char const* p = start; p + 3 < end; ++p)
-	{
-		if (p[0] == '\r' && p[1] == '\n' && p[2] == '\r' && p[3] == '\n')
-		{ body = p + 4; break; }
-	}
-	if (body == nullptr) return nullptr;
+	auto const sep = part.find("\r\n\r\n");
+	if (sep == std::string_view::npos) return {};
+
+	std::string_view const headers = part.substr(0, sep);
+	std::string_view const body    = part.substr(sep + 4);
 
 	// scan header lines for Content-Type (case-insensitive)
-	char const* const headers_end = body - 4;
-	for (char const* h = start; h < headers_end; )
+	static constexpr std::string_view ct_name = "content-type:";
+	std::string_view remaining = headers;
+	while (!remaining.empty())
 	{
-		char const* eol = std::find(h, headers_end, '\r');
-		std::size_t const len = static_cast<std::size_t>(eol - h);
-		static constexpr char ct[] = "content-type:";
-		if (len > sizeof(ct) - 1)
+		auto const eol = remaining.find('\r');
+		std::string_view const line = remaining.substr(0, eol);
+
+		if (line.size() > ct_name.size())
 		{
 			bool match = true;
-			for (int i = 0; i < int(sizeof(ct) - 1) && match; ++i)
-				match = std::tolower(static_cast<unsigned char>(h[i])) == ct[i];
+			for (std::size_t i = 0; i < ct_name.size() && match; ++i)
+				match = std::tolower(static_cast<unsigned char>(line[i])) == ct_name[i];
 			if (match)
 			{
-				char const* v = h + sizeof(ct) - 1;
-				while (v < eol && *v == ' ') ++v;
-				content_type.assign(v, eol);
+				std::string_view value = line.substr(ct_name.size());
+				while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+				content_type.assign(value);
 			}
 		}
-		h = (eol + 1 < headers_end && eol[1] == '\n') ? eol + 2 : eol + 1;
+
+		if (eol == std::string_view::npos) break;
+		remaining = remaining.substr(eol + 1);
+		if (!remaining.empty() && remaining.front() == '\n') remaining.remove_prefix(1);
 	}
 	return body;
 }

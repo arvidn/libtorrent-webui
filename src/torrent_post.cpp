@@ -34,6 +34,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "mime_part.hpp"
 #include "libtorrent/load_torrent.hpp"
 
+#include <string_view>
+
 using namespace ltweb;
 
 lt::add_torrent_params parse_torrent_post(http::request<http::string_body> const& req
@@ -44,50 +46,55 @@ lt::add_torrent_params parse_torrent_post(http::request<http::string_body> const
 		return {};
 	};
 
-	std::string const& body = req.body();
-	int content_length = static_cast<int>(body.size());
+	std::string_view const body = req.body();
 
-	if (content_length <= 0) return invalid();
+	if (body.empty()) return invalid();
 
-	if (content_length > 10 * 1024 * 1024)
+	if (body.size() > 10 * 1024 * 1024)
 	{
 		ec = lt::error_code(boost::system::errc::file_too_large, boost::system::generic_category());
 		return {};
 	}
 
-	char const* body_start = body.c_str();
-	char const* body_end = body_start + content_length;
-
 	// expect a multipart message here
-	std::string const content_type_str = std::string(req[http::field::content_type]);
-	char const* content_type = content_type_str.c_str();
-	if (strstr(content_type, "multipart/form-data") == nullptr) return invalid();
+	std::string_view const ct{req[http::field::content_type]};
+	if (ct.find("multipart/form-data") == std::string_view::npos) return invalid();
 
-	char const* boundary = strstr(content_type, "boundary=");
-	if (boundary == nullptr) return invalid();
+	auto const boundary_pos = ct.find("boundary=");
+	if (boundary_pos == std::string_view::npos) return invalid();
+	std::string_view const boundary = ct.substr(boundary_pos + 9);
 
-	boundary += 9;
+	// find the first boundary marker in the body
+	auto const first = body.find(boundary);
+	if (first == std::string_view::npos) return invalid();
 
-	char const* part_start = strstr(body_start, boundary);
-	if (part_start == nullptr) return invalid();
-
-	part_start += strlen(boundary);
-	char const* part_end = nullptr;
+	std::string_view remaining = body.substr(first + boundary.size());
 
 	// loop through all parts
-	for (; part_start < body_end; part_start = (std::min)(body_end, part_end + strlen(boundary)))
+	while (!remaining.empty())
 	{
-		part_end = strstr(part_start, boundary);
-		if (part_end == nullptr) part_end = body_end;
+		auto const next = remaining.find(boundary);
+		std::string_view const part = (next == std::string_view::npos)
+			? remaining : remaining.substr(0, next);
 
 		std::string content_type;
-		char const* torrent_start = parse_mime_part(part_start, part_end, content_type);
-		if (torrent_start == nullptr) continue;
-		if (content_type != "application/octet-stream"
-			&& content_type != "application/x-bittorrent") continue;
+		std::string_view torrent_body = parse_mime_part(part, content_type);
 
-		return lt::load_torrent_buffer(
-			lt::span<char const>{torrent_start, part_end - torrent_start}, ec, lt::load_torrent_limits{});
+		if (torrent_body.data() != nullptr
+			&& (content_type == "application/octet-stream"
+				|| content_type == "application/x-bittorrent"))
+		{
+			if (torrent_body.size() >= 4
+				&& torrent_body.substr(torrent_body.size() - 4) == "\r\n--")
+				torrent_body.remove_suffix(4);
+
+			return lt::load_torrent_buffer(
+				lt::span<char const>{torrent_body.data(), int(torrent_body.size())},
+				ec, lt::load_torrent_limits{});
+		}
+
+		if (next == std::string_view::npos) break;
+		remaining = remaining.substr(next + boundary.size());
 	}
 
 	return invalid();

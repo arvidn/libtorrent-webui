@@ -38,16 +38,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 int main_ret = 0;
 
-namespace {
-
-// Call ltweb::parse_mime_part on a std::string_view for convenience.
-char const* parse(std::string_view part, std::string& ct)
-{
-	return ltweb::parse_mime_part(part.data(), part.data() + part.size(), ct);
-}
-
-} // anonymous namespace
-
 int main()
 {
 	// Basic: single Content-Type header, body contains binary-ish data
@@ -59,10 +49,10 @@ int main()
 			"BODY_DATA";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "application/x-bittorrent");
-		TEST_CHECK(std::string_view(body) == "BODY_DATA");
+		TEST_CHECK(body == "BODY_DATA");
 	}
 
 	// octet-stream content type
@@ -73,8 +63,8 @@ int main()
 			"\x01\x02\x03";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "application/octet-stream");
 	}
 
@@ -86,8 +76,8 @@ int main()
 			"data";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "application/x-bittorrent");
 	}
 
@@ -99,8 +89,8 @@ int main()
 			"hello";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "text/plain");
 	}
 
@@ -112,10 +102,10 @@ int main()
 			"value";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct.empty());
-		TEST_CHECK(std::string_view(body) == "value");
+		TEST_CHECK(body == "value");
 	}
 
 	// Empty body (blank line only, nothing after it)
@@ -125,29 +115,28 @@ int main()
 			"\r\n";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "application/octet-stream");
-		// body points one past the end of the input — size is zero
-		TEST_CHECK(body == part.data() + part.size());
+		TEST_CHECK(body.empty());
 	}
 
-	// Malformed: no blank line separator — returns nullptr
+	// Malformed: no blank line separator -- returns null string_view
 	{
 		std::string_view part =
 			"Content-Type: application/x-bittorrent\r\n"
 			"no-blank-line-here";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body == nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() == nullptr);
 	}
 
-	// Completely empty input — returns nullptr
+	// Completely empty input -- returns null string_view
 	{
 		std::string ct;
-		char const* body = parse("", ct);
-		TEST_CHECK(body == nullptr);
+		std::string_view body = ltweb::parse_mime_part("", ct);
+		TEST_CHECK(body.data() == nullptr);
 	}
 
 	// Multiple headers: Content-Type is not first
@@ -160,10 +149,10 @@ int main()
 			"TORRENT";
 
 		std::string ct;
-		char const* body = parse(part, ct);
-		TEST_CHECK(body != nullptr);
+		std::string_view body = ltweb::parse_mime_part(part, ct);
+		TEST_CHECK(body.data() != nullptr);
 		TEST_CHECK(ct == "application/x-bittorrent");
-		TEST_CHECK(std::string_view(body) == "TORRENT");
+		TEST_CHECK(body == "TORRENT");
 	}
 
 	return main_ret;
