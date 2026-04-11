@@ -415,7 +415,7 @@ namespace {
 						write_uint64(s.all_time_upload, ptr);
 						break;
 					case 16: // all-time-download
-						write_uint32(s.all_time_download, ptr);
+						write_uint64(s.all_time_download, ptr);
 						break;
 					case 17: // unchoked-peers
 						write_uint32(s.num_uploads, ptr);
