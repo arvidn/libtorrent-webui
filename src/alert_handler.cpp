@@ -82,9 +82,12 @@ namespace ltweb
 		alerts.clear();
 	}
 
-	void alert_handler::dispatch_alerts() const
+	void alert_handler::dispatch_alerts(lt::time_duration const max_wait) const
 	{
 		std::vector<lt::alert*> alert_queue;
+		if (m_ses.wait_for_alert(max_wait) == nullptr)
+			return;
+
 		m_ses.pop_alerts(&alert_queue);
 		dispatch_alerts(alert_queue);
 	}
