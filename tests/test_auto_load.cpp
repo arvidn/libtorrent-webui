@@ -30,8 +30,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#define BOOST_TEST_MODULE auto_load
+#include <boost/test/included/unit_test.hpp>
+
 #include "auto_load.hpp"
-#include "test.hpp"
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/settings_pack.hpp>
@@ -41,8 +43,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <filesystem>
 #include <fstream>
 #include <vector>
-
-int main_ret = 0;
 
 namespace {
 
@@ -106,68 +106,67 @@ struct temp_dir
 
 } // anonymous namespace
 
-int main()
+BOOST_AUTO_TEST_CASE(basic_pickup)
 {
 	// A .torrent file placed in the watched directory is picked up and added
 	// to the session. set_auto_load_dir() cancels the 1-second startup timer
 	// and fires an immediate scan via expires_after(0).
-	{
-		lt::session ses = make_session();
-		temp_dir dir("ltweb_auto_load_1");
-		write_minimal_torrent(dir.path / "test.torrent");
+	lt::session ses = make_session();
+	temp_dir dir("ltweb_auto_load_1");
+	write_minimal_torrent(dir.path / "test.torrent");
 
-		ltweb::auto_load al(ses);
-		al.set_remove_files(false);
-		al.set_auto_load_dir(dir.path.string());
+	ltweb::auto_load al(ses);
+	al.set_remove_files(false);
+	al.set_auto_load_dir(dir.path.string());
 
-		TEST_CHECK(wait_for_add(ses, std::chrono::seconds(5)));
-	}
+	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+}
 
+BOOST_AUTO_TEST_CASE(remove_files_true)
+{
 	// remove_files=true: the .torrent file is deleted after it is loaded
-	{
-		lt::session ses = make_session();
-		temp_dir dir("ltweb_auto_load_2");
-		auto const torrent_path = dir.path / "test.torrent";
-		write_minimal_torrent(torrent_path);
+	lt::session ses = make_session();
+	temp_dir dir("ltweb_auto_load_2");
+	auto const torrent_path = dir.path / "test.torrent";
+	write_minimal_torrent(torrent_path);
 
-		ltweb::auto_load al(ses);
-		al.set_remove_files(true);
-		al.set_auto_load_dir(dir.path.string());
+	ltweb::auto_load al(ses);
+	al.set_remove_files(true);
+	al.set_auto_load_dir(dir.path.string());
 
-		TEST_CHECK(wait_for_add(ses, std::chrono::seconds(5)));
-		TEST_CHECK(!std::filesystem::exists(torrent_path));
-	}
+	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(!std::filesystem::exists(torrent_path));
+}
 
+BOOST_AUTO_TEST_CASE(remove_files_false)
+{
 	// remove_files=false: the .torrent file is kept after it is loaded
-	{
-		lt::session ses = make_session();
-		temp_dir dir("ltweb_auto_load_3");
-		auto const torrent_path = dir.path / "test.torrent";
-		write_minimal_torrent(torrent_path);
+	lt::session ses = make_session();
+	temp_dir dir("ltweb_auto_load_3");
+	auto const torrent_path = dir.path / "test.torrent";
+	write_minimal_torrent(torrent_path);
 
-		ltweb::auto_load al(ses);
-		al.set_remove_files(false);
-		al.set_auto_load_dir(dir.path.string());
+	ltweb::auto_load al(ses);
+	al.set_remove_files(false);
+	al.set_auto_load_dir(dir.path.string());
 
-		TEST_CHECK(wait_for_add(ses, std::chrono::seconds(5)));
-		TEST_CHECK(std::filesystem::exists(torrent_path));
-	}
+	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(std::filesystem::exists(torrent_path));
+}
 
+BOOST_AUTO_TEST_CASE(non_torrent_ignored)
+{
 	// Non-.torrent files are ignored: place a .txt file alongside a .torrent,
 	// wait for the one expected alert, then assert only one torrent was added.
-	{
-		lt::session ses = make_session();
-		temp_dir dir("ltweb_auto_load_4");
-		write_minimal_torrent(dir.path / "real.torrent");
-		{ std::ofstream f(dir.path / "ignored.txt"); f << "not a torrent\n"; }
+	lt::session ses = make_session();
+	temp_dir dir("ltweb_auto_load_4");
+	write_minimal_torrent(dir.path / "real.torrent");
+	{ std::ofstream f(dir.path / "ignored.txt"); f << "not a torrent\n"; }
 
-		ltweb::auto_load al(ses);
-		al.set_remove_files(false);
-		al.set_auto_load_dir(dir.path.string());
+	ltweb::auto_load al(ses);
+	al.set_remove_files(false);
+	al.set_auto_load_dir(dir.path.string());
 
-		TEST_CHECK(wait_for_add(ses, std::chrono::seconds(5)));
-		TEST_CHECK(ses.get_torrents().size() == 1);
-	}
-
-	return main_ret;
+	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(ses.get_torrents().size() == 1);
 }

@@ -1,11 +1,11 @@
+#define BOOST_TEST_MODULE base64
+#include <boost/test/included/unit_test.hpp>
+
 #include "base64.hpp"
-#include "test.hpp"
 #include <libtorrent/config.hpp>
 #include <libtorrent/string_view.hpp>
 
-int main_ret = 0;
-
-int main(int argc, char* argv[])
+BOOST_AUTO_TEST_CASE(encode_decode)
 {
 	using namespace lt::literals;
 
@@ -21,7 +21,6 @@ int main(int argc, char* argv[])
 
 	for (auto const& [input, output] : test_vectors)
 	{
-		TEST_CHECK(ltweb::base64decode(std::string(output)) == input);
+		BOOST_TEST(ltweb::base64decode(std::string(output)) == input);
 	}
-	return main_ret;
 }

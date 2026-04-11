@@ -30,8 +30,10 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#define BOOST_TEST_MODULE torrent_post
+#include <boost/test/included/unit_test.hpp>
+
 #include "torrent_post.hpp"
-#include "test.hpp"
 
 #include <boost/beast/http.hpp>
 #include <boost/system/errc.hpp>
@@ -39,8 +41,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <string_view>
 
 namespace http = boost::beast::http;
-
-int main_ret = 0;
 
 namespace {
 
@@ -87,10 +87,8 @@ http::request<http::string_body> make_multipart(
 
 } // anonymous namespace
 
-int main()
+BOOST_AUTO_TEST_CASE(rejection_cases)
 {
-	// --- Rejection before load_torrent_buffer ---
-
 	// Empty body
 	{
 		http::request<http::string_body> req{http::verb::post, "/", 11};
@@ -99,7 +97,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Body too large (>10 MiB): distinct file_too_large error, not invalid_argument
@@ -110,8 +108,8 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(ec.value() == (int)boost::system::errc::file_too_large);
-		TEST_CHECK(ec.category() == boost::system::generic_category());
+		BOOST_TEST(ec.value() == (int)boost::system::errc::file_too_large);
+		BOOST_CHECK(ec.category() == boost::system::generic_category());
 	}
 
 	// Content-Type is not multipart/form-data
@@ -122,7 +120,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Media type contains multipart/form-data as a substring but is not exactly that
@@ -133,7 +131,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Parameter name has "boundary" as a suffix: notboundary=X
@@ -144,7 +142,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Parameter name has "boundary" as a prefix: xboundary=X
@@ -155,7 +153,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// multipart/form-data with no boundary parameter
@@ -166,11 +164,10 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Empty boundary (unquoted): boundary= with nothing after it
-	// body.find("") always succeeds, so without a guard this would hang.
 	{
 		http::request<http::string_body> req{http::verb::post, "/", 11};
 		req.set(http::field::content_type, "multipart/form-data; boundary=");
@@ -178,7 +175,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// Malformed quoted boundary: parse_quoted_string rejects it, propagated as invalid
@@ -189,7 +186,7 @@ int main()
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
 
 	// No part with an accepted content type
@@ -199,11 +196,14 @@ int main()
 			"text/plain", "hello");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(is_parse_error(ec));
+		BOOST_TEST(is_parse_error(ec));
 	}
+}
 
-	// --- Boundary parsing: parsing should succeed, load_torrent_buffer reached.
-	//     We pass garbage torrent bytes and verify the error is NOT a parse error.
+BOOST_AUTO_TEST_CASE(boundary_parsing)
+{
+	// Parsing should succeed, load_torrent_buffer reached.
+	// We pass garbage torrent bytes and verify the error is NOT a parse error.
 
 	// Standard unquoted boundary
 	{
@@ -213,7 +213,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// Quoted boundary: boundary="----WebKitFormBoundaryABC"
@@ -224,7 +224,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// Boundary followed by additional parameters: boundary=foo; charset=utf-8
@@ -235,7 +235,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// Case-insensitive content type: Multipart/Form-Data
@@ -246,7 +246,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// Case-insensitive boundary parameter name: BOUNDARY=
@@ -257,10 +257,10 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
-	// OWS (space) between boundary= and value: boundary= foo
+	// OWS (space) between boundary= and value: boundary= X
 	{
 		auto req = make_multipart(
 			"multipart/form-data; boundary= X",
@@ -268,7 +268,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// OWS (tab) between boundary= and value: boundary=\tX
@@ -279,7 +279,7 @@ int main()
 			"application/x-bittorrent", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
 
 	// application/octet-stream is also accepted as part content type
@@ -290,8 +290,6 @@ int main()
 			"application/octet-stream", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
-		TEST_CHECK(!is_parse_error(ec));
+		BOOST_TEST(!is_parse_error(ec));
 	}
-
-	return main_ret;
 }
