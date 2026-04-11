@@ -90,11 +90,10 @@ int main(int argc, char *const argv[])
 	signal(SIGINT, &sighandler);
 
 	bool shutting_down = false;
+	lt::time_point last_update = lt::clock_type::now();
 	while (!quit || !resume.ok_to_quit())
 	{
-		std::this_thread::sleep_for(500ms);
-		alerts.dispatch_alerts();
-		if (!shutting_down) ses.post_torrent_updates();
+		alerts.dispatch_alerts(500ms);
 		if (quit && !shutting_down)
 		{
 			resume.save_all();
@@ -103,7 +102,13 @@ int main(int argc, char *const argv[])
 			signal(SIGTERM, &sighandler_forcequit);
 			signal(SIGINT, &sighandler_forcequit);
 		}
-		if (!quit) resume.tick();
+		lt::time_point const now = lt::clock_type::now();
+		if (!quit && now - last_update > 500ms)
+		{
+			resume.tick();
+			ses.post_torrent_updates();
+			last_update = now;
+		}
 		if (force_quit)
 		{
 			fprintf(stderr, "force quitting\n");

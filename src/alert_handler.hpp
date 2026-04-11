@@ -35,7 +35,7 @@ struct TORRENT_EXPORT alert_handler
 	// TODO: 3 make this a variadic template
 	void subscribe(alert_observer* o, int flags = 0, ...);
 	void dispatch_alerts(std::vector<lt::alert*>& alerts) const;
-	void dispatch_alerts() const;
+	void dispatch_alerts(lt::time_duration max_wait) const;
 	void unsubscribe(alert_observer* o);
 
 	void abort();
