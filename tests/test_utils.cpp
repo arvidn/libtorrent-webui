@@ -30,203 +30,309 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#define BOOST_TEST_MODULE utils
+#include <boost/test/included/unit_test.hpp>
+
 #include "utils.hpp"
-#include "test.hpp"
 
 #include <string>
 #include <string_view>
 
-int main_ret = 0;
+using namespace ltweb;
+using namespace std::string_view_literals;
 
-int main()
+BOOST_AUTO_TEST_SUITE(is_whitespace)
+
+BOOST_AUTO_TEST_CASE(space_and_tab)
 {
-	using namespace ltweb;
-	using namespace std::string_view_literals;
-
-	// is_whitespace()
-	TEST_CHECK(is_whitespace(' '));
-	TEST_CHECK(is_whitespace('\t'));
-	TEST_CHECK(!is_whitespace('a'));
-	TEST_CHECK(!is_whitespace('\n'));
-	TEST_CHECK(!is_whitespace('\r'));
-	TEST_CHECK(!is_whitespace('\0'));
-
-	// trim()
-
-	// no whitespace
-	TEST_CHECK(trim("hello"sv) == "hello");
-
-	// leading spaces
-	TEST_CHECK(trim("   hello"sv) == "hello");
-
-	// trailing spaces
-	TEST_CHECK(trim("hello   "sv) == "hello");
-
-	// both sides
-	TEST_CHECK(trim("  hello world  "sv) == "hello world");
-
-	// tabs are whitespace
-	TEST_CHECK(trim("\thello\t"sv) == "hello");
-
-	// mixed spaces and tabs
-	TEST_CHECK(trim(" \t hello \t "sv) == "hello");
-
-	// all whitespace -> empty
-	TEST_CHECK(trim("   "sv) == "");
-
-	// empty input -> empty
-	TEST_CHECK(trim(""sv) == "");
-
-	// internal whitespace is preserved
-	TEST_CHECK(trim("  a  b  "sv) == "a  b");
-
-	// extension()
-
-	// normal file extension
-	TEST_CHECK(extension("file.txt"sv) == ".txt");
-
-	// longer extension
-	TEST_CHECK(extension("archive.tar.gz"sv) == ".gz");
-
-	// no extension -> empty
-	TEST_CHECK(extension("README"sv) == "");
-
-	// dot at the very end -> extension is "."
-	TEST_CHECK(extension("file."sv) == ".");
-
-	// dot-file (Unix hidden file) with no further extension
-	TEST_CHECK(extension(".hidden"sv) == ".hidden");
-
-	// path with directory separators
-	TEST_CHECK(extension("path/to/file.cpp"sv) == ".cpp");
-
-	// empty input -> empty
-	TEST_CHECK(extension(""sv) == "");
-
-	// split()
-
-	// basic split
-	{
-		auto [a, b] = split("user:pass"sv, ':');
-		TEST_CHECK(a == "user");
-		TEST_CHECK(b == "pass");
-	}
-
-	// only first delimiter is used; remainder stays in second part
-	{
-		auto [a, b] = split("a:b:c"sv, ':');
-		TEST_CHECK(a == "a");
-		TEST_CHECK(b == "b:c");
-	}
-
-	// delimiter not present -> second part is empty
-	{
-		auto [a, b] = split("nodot"sv, '.');
-		TEST_CHECK(a == "nodot");
-		TEST_CHECK(b == "");
-	}
-
-	// delimiter at the start -> first part is empty
-	{
-		auto [a, b] = split(":value"sv, ':');
-		TEST_CHECK(a == "");
-		TEST_CHECK(b == "value");
-	}
-
-	// delimiter at the end -> second part is empty
-	{
-		auto [a, b] = split("key:"sv, ':');
-		TEST_CHECK(a == "key");
-		TEST_CHECK(b == "");
-	}
-
-	// empty input -> both parts empty
-	{
-		auto [a, b] = split(""sv, ':');
-		TEST_CHECK(a == "");
-		TEST_CHECK(b == "");
-	}
-
-	// parse_quoted_string()
-
-	// basic value
-	TEST_CHECK(parse_quoted_string("\"hello\""sv) == "hello");
-
-	// empty quoted string
-	TEST_CHECK(parse_quoted_string("\"\""sv) == "");
-
-	// escaped backslash: \\ -> single backslash
-	TEST_CHECK(parse_quoted_string("\"a\\\\b\""sv) == "a\\b");
-
-	// escaped quote: \" -> "
-	TEST_CHECK(parse_quoted_string("\"fo\\\"o\""sv) == "fo\"o");
-
-	// OWS after closing quote is allowed
-	TEST_CHECK(parse_quoted_string("\"X\"  "sv) == "X");
-
-	// not a quoted string (no opening quote)
-	TEST_CHECK(parse_quoted_string("hello"sv) == std::nullopt);
-
-	// unterminated: no closing quote
-	TEST_CHECK(parse_quoted_string("\"foo"sv) == std::nullopt);
-
-	// trailing backslash: no char to escape
-	TEST_CHECK(parse_quoted_string("\"X\\"sv) == std::nullopt);
-
-	// junk after closing quote
-	TEST_CHECK(parse_quoted_string("\"X\"junk"sv) == std::nullopt);
-
-	// ci_find()
-
-	// exact match
-	TEST_CHECK(ci_find("multipart/form-data"sv, "multipart/form-data"sv) == 0);
-
-	// needle all-lowercase, haystack mixed case
-	TEST_CHECK(ci_find("Multipart/Form-Data"sv, "multipart/form-data"sv) == 0);
-
-	// needle mixed case, haystack lowercase
-	TEST_CHECK(ci_find("multipart/form-data"sv, "Multipart/Form-Data"sv) == 0);
-
-	// match in the middle
-	TEST_CHECK(ci_find("multipart/form-data; boundary=X"sv, "boundary="sv) == 21);
-
-	// match at the end
-	TEST_CHECK(ci_find("foo BOUNDARY="sv, "boundary="sv) == 4);
-
-	// case-insensitive match with all-uppercase haystack
-	TEST_CHECK(ci_find("MULTIPART/FORM-DATA; BOUNDARY=X"sv, "boundary="sv) == 21);
-
-	// needle not present
-	TEST_CHECK(ci_find("multipart/form-data"sv, "boundary="sv) == std::string_view::npos);
-
-	// haystack too short for needle
-	TEST_CHECK(ci_find("abc"sv, "abcd"sv) == std::string_view::npos);
-
-	// empty haystack
-	TEST_CHECK(ci_find(""sv, "x"sv) == std::string_view::npos);
-
-	// empty needle matches at position 0
-	TEST_CHECK(ci_find("hello"sv, ""sv) == 0);
-
-	// both empty: hay.begin() == hay.end(), so the not-found check triggers -> npos
-	TEST_CHECK(ci_find(""sv, ""sv) == std::string_view::npos);
-
-	// str()
-
-	// single string argument
-	TEST_CHECK(str("hello") == "hello");
-
-	// integer concatenation
-	TEST_CHECK(str("port=", 8080) == "port=8080");
-
-	// multiple mixed types
-	TEST_CHECK(str("x=", 1, " y=", 2) == "x=1 y=2");
-
-	// no arguments -> empty string
-	TEST_CHECK(str() == "");
-
-	// floating point
-	TEST_CHECK(str("v=", 3.14) == "v=3.14");
-
-	return main_ret;
+	BOOST_TEST(ltweb::is_whitespace(' '));
+	BOOST_TEST(ltweb::is_whitespace('\t'));
 }
+
+BOOST_AUTO_TEST_CASE(non_whitespace)
+{
+	BOOST_TEST(!ltweb::is_whitespace('a'));
+	BOOST_TEST(!ltweb::is_whitespace('\n'));
+	BOOST_TEST(!ltweb::is_whitespace('\r'));
+	BOOST_TEST(!ltweb::is_whitespace('\0'));
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(trim)
+
+BOOST_AUTO_TEST_CASE(no_whitespace)
+{
+	BOOST_TEST(ltweb::trim("hello"sv) == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(leading)
+{
+	BOOST_TEST(ltweb::trim("   hello"sv) == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(trailing)
+{
+	BOOST_TEST(ltweb::trim("hello   "sv) == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(both_sides)
+{
+	BOOST_TEST(ltweb::trim("  hello world  "sv) == "hello world");
+}
+
+BOOST_AUTO_TEST_CASE(tabs)
+{
+	BOOST_TEST(ltweb::trim("\thello\t"sv) == "hello");
+	BOOST_TEST(ltweb::trim(" \t hello \t "sv) == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(all_whitespace)
+{
+	BOOST_TEST(ltweb::trim("   "sv) == "");
+}
+
+BOOST_AUTO_TEST_CASE(empty)
+{
+	BOOST_TEST(ltweb::trim(""sv) == "");
+}
+
+BOOST_AUTO_TEST_CASE(internal_whitespace_preserved)
+{
+	BOOST_TEST(ltweb::trim("  a  b  "sv) == "a  b");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(extension)
+
+BOOST_AUTO_TEST_CASE(normal)
+{
+	BOOST_TEST(ltweb::extension("file.txt"sv) == ".txt");
+}
+
+BOOST_AUTO_TEST_CASE(multiple_dots)
+{
+	BOOST_TEST(ltweb::extension("archive.tar.gz"sv) == ".gz");
+}
+
+BOOST_AUTO_TEST_CASE(no_extension)
+{
+	BOOST_TEST(ltweb::extension("README"sv) == "");
+}
+
+BOOST_AUTO_TEST_CASE(dot_at_end)
+{
+	BOOST_TEST(ltweb::extension("file."sv) == ".");
+}
+
+BOOST_AUTO_TEST_CASE(dot_file)
+{
+	BOOST_TEST(ltweb::extension(".hidden"sv) == ".hidden");
+}
+
+BOOST_AUTO_TEST_CASE(with_path)
+{
+	BOOST_TEST(ltweb::extension("path/to/file.cpp"sv) == ".cpp");
+}
+
+BOOST_AUTO_TEST_CASE(empty)
+{
+	BOOST_TEST(ltweb::extension(""sv) == "");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(split)
+
+BOOST_AUTO_TEST_CASE(basic)
+{
+	auto [a, b] = ltweb::split("user:pass"sv, ':');
+	BOOST_TEST(a == "user");
+	BOOST_TEST(b == "pass");
+}
+
+BOOST_AUTO_TEST_CASE(first_delimiter_only)
+{
+	auto [a, b] = ltweb::split("a:b:c"sv, ':');
+	BOOST_TEST(a == "a");
+	BOOST_TEST(b == "b:c");
+}
+
+BOOST_AUTO_TEST_CASE(delimiter_absent)
+{
+	auto [a, b] = ltweb::split("nodot"sv, '.');
+	BOOST_TEST(a == "nodot");
+	BOOST_TEST(b == "");
+}
+
+BOOST_AUTO_TEST_CASE(delimiter_at_start)
+{
+	auto [a, b] = ltweb::split(":value"sv, ':');
+	BOOST_TEST(a == "");
+	BOOST_TEST(b == "value");
+}
+
+BOOST_AUTO_TEST_CASE(delimiter_at_end)
+{
+	auto [a, b] = ltweb::split("key:"sv, ':');
+	BOOST_TEST(a == "key");
+	BOOST_TEST(b == "");
+}
+
+BOOST_AUTO_TEST_CASE(empty)
+{
+	auto [a, b] = ltweb::split(""sv, ':');
+	BOOST_TEST(a == "");
+	BOOST_TEST(b == "");
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(parse_quoted_string)
+
+BOOST_AUTO_TEST_CASE(basic_value)
+{
+	auto r = ltweb::parse_quoted_string("\"hello\""sv);
+	BOOST_REQUIRE(r.has_value());
+	BOOST_TEST(*r == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(empty_quoted)
+{
+	auto r = ltweb::parse_quoted_string("\"\""sv);
+	BOOST_REQUIRE(r.has_value());
+	BOOST_TEST(*r == "");
+}
+
+BOOST_AUTO_TEST_CASE(escaped_backslash)
+{
+	auto r = ltweb::parse_quoted_string("\"a\\\\b\""sv);
+	BOOST_REQUIRE(r.has_value());
+	BOOST_TEST(*r == "a\\b");
+}
+
+BOOST_AUTO_TEST_CASE(escaped_quote)
+{
+	auto r = ltweb::parse_quoted_string("\"fo\\\"o\""sv);
+	BOOST_REQUIRE(r.has_value());
+	BOOST_TEST(*r == "fo\"o");
+}
+
+BOOST_AUTO_TEST_CASE(trailing_ows)
+{
+	auto r = ltweb::parse_quoted_string("\"X\"  "sv);
+	BOOST_REQUIRE(r.has_value());
+	BOOST_TEST(*r == "X");
+}
+
+BOOST_AUTO_TEST_CASE(no_opening_quote)
+{
+	BOOST_TEST(!ltweb::parse_quoted_string("hello"sv).has_value());
+}
+
+BOOST_AUTO_TEST_CASE(unterminated)
+{
+	BOOST_TEST(!ltweb::parse_quoted_string("\"foo"sv).has_value());
+}
+
+BOOST_AUTO_TEST_CASE(trailing_backslash)
+{
+	BOOST_TEST(!ltweb::parse_quoted_string("\"X\\"sv).has_value());
+}
+
+BOOST_AUTO_TEST_CASE(junk_after_closing_quote)
+{
+	BOOST_TEST(!ltweb::parse_quoted_string("\"X\"junk"sv).has_value());
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(ci_find)
+
+BOOST_AUTO_TEST_CASE(exact_match)
+{
+	BOOST_TEST(ltweb::ci_find("multipart/form-data"sv, "multipart/form-data"sv) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(haystack_mixed_case)
+{
+	BOOST_TEST(ltweb::ci_find("Multipart/Form-Data"sv, "multipart/form-data"sv) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(needle_mixed_case)
+{
+	BOOST_TEST(ltweb::ci_find("multipart/form-data"sv, "Multipart/Form-Data"sv) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(match_in_middle)
+{
+	BOOST_TEST(ltweb::ci_find("multipart/form-data; boundary=X"sv, "boundary="sv) == 21);
+}
+
+BOOST_AUTO_TEST_CASE(match_at_end)
+{
+	BOOST_TEST(ltweb::ci_find("foo BOUNDARY="sv, "boundary="sv) == 4);
+}
+
+BOOST_AUTO_TEST_CASE(uppercase_haystack)
+{
+	BOOST_TEST(ltweb::ci_find("MULTIPART/FORM-DATA; BOUNDARY=X"sv, "boundary="sv) == 21);
+}
+
+BOOST_AUTO_TEST_CASE(needle_not_present)
+{
+	BOOST_TEST(ltweb::ci_find("multipart/form-data"sv, "boundary="sv) == std::string_view::npos);
+}
+
+BOOST_AUTO_TEST_CASE(haystack_too_short)
+{
+	BOOST_TEST(ltweb::ci_find("abc"sv, "abcd"sv) == std::string_view::npos);
+}
+
+BOOST_AUTO_TEST_CASE(empty_haystack)
+{
+	BOOST_TEST(ltweb::ci_find(""sv, "x"sv) == std::string_view::npos);
+}
+
+BOOST_AUTO_TEST_CASE(empty_needle)
+{
+	BOOST_TEST(ltweb::ci_find("hello"sv, ""sv) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(both_empty)
+{
+	// hay.begin() == hay.end(), so the not-found check triggers -> npos
+	BOOST_TEST(ltweb::ci_find(""sv, ""sv) == std::string_view::npos);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+BOOST_AUTO_TEST_SUITE(str)
+
+BOOST_AUTO_TEST_CASE(single_string)
+{
+	BOOST_TEST(ltweb::str("hello") == "hello");
+}
+
+BOOST_AUTO_TEST_CASE(integer_concat)
+{
+	BOOST_TEST(ltweb::str("port=", 8080) == "port=8080");
+}
+
+BOOST_AUTO_TEST_CASE(multiple_mixed)
+{
+	BOOST_TEST(ltweb::str("x=", 1, " y=", 2) == "x=1 y=2");
+}
+
+BOOST_AUTO_TEST_CASE(no_arguments)
+{
+	BOOST_TEST(ltweb::str() == "");
+}
+
+BOOST_AUTO_TEST_CASE(float_point)
+{
+	BOOST_TEST(ltweb::str("v=", 3.14) == "v=3.14");
+}
+
+BOOST_AUTO_TEST_SUITE_END()

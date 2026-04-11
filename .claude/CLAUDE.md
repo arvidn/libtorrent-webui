@@ -29,13 +29,15 @@ The `webui_test` binary is the reference/example program (see `run_debug.sh` whi
 
 ## Running Tests
 
-Tests live in `tests/` and use Boost.Test via Boost.Build:
+Tests live in `tests/` and use **Boost.Test** (header-only, `<boost/test/included/unit_test.hpp>`) via Boost.Build:
 
 ```bash
 # Run all tests
 cd tests
 b2
 ```
+
+Each test binary uses `BOOST_TEST_MODULE` and `BOOST_AUTO_TEST_CASE` / `BOOST_AUTO_TEST_SUITE`. There is no separate test library to link — Boost.Test is compiled in via the header. The Jamfile uses the `unit-test` rule (not `run`) for all test targets.
 
 Tests depend on both `/torrent` (libtorrent submodule) and `/torrent-webui` (this project).
 
@@ -82,6 +84,8 @@ Built-in implementations: `no_auth` (accepts all), `pam_auth` (Linux PAM), `auth
 - **`stats_logging`** — logs session statistics
 - **`json_util`** + **`jsmn`** — JSON building/parsing (jsmn is a minimal C tokenizer)
 - **`base64`** / **`hex`** / **`escape_json`** — encoding utilities
+- **`percent_encode`** / **`url_decode`** — URL encoding/decoding utilities
+- **`utils.hpp`** — shared inline utilities: `is_whitespace`, `trim`, `extension`, `split`, `parse_quoted_string` (RFC 7230 quoted-string), `ci_find` (case-insensitive substring search via `boost::algorithm`), `iequals`, `str` (variadic string builder)
 
 ## Key Design Patterns
 

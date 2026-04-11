@@ -12,12 +12,12 @@ project
 	<debug-iterators>on
    ;
 
-run test_base64.cpp ;
-run test_mime_part.cpp ;
-run test_parse_http_auth.cpp ;
-run test_percent_encode.cpp ;
-run test_url_decode.cpp ;
-run test_utils.cpp ;
-run test_torrent_history.cpp ;
-run test_torrent_post.cpp ;
-run test_auto_load.cpp ;
+unit-test test_base64 : test_base64.cpp ;
+unit-test test_mime_part : test_mime_part.cpp ;
+unit-test test_parse_http_auth : test_parse_http_auth.cpp ;
+unit-test test_percent_encode : test_percent_encode.cpp ;
+unit-test test_url_decode : test_url_decode.cpp ;
+unit-test test_utils : test_utils.cpp ;
+unit-test test_torrent_history : test_torrent_history.cpp ;
+unit-test test_torrent_post : test_torrent_post.cpp ;
+unit-test test_auto_load : test_auto_load.cpp ;

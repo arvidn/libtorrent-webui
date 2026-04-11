@@ -30,12 +30,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#define BOOST_TEST_MODULE url_decode
+#include <boost/test/included/unit_test.hpp>
+
 #include "url_decode.hpp"
-#include "test.hpp"
 
 #include <boost/system/error_code.hpp>
-
-int main_ret = 0;
 
 namespace {
 
@@ -54,57 +54,65 @@ bool decode_fails(std::string const& s)
 
 } // anonymous namespace
 
-int main()
+BOOST_AUTO_TEST_CASE(plain_text)
 {
 	// plain text passes through unchanged
-	TEST_CHECK(decode("hello") == "hello");
+	BOOST_TEST(decode("hello") == "hello");
 
 	// empty string
-	TEST_CHECK(decode("") == "");
+	BOOST_TEST(decode("") == "");
+}
 
+BOOST_AUTO_TEST_CASE(plus_sign)
+{
 	// '+' decoded as space
-	TEST_CHECK(decode("hello+world") == "hello world");
+	BOOST_TEST(decode("hello+world") == "hello world");
 
 	// multiple '+' in a row
-	TEST_CHECK(decode("a+++b") == "a   b");
+	BOOST_TEST(decode("a+++b") == "a   b");
+}
 
-	// %20 — space via percent-encoding
-	TEST_CHECK(decode("hello%20world") == "hello world");
+BOOST_AUTO_TEST_CASE(percent_sequences)
+{
+	// %20 -- space via percent-encoding
+	BOOST_TEST(decode("hello%20world") == "hello world");
 
 	// lowercase hex digits are accepted
-	TEST_CHECK(decode("%2f") == "/");
-	TEST_CHECK(decode("%2F") == "/");
+	BOOST_TEST(decode("%2f") == "/");
+	BOOST_TEST(decode("%2F") == "/");
 
-	// %00 — null byte
-	TEST_CHECK(decode("%00") == std::string(1, '\0'));
+	// %00 -- null byte
+	BOOST_TEST(decode("%00") == std::string(1, '\0'));
 
-	// %FF — high byte
-	TEST_CHECK(decode("%FF") == std::string(1, '\xff'));
+	// %FF -- high byte
+	BOOST_TEST(decode("%FF") == std::string(1, '\xff'));
 
 	// round-trip with percent_encode output (uppercase hex)
-	TEST_CHECK(decode("%2Fb%5Cc") == "/b\\c");
+	BOOST_TEST(decode("%2Fb%5Cc") == "/b\\c");
 
 	// sequence at end of string
-	TEST_CHECK(decode("end%21") == "end!");
+	BOOST_TEST(decode("end%21") == "end!");
 
 	// sequence at start of string
-	TEST_CHECK(decode("%21start") == "!start");
+	BOOST_TEST(decode("%21start") == "!start");
 
 	// multiple sequences
-	TEST_CHECK(decode("%61%62%63") == "abc");
+	BOOST_TEST(decode("%61%62%63") == "abc");
 
 	// mix of plain, '+', and %XX
-	TEST_CHECK(decode("a+b%3Dc") == "a b=c");
+	BOOST_TEST(decode("a+b%3Dc") == "a b=c");
+}
 
-	// truncated sequence at end — '%' with only one char left: no decode, treat as literal
-	// (the condition requires i+2 < s.size(), so a lone '%' at end passes through)
-	// TODO: should these be errors instead?
-	TEST_CHECK(decode("x%2") == "x%2");
-	TEST_CHECK(decode("x%") == "x%");
+BOOST_AUTO_TEST_CASE(truncated_sequence)
+{
+	// truncated sequence at end -- '%' with only one char left: no decode, treat as literal
+	BOOST_TEST(decode("x%2") == "x%2");
+	BOOST_TEST(decode("x%") == "x%");
+}
 
+BOOST_AUTO_TEST_CASE(invalid_hex)
+{
 	// malformed %XX (non-hex chars) sets ec and returns empty
-	TEST_CHECK(decode_fails("%GG"));
-	TEST_CHECK(decode_fails("%0Z"));
-
-	return main_ret;
+	BOOST_TEST(decode_fails("%GG"));
+	BOOST_TEST(decode_fails("%0Z"));
 }

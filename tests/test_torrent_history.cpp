@@ -30,9 +30,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#define BOOST_TEST_MODULE torrent_history
+#include <boost/test/included/unit_test.hpp>
+
 #include "torrent_history.hpp"
 #include "alert_handler.hpp"
-#include "test.hpp"
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/settings_pack.hpp>
@@ -43,8 +45,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <chrono>
 #include <cstring>
 #include <vector>
-
-int main_ret = 0;
 
 namespace {
 
@@ -79,7 +79,7 @@ lt::sha256_hash make_v2(unsigned char fill)
 
 } // anonymous namespace
 
-int main()
+BOOST_AUTO_TEST_CASE(integration)
 {
 	// Minimal session: networking disabled, not needed for these tests
 	lt::settings_pack sp;
@@ -94,10 +94,10 @@ int main()
 	ltweb::torrent_history history(&handler);
 
 	// Four distinct hash identities covering all torrent types:
-	//   v1_hash  — v1-only (sha1 only)
-	//   v2_hash  — v2-only (sha256 only, v1 left zero)
-	//   hy_v1/hy_v2 — hybrid (both sha1 and sha256 set)
-	//   tr_v2    — v2 hash whose first 20 bytes will be stored as a v1 "truncated" hash
+	//   v1_hash  -- v1-only (sha1 only)
+	//   v2_hash  -- v2-only (sha256 only, v1 left zero)
+	//   hy_v1/hy_v2 -- hybrid (both sha1 and sha256 set)
+	//   tr_v2    -- v2 hash whose first 20 bytes will be stored as a v1 "truncated" hash
 	lt::sha1_hash const v1_hash = make_v1(0x11);
 	lt::sha256_hash const v2_hash = make_v2(0x22);
 	lt::sha1_hash const hy_v1 = make_v1(0x33);
@@ -116,16 +116,17 @@ int main()
 	// Add v2-only torrent (v1 stays zero-initialised)
 	p.info_hashes = lt::info_hash_t(v2_hash);
 	lt::torrent_handle h2 = ses.add_torrent(p);
+	(void)h2;
 
 	// Add hybrid torrent (both v1 and v2 set)
 	p.info_hashes = lt::info_hash_t(hy_v1, hy_v2);
 	lt::torrent_handle h3 = ses.add_torrent(p);
+	(void)h3;
 
 	// Add a torrent whose "v1" hash is really the first 20 bytes of a v2 hash.
-	// This simulates a torrent added from a v2-only magnet link when the client
-	// stored it internally with only the truncated sha256 as its sha1.
 	p.info_hashes = lt::info_hash_t(tr_as_v1);
 	lt::torrent_handle h4 = ses.add_torrent(p);
+	(void)h4;
 
 	wait_for(ses, handler, 4, lt::add_torrent_alert::alert_type);
 
@@ -133,31 +134,29 @@ int main()
 	{
 		std::vector<lt::torrent_status> all;
 		history.updated_since(0, all);
-		TEST_CHECK(all.size() == 4);
+		BOOST_TEST(all.size() == 4);
 	}
 
 	// v1-only lookup by sha1 hash
 	{
 		auto const st = history.get_torrent_status(v1_hash);
-		TEST_CHECK(st.info_hashes == lt::info_hash_t(v1_hash));
+		BOOST_TEST((st.info_hashes == lt::info_hash_t(v1_hash)));
 	}
 
 	// v2-only lookup by full sha256 hash (direct match path)
 	{
 		auto const st = history.get_torrent_status(v2_hash);
-		TEST_CHECK(st.info_hashes == lt::info_hash_t(v2_hash));
+		BOOST_TEST((st.info_hashes == lt::info_hash_t(v2_hash)));
 	}
 
 	// Truncated-v2 lookup: given a full sha256 hash, find a torrent that
 	// was stored with only its first 20 bytes as a sha1 (v2 is zero).
-	// This exercises the fallback path in get_torrent_status(sha256_hash).
 	{
 		auto const st = history.get_torrent_status(tr_v2);
-		TEST_CHECK(st.info_hashes == lt::info_hash_t(tr_as_v1));
+		BOOST_TEST((st.info_hashes == lt::info_hash_t(tr_as_v1)));
 	}
 
-	// Hybrid torrent appears in updated_since — the bimap stores it
-	// under the combined {v1, v2} key so it is tracked correctly
+	// Hybrid torrent appears in updated_since
 	{
 		std::vector<lt::torrent_status> all;
 		history.updated_since(0, all);
@@ -165,15 +164,13 @@ int main()
 		for (auto const& s : all)
 			if (s.info_hashes == lt::info_hash_t(hy_v1, hy_v2))
 				found_hybrid = true;
-		TEST_CHECK(found_hybrid);
+		BOOST_TEST(found_hybrid);
 	}
 
 	// Lookup of an unknown hash returns a torrent_status with an invalid handle
-	// (the miss path returns the lookup-key struct, so info_hashes reflects the
-	// query, but handle.is_valid() is false — that is the reliable "not found" signal)
 	{
 		auto const st = history.get_torrent_status(make_v1(0xff));
-		TEST_CHECK(!st.handle.is_valid());
+		BOOST_TEST(!st.handle.is_valid());
 	}
 
 	// state_update_alert advances the frame counter
@@ -182,7 +179,7 @@ int main()
 	wait_for(ses, handler, 1, lt::state_update_alert::alert_type);
 	{
 		ltweb::frame_t const f = history.frame();
-		TEST_CHECK(f > frame_before_update);
+		BOOST_TEST(f > frame_before_update);
 	}
 
 	// updated_since with the current frame returns nothing new
@@ -190,7 +187,7 @@ int main()
 		ltweb::frame_t const f = history.frame();
 		std::vector<lt::torrent_status> empty;
 		history.updated_since(f, empty);
-		TEST_CHECK(empty.empty());
+		BOOST_TEST(empty.empty());
 	}
 
 	// Removing a torrent records it in removed_since
@@ -200,19 +197,17 @@ int main()
 		wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
 
 		auto const removed = history.removed_since(f);
-		TEST_CHECK(removed.size() == 1);
+		BOOST_TEST(removed.size() == 1);
 		if (!removed.empty())
-			TEST_CHECK(removed[0] == lt::info_hash_t(v1_hash));
+			BOOST_TEST((removed[0] == lt::info_hash_t(v1_hash)));
 	}
 
 	// After removal the torrent no longer shows up in updated_since
 	{
 		std::vector<lt::torrent_status> remaining;
 		history.updated_since(0, remaining);
-		TEST_CHECK(remaining.size() == 3);
+		BOOST_TEST(remaining.size() == 3);
 		for (auto const& s : remaining)
-			TEST_CHECK(s.info_hashes != lt::info_hash_t(v1_hash));
+			BOOST_TEST((s.info_hashes != lt::info_hash_t(v1_hash)));
 	}
-
-	return main_ret;
 }
