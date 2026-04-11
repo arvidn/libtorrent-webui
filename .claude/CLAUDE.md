@@ -51,7 +51,7 @@ Tests depend on both `/torrent` (libtorrent submodule) and `/torrent-webui` (thi
 
 Two complete web UI protocol implementations exist as `http_handler` subclasses:
 
-- **`libtorrent_webui`** (`src/libtorrent_webui.hpp/cpp`) — native protocol using WebSocket RPC. Upgrades HTTP connections to WebSocket and dispatches binary RPC calls. Each RPC is a method on the class (e.g. `get_torrent_updates`, `add_torrent`).
+- **`libtorrent_webui`** (`src/libtorrent_webui.hpp/cpp`) — native binary WebSocket RPC protocol. Full protocol spec: `docs/libtorrent-webui.rst`. Plain-JavaScript frontend: `bt/libtorrent-webui.js`. Each binary WebSocket frame carries an 8-bit function-id (MSB clear = call, MSB set = response), a 16-bit transaction-id for out-of-order pairing, and function-specific arguments. Key RPCs: `get_torrent_updates` (id 0, delta updates keyed by frame counter), torrent actions start/stop/remove/etc. (ids 1-13), settings RPCs (14-16), stats RPCs (17-18), `get_file_updates` (19), `add_torrent` (20).
 - **`utorrent_webui`** (`src/utorrent_webui.hpp/cpp`) — uTorrent-compatible HTTP API at `/gui`. Lets uTorrent web clients talk to libtorrent.
 
 ### Alert System (`src/alert_handler.hpp`, `src/alert_observer.hpp`)
