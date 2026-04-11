@@ -52,7 +52,7 @@ auto find_longest_prefix(Container const& c, StringView const path)
 	{
 		if (int(it->first.size()) <= length || !starts_with(path, it->first))
 			continue;
-		
+
 		best = it;
 		length = int(it->first.size());
 	}
