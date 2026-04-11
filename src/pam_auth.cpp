@@ -38,8 +38,8 @@ namespace ltweb
 		if (num_msgs == 0) return PAM_SUCCESS;
 
 		// allocate an array for responses.
-	   // memory freed is by PAM.
-	   *r = (pam_response*)calloc(num_msgs, sizeof(pam_response));
+		// memory freed is by PAM.
+		*r = (pam_response*)calloc(num_msgs, sizeof(pam_response));
 		if (*r == NULL) return PAM_BUF_ERR;
 
 		for (int i = 0; i < num_msgs; ++i)
@@ -82,7 +82,7 @@ namespace ltweb
 		int ret = pam_start(m_service_name.c_str(), username.c_str(), &c, &handle);
 		if (ret != PAM_SUCCESS) return fail(ret, handle);
 
-		ret = pam_set_item(handle, PAM_RUSER, (void *)username.c_str()); 
+		ret = pam_set_item(handle, PAM_RUSER, (void *)username.c_str());
 		if (ret != PAM_SUCCESS) return fail(ret, handle);
 
 		ret = pam_set_item(handle, PAM_RHOST, "localhost");
@@ -98,7 +98,7 @@ namespace ltweb
 
 		std::map<std::string, permissions_interface*>::const_iterator i = m_users.find(username);
 		if (i != m_users.end()) return i->second;
-	
+
 		static full_permissions full;
 		return m_perms ? m_perms : &full;
 	}
