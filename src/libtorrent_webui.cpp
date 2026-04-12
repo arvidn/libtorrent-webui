@@ -11,6 +11,7 @@ see LICENSE file.
 #include <memory>
 #include <chrono>
 #include <string_view>
+#include <vector>
 
 #include "libtorrent_webui.hpp"
 #include "libtorrent/session.hpp"
@@ -18,6 +19,7 @@ see LICENSE file.
 #include "libtorrent/torrent_info.hpp"
 #include "libtorrent/alert_types.hpp"
 #include "libtorrent/magnet_uri.hpp"
+#include "libtorrent/peer_info.hpp"
 
 #include "auth.hpp"
 #include "save_settings.hpp"
@@ -78,7 +80,7 @@ namespace {
 		bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 	};
 
-	static std::array<rpc_entry, 21> const functions =
+	static std::array<rpc_entry, 22> const functions =
 	{{
 		{ "get-torrent-updates", &libtorrent_webui::get_torrent_updates },
 		{ "start", &libtorrent_webui::start },
@@ -101,6 +103,7 @@ namespace {
 		{ "get-stats", &libtorrent_webui::get_stats },
 		{ "get-file-updates", &libtorrent_webui::get_file_updates },
 		{ "add-torrent", &libtorrent_webui::add_torrent },
+		{ "get-peers-updates", &libtorrent_webui::get_peers_updates },
 	}};
 
 	// maps torrent field to RPC field. These fields are the ones defined in
@@ -953,6 +956,7 @@ namespace {
 		fprio.resize(fs.num_files(), lt::default_priority);
 
 		// frame number
+		// TODO: implement delta tracking
 		write_uint32(0, ptr);
 
 		// number of files
@@ -1005,6 +1009,200 @@ namespace {
 		}
 
 		return st->send_packet(&response[0], response.size());
+	}
+
+	bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
+	{
+		if (!st->perms()->allow_list())
+			return error(st, f, permission_denied);
+
+		char const* iptr = f.data;
+		if (f.len != 32) return error(st, f, invalid_number_of_args);
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		frame_t const frame = read_uint32(iptr);
+		(void)frame;
+		std::uint64_t const field_mask = read_uint64(iptr);
+
+		lt::torrent_handle h = m_ses.find_torrent(ih);
+		if (!h.is_valid()) return error(st, f, invalid_argument);
+
+		std::vector<lt::peer_info> peers;
+		// TODO: get_peer_info() is a synchronous call. use the async. call
+		h.get_peer_info(peers);
+
+		// filter connections that haven't been established yet
+		// TODO: use remove_if() when we update to C++20
+		auto new_end = std::remove_if(
+			peers.begin()
+			, peers.end()
+			, [](lt::peer_info& pi) {
+				return (pi.flags & lt::peer_info::connecting)
+					|| (pi.flags & lt::peer_info::handshake);
+				});
+		peers.erase(new_end, peers.end());
+
+		std::vector<char> response;
+		std::back_insert_iterator<std::vector<char>> ptr(response);
+
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
+
+		// frame-number
+		// TODO: implement delta tracking
+		write_uint32(0, ptr);
+
+		// num-updates
+		write_uint32(static_cast<std::uint32_t>(peers.size()), ptr);
+
+		// num-removed: 0xffffffff means "all peers not in this update disconnected"
+		write_uint32(0xffffffff, ptr);
+
+		for (std::uint32_t idx = 0; idx < static_cast<std::uint32_t>(peers.size()); ++idx)
+		{
+			lt::peer_info const& pi = peers[idx];
+
+			// peer identifier: just the index for now
+			// TODO: this needs to be an actual unique identifier. Maybe the
+			// hash of the peer_id + endpoint
+			write_uint32(idx, ptr);
+
+			// build bitmask of fields we will include
+			std::uint64_t bitmask = field_mask & 0xfffff; // 20 defined fields (bits 0-19)
+			write_uint64(bitmask, ptr);
+
+			// field 0: flags - peer_flags_t
+			if (bitmask & (1ULL << 0))
+				write_uint32(static_cast<std::uint32_t>(pi.flags), ptr);
+
+			// field 1: source
+			if (bitmask & (1ULL << 1))
+				write_uint8(static_cast<std::uint8_t>(pi.source), ptr);
+
+			// field 2: read-state (raw bitmask: bw_idle=0x01, bw_limit=0x02, bw_network=0x04, bw_disk=0x10)
+			if (bitmask & (1ULL << 2))
+				write_uint8(static_cast<std::uint8_t>(pi.read_state), ptr);
+
+			// field 3: write-state (same encoding as read-state)
+			if (bitmask & (1ULL << 3))
+				write_uint8(static_cast<std::uint8_t>(pi.write_state), ptr);
+
+			// field 4: client (length-prefixed string)
+			if (bitmask & (1ULL << 4))
+			{
+				std::string const& client = pi.client;
+				std::size_t const len = std::min(client.size(), std::size_t(255));
+				write_uint8(static_cast<std::uint8_t>(len), ptr);
+				std::copy(client.begin(), client.begin() + len, ptr);
+			}
+
+			// field 5: num-pieces
+			if (bitmask & (1ULL << 5))
+				write_uint32(static_cast<std::uint32_t>(pi.num_pieces), ptr);
+
+			// field 6: pending-disk-bytes
+			if (bitmask & (1ULL << 6))
+				write_uint32(static_cast<std::uint32_t>(pi.pending_disk_bytes), ptr);
+
+			// field 7: pending-disk-read-bytes
+			if (bitmask & (1ULL << 7))
+				write_uint32(static_cast<std::uint32_t>(pi.pending_disk_read_bytes), ptr);
+
+			// field 8: hashfails
+			if (bitmask & (1ULL << 8))
+				write_uint32(static_cast<std::uint32_t>(pi.num_hashfails), ptr);
+
+			// field 9: down-rate (payload)
+			if (bitmask & (1ULL << 9))
+				write_uint32(static_cast<std::uint32_t>(pi.payload_down_speed), ptr);
+
+			// field 10: up-rate (payload)
+			if (bitmask & (1ULL << 10))
+				write_uint32(static_cast<std::uint32_t>(pi.payload_up_speed), ptr);
+
+			// field 11: peer-id (20 bytes)
+			if (bitmask & (1ULL << 11))
+				std::copy(pi.pid.begin(), pi.pid.end(), ptr);
+
+			// field 12: download-queue length
+			if (bitmask & (1ULL << 12))
+				write_uint32(static_cast<std::uint32_t>(pi.download_queue_length), ptr);
+
+			// field 13: upload-queue length
+			if (bitmask & (1ULL << 13))
+				write_uint32(static_cast<std::uint32_t>(pi.upload_queue_length), ptr);
+
+			// field 14: timed-out-reqs
+			if (bitmask & (1ULL << 14))
+				write_uint32(static_cast<std::uint32_t>(pi.timed_out_requests), ptr);
+
+			// field 15: progress [0, 1000000]
+			if (bitmask & (1ULL << 15))
+				write_uint32(static_cast<std::uint32_t>(pi.progress_ppm), ptr);
+
+			// field 16: endpoints
+			if (bitmask & (1ULL << 16))
+			{
+#if TORRENT_USE_I2P
+				if (pi.flags & lt::peer_info::i2p_socket)
+				{
+					write_uint8(2, ptr); // I2P
+					lt::sha256_hash const dest = pi.i2p_destination();
+					std::copy(dest.begin(), dest.end(), ptr);
+				}
+				else
+#endif
+				{
+					auto const remote = pi.remote_endpoint();
+					auto const local  = pi.local_endpoint();
+					bool const is_v6 = remote.address().is_v6();
+					write_uint8(is_v6 ? 1 : 0, ptr);
+
+					auto write_endpoint = [&](boost::asio::ip::tcp::endpoint const& ep) {
+						if (is_v6) {
+							auto const bytes = ep.address().to_v6().to_bytes();
+							std::copy(bytes.begin(), bytes.end(), ptr);
+						} else {
+							auto const bytes = ep.address().to_v4().to_bytes();
+							std::copy(bytes.begin(), bytes.end(), ptr);
+						}
+						write_uint16(static_cast<std::uint16_t>(ep.port()), ptr);
+					};
+					write_endpoint(local);
+					write_endpoint(remote);
+				}
+			}
+
+			// field 17: pieces bitfield
+			if (bitmask & (1ULL << 17))
+			{
+				lt::typed_bitfield<lt::piece_index_t> const& pieces = pi.pieces;
+				std::uint32_t const num_bytes = static_cast<std::uint32_t>((pieces.size() + 7) / 8);
+				write_uint32(num_bytes, ptr);
+				for (std::uint32_t byte_idx = 0; byte_idx < num_bytes; ++byte_idx)
+				{
+					std::uint8_t byte = 0;
+					for (int bit = 0; bit < 8; ++bit)
+					{
+						int piece = static_cast<int>(byte_idx * 8 + bit);
+						if (piece < pieces.size() && pieces.get_bit(lt::piece_index_t{piece}))
+							byte |= static_cast<std::uint8_t>(0x80 >> bit);
+					}
+					write_uint8(byte, ptr);
+				}
+			}
+
+			// field 18: total-download
+			if (bitmask & (1ULL << 18))
+				write_uint64(static_cast<std::uint64_t>(pi.total_download), ptr);
+
+			// field 19: total-upload
+			if (bitmask & (1ULL << 19))
+				write_uint64(static_cast<std::uint64_t>(pi.total_upload), ptr);
+		}
+
+		return st->send_packet(response.data(), response.size());
 	}
 
 	bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
