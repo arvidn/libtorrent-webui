@@ -65,6 +65,7 @@ namespace ltweb
 		bool get_stats(websocket_conn* st, function_call f);
 		bool get_file_updates(websocket_conn* st, function_call f);
 		bool add_torrent(websocket_conn* st, function_call f);
+		bool get_peers_updates(websocket_conn* st, function_call f);
 
 		bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
