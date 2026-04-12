@@ -38,13 +38,24 @@ using namespace ltweb;
 
 int main(int argc, char *const argv[])
 {
+	// skip executable name
+	++argv;
+	--argc;
+
 	session_params s;
 	error_code ec;
 	s.settings.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881");
-	s.settings.set_int(settings_pack::alert_mask, 0xffffffff);
-
 	load_settings(s, "settings.dat", ec);
 	if (ec) std::cout << "Failed to load settings: " << ec.message() << '\n';
+
+	if (argc > 0)
+	{
+		s.settings.set_str(settings_pack::listen_interfaces, *argv);
+		std::cout << "listening on: " << *argv << std::endl;
+		++argv;
+		--argc;
+	}
+	s.settings.set_int(settings_pack::alert_mask, 0xffffffff);
 
 	lt::session ses(s);
 
