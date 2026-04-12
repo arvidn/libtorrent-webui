@@ -87,7 +87,7 @@ Reference for RPC format for all functions specified by this protocol.
 All messages sent to the bittorrent client start with an 8 bit message identifier.
 See `appendix A`_ for all message IDs.
 
-get_torrent_updates
+get-torrent-updates
 ...................
 
 function id 0.
@@ -165,7 +165,7 @@ The fields on torrents, in bitmask bit-order (LSB is bit 0), are:
 |          |                     |  | 0x00004. sequential-downloads         |
 |          |                     |  | 0x00008. seeding                      |
 |          |                     |  | 0x00010. finished                     |
-|          |                     |  | 0x00020. loaded                       |
+|          |                     |  | 0x00020. -- unused --                 |
 |          |                     |  | 0x00040. has-metadata                 |
 |          |                     |  | 0x00080. has-incoming-connections     |
 |          |                     |  | 0x00100. seed-mode                    |
@@ -472,7 +472,7 @@ This function returns the status of the files of a torrent.
 | 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
 +----------+--------------------+-------------------------------------------+
 | 23       | uint32_t           | ``frame-number`` (timestamp)              |
-|          |                    | of last update for thist torrent.         |
+|          |                    | of last update for this torrent.          |
 +----------+--------------------+-------------------------------------------+
 
 The response is:
@@ -481,7 +481,7 @@ The response is:
 | offset   | type               | name                                      |
 +==========+====================+===========================================+
 | 4        | uint32_t           | ``frame-number`` (timestamp)              |
-|          |                    | of last update for thist torrent.         |
+|          |                    | for this update to this torrent.          |
 +----------+--------------------+-------------------------------------------+
 | 8        | uint32_t           | ``num-files`` the total number of files   |
 |          |                    | in the torrent.                           |
