@@ -44,7 +44,7 @@ function read_uint64(view, offset)
 	offset += 4;
 	var low = view.getUint32(offset);
 	offset += 4;
-	return high * 4294967295 + low;
+	return high * 4294967296 + low;
 }
 
 function _check_error(e, callback)
@@ -821,6 +821,210 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 	this._socket.send(call);
 }
 
+libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callback)
+{
+	if (this._socket.readyState != WebSocket.OPEN)
+	{
+		window.setTimeout(function() { callback("socket closed"); }, 0);
+		return;
+	}
+
+	var tid = this._tid++;
+	if (this._tid > 65535) this._tid = 0;
+
+	this._transactions[tid] = function(view, fun, e)
+	{
+		if (_check_error(e, callback)) return;
+
+		var num_updates = view.getUint32(8);
+		// num-removed at offset 12; 0xffffffff means all non-included peers left
+		var ret = [];
+		var offset = 16;
+
+		for (var i = 0; i < num_updates; ++i)
+		{
+			var peer = {};
+			peer['id'] = view.getUint32(offset);
+			offset += 4;
+
+			// field bitmask: skip high 32 bits, all 20 fields fit in low 32 bits
+			offset += 4;
+			var field_mask = view.getUint32(offset);
+			offset += 4;
+
+			for (var field = 0; field < 20; ++field)
+			{
+				if ((field_mask & (1 << field)) == 0) continue;
+				switch (field)
+				{
+					case 0: // flags
+						peer['flags'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 1: // source
+						peer['source'] = view.getUint8(offset);
+						offset += 1;
+						break;
+					case 2: // read-state
+						peer['read-state'] = view.getUint8(offset);
+						offset += 1;
+						break;
+					case 3: // write-state
+						peer['write-state'] = view.getUint8(offset);
+						offset += 1;
+						break;
+					case 4: // client (uint8 length prefix)
+						var client = read_string8(view, offset);
+						offset += 1 + client.length;
+						peer['client'] = client;
+						break;
+					case 5: // num-pieces
+						peer['num-pieces'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 6: // pending-disk-bytes
+						peer['pending-disk-bytes'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 7: // pending-disk-read-bytes
+						peer['pending-disk-read-bytes'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 8: // hashfails
+						peer['hashfails'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 9: // down-rate (payload bytes/s)
+						peer['down-rate'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 10: // up-rate (payload bytes/s)
+						peer['up-rate'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 11: // peer-id (20 bytes, hex-encoded)
+					{
+						var pid = '';
+						for (var j = 0; j < 20; ++j)
+						{
+							var pb = view.getUint8(offset + j);
+							if (pb < 16) pid += '0';
+							pid += pb.toString(16);
+						}
+						peer['peer-id'] = pid;
+						offset += 20;
+						break;
+					}
+					case 12: // download-queue length (blocks)
+						peer['download-queue'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 13: // upload-queue length (blocks)
+						peer['upload-queue'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 14: // timed-out-reqs
+						peer['timed-out-reqs'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 15: // progress [0, 1000000]
+						peer['progress'] = view.getUint32(offset);
+						offset += 4;
+						break;
+					case 16: // endpoints
+					{
+						var ep_type = view.getUint8(offset);
+						offset += 1;
+						if (ep_type === 2) // I2P: 32-byte destination hash
+						{
+							var i2p = '';
+							for (var k = 0; k < 32; ++k)
+							{
+								var db = view.getUint8(offset + k);
+								if (db < 16) i2p += '0';
+								i2p += db.toString(16);
+							}
+							peer['endpoint'] = i2p;
+							offset += 32;
+						}
+						else if (ep_type === 1) // IPv6: 18 bytes each (16 IP + 2 port)
+						{
+							var lp6 = [];
+							for (var k = 0; k < 8; ++k) lp6.push(view.getUint16(offset + k * 2).toString(16));
+							var lport6 = view.getUint16(offset + 16);
+							offset += 18;
+							var rp6 = [];
+							for (var k = 0; k < 8; ++k) rp6.push(view.getUint16(offset + k * 2).toString(16));
+							var rport6 = view.getUint16(offset + 16);
+							offset += 18;
+							peer['local-endpoint'] = '[' + lp6.join(':') + ']:' + lport6;
+							peer['endpoint']       = '[' + rp6.join(':') + ']:' + rport6;
+						}
+						else // IPv4: 6 bytes each (4 IP + 2 port)
+						{
+							var lip4 = view.getUint8(offset) + '.' + view.getUint8(offset+1)
+								+ '.' + view.getUint8(offset+2) + '.' + view.getUint8(offset+3);
+							var lport4 = view.getUint16(offset + 4);
+							offset += 6;
+							var rip4 = view.getUint8(offset) + '.' + view.getUint8(offset+1)
+								+ '.' + view.getUint8(offset+2) + '.' + view.getUint8(offset+3);
+							var rport4 = view.getUint16(offset + 4);
+							offset += 6;
+							peer['local-endpoint'] = lip4 + ':' + lport4;
+							peer['endpoint']       = rip4 + ':' + rport4;
+						}
+						break;
+					}
+					case 17: // pieces bitfield (uint32 byte-count + bytes, MSB first)
+					{
+						var num_bytes = view.getUint32(offset);
+						offset += 4;
+						var pieces = [];
+						for (var k = 0; k < num_bytes; ++k)
+							pieces.push(view.getUint8(offset + k));
+						peer['pieces'] = pieces;
+						offset += num_bytes;
+						break;
+					}
+					case 18: // total-download
+						peer['total-download'] = read_uint64(view, offset);
+						offset += 8;
+						break;
+					case 19: // total-upload
+						peer['total-upload'] = read_uint64(view, offset);
+						offset += 8;
+						break;
+				}
+			}
+			ret.push(peer);
+		}
+
+		if (typeof(callback) !== 'undefined') callback(ret);
+	};
+
+	// request: 3 header + 20 info-hash + 4 frame + 8 bitmask = 35 bytes
+	var call = new ArrayBuffer(35);
+	var view = new DataView(call);
+	view.setUint8(0, 21);
+	view.setUint16(1, tid);
+
+	var offset = 3;
+	for (var i = 0; i < 40; i += 2)
+	{
+		view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+		offset += 1;
+	}
+	// frame-number (always 0 - no delta tracking yet)
+	view.setUint32(offset, 0);
+	offset += 4;
+	// field-bitmask: high 32 bits = 0, low 32 bits = mask
+	view.setUint32(offset, 0);
+	offset += 4;
+	view.setUint32(offset, mask);
+
+	this._socket.send(call);
+}
+
 libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
 {
 	const encoder = new TextEncoder();
@@ -886,7 +1090,32 @@ fields =
 	'redundant_bytes': 1 << 22
 };
 
+var peer_fields =
+{
+	'flags':                  1 << 0,
+	'source':                 1 << 1,
+	'read_state':             1 << 2,
+	'write_state':            1 << 3,
+	'client':                 1 << 4,
+	'num_pieces':             1 << 5,
+	'pending_disk_bytes':     1 << 6,
+	'pending_disk_read_bytes':1 << 7,
+	'hashfails':              1 << 8,
+	'down_rate':              1 << 9,
+	'up_rate':                1 << 10,
+	'peer_id':                1 << 11,
+	'download_queue':         1 << 12,
+	'upload_queue':           1 << 13,
+	'timed_out_reqs':         1 << 14,
+	'progress':               1 << 15,
+	'endpoints':              1 << 16,
+	'pieces':                 1 << 17,
+	'total_download':         1 << 18,
+	'total_upload':           1 << 19
+};
+
 // prevent the compiler from optimizing these away
 window['libtorrent_connection'] = libtorrent_connection;
 window['fields'] = fields;
+window['peer_fields'] = peer_fields;
 
