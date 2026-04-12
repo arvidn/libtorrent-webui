@@ -39,6 +39,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <boost/system/errc.hpp>
 #include <string>
 #include <string_view>
+#include <vector>
+#include <utility>
 
 namespace http = boost::beast::http;
 
@@ -80,6 +82,38 @@ http::request<http::string_body> make_multipart(
 
 	http::request<http::string_body> req{http::verb::post, "/", 11};
 	req.set(http::field::content_type, content_type_header);
+	req.body() = std::move(body);
+	req.prepare_payload();
+	return req;
+}
+
+// Build a well-formed multipart/form-data request with multiple parts.
+//
+// boundary  -- the bare boundary string
+// parts     -- sequence of (Content-Type, body) pairs
+http::request<http::string_body> make_multipart_n(
+	std::string_view boundary,
+	std::vector<std::pair<std::string_view, std::string_view>> const& parts)
+{
+	std::string body;
+	body += "--";
+	body += boundary;
+	for (auto const& [ct, part_body] : parts)
+	{
+		body += "\r\n";
+		body += "Content-Disposition: form-data; name=\"file\"\r\n";
+		body += "Content-Type: ";
+		body += ct;
+		body += "\r\n\r\n";
+		body += part_body;
+		body += "\r\n--";
+		body += boundary;
+	}
+	body += "--\r\n";
+
+	std::string const ct_header = "multipart/form-data; boundary=" + std::string(boundary);
+	http::request<http::string_body> req{http::verb::post, "/", 11};
+	req.set(http::field::content_type, ct_header);
 	req.body() = std::move(body);
 	req.prepare_payload();
 	return req;
@@ -290,6 +324,97 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 			"application/octet-stream", "not-a-torrent");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
+		BOOST_TEST(!is_parse_error(ec));
+	}
+}
+
+BOOST_AUTO_TEST_CASE(multi_part)
+{
+	// Two matching parts, both with garbage bytes.
+	// Both parts should be attempted; both fail to decode. Because a matching
+	// part was found and load_torrent_buffer returned an error, the error
+	// propagated back is the torrent decode error -- not a parse error.
+	{
+		auto req = make_multipart_n("X", {
+			{"application/x-bittorrent", "not-a-torrent"},
+			{"application/x-bittorrent", "also-not-a-torrent"}
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec);
+		BOOST_TEST(!is_parse_error(ec));
+	}
+
+	// Non-matching part (text/plain) before a matching part.
+	// The text/plain part must be silently skipped; the bittorrent part
+	// is found, attempted, and its decode error propagated.
+	{
+		auto req = make_multipart_n("X", {
+			{"text/plain", "this-is-plain-text"},
+			{"application/x-bittorrent", "not-a-torrent"}
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec);
+		BOOST_TEST(!is_parse_error(ec));
+	}
+
+	// Matching part before a non-matching part.
+	// Non-matching part at the end must be silently skipped; decode error
+	// from the bittorrent part is propagated.
+	{
+		auto req = make_multipart_n("X", {
+			{"application/x-bittorrent", "not-a-torrent"},
+			{"text/plain", "this-is-plain-text"}
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec);
+		BOOST_TEST(!is_parse_error(ec));
+	}
+}
+
+BOOST_AUTO_TEST_CASE(limits)
+{
+	// max_torrent_count=0: the limit check fires immediately for the first
+	// matching part (result.size()=0 >= max_torrent_count=0), so the loop
+	// breaks before any decode attempt. last_part_ec is never set, so the
+	// function falls through to return invalid().
+	{
+		torrent_post_limits lim;
+		lim.max_torrent_count = 0;
+		auto req = make_multipart_n("X", {
+			{"application/x-bittorrent", "not-a-torrent"}
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec, lim);
+		BOOST_TEST(is_parse_error(ec));
+	}
+
+	// max_payload_bytes smaller than the first part's body size.
+	// The limit check fires before any decode attempt so last_part_ec is
+	// never set; the function falls through to return invalid().
+	{
+		torrent_post_limits lim;
+		lim.max_payload_bytes = 5;
+		auto req = make_multipart_n("X", {
+			{"application/x-bittorrent", "10-byte-body"}  // 12 bytes > 5
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec, lim);
+		BOOST_TEST(is_parse_error(ec));
+	}
+
+	// max_payload_bytes allows the first part to be decoded but cuts off
+	// the second. The first part's decode error must be propagated (not a
+	// parse error), even though the second part was never attempted.
+	{
+		torrent_post_limits lim;
+		lim.max_payload_bytes = 10;
+		// first part is 3 bytes (0+3 <= 10), second is 12 bytes (3+12 > 10)
+		auto req = make_multipart_n("X", {
+			{"application/x-bittorrent", "abc"},
+			{"application/x-bittorrent", "12-byte-body!"}
+		});
+		lt::error_code ec;
+		parse_torrent_post(req, ec, lim);
 		BOOST_TEST(!is_parse_error(ec));
 	}
 }

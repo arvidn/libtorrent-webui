@@ -12,6 +12,7 @@
 #include "libtorrent/session.hpp"
 #include "alert_handler.hpp"
 #include "stats_logging.hpp"
+#include "torrent_post.hpp"
 
 #include <signal.h>
 #include <iostream>
@@ -89,6 +90,9 @@ int main(int argc, char *const argv[])
 	// path /bt/control
 	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts, &sett);
 	webport.add_handler(&lt_handler);
+
+	torrent_post_handler post(ses, &authorizer, &sett);
+	webport.add_handler(&post);
 
 	// allows requesting files from within torrents exposed at HTTP path
 	// /download/<info-hash>/<file-index>
