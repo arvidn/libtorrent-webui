@@ -13,7 +13,7 @@ see LICENSE file.
 #include "alert_observer.hpp"
 #include "libtorrent/time.hpp"
 #include "libtorrent/fwd.hpp"
-#include <stdio.h>
+#include <fstream>
 
 namespace ltweb
 {
@@ -38,7 +38,7 @@ private:
 
 	lt::session& m_ses;
 
-	FILE* m_stats_logger;
+	std::ofstream m_stats_logger;
 	// sequence number for log file. Log files are
 	// rotated every hour and the sequence number is
 	// incremented by one
