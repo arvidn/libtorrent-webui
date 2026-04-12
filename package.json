@@ -1,0 +1,8 @@
+{
+  "name": "libtorrent-webui",
+  "private": true,
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-plugin-html": "^8.0.0"
+  }
+}
