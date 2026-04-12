@@ -27,7 +27,9 @@ std::string escape_json(lt::string_view input)
 	std::string ret;
 	for (auto const s : input)
 	{
-		if (s > 0x1f && s < 0x80 && s != '"' && s != '\\')
+		// char may be signed or unsigned, we don't know. So cast it before the
+		// comparison to make sure it's always correct
+		if (static_cast<unsigned char>(s) > 0x1f && static_cast<unsigned char>(s) < 0x80 && s != '"' && s != '\\')
 		{
 			ret += s;
 		}

@@ -16,7 +16,15 @@ see LICENSE file.
 #include <deque>
 
 #define BOOST_BIMAP_DISABLE_SERIALIZATION
+// boost/bimap/detail/user_interface_config.hpp defines
+// BOOST_MULTI_INDEX_DISABLE_SERIALIZATION unconditionally (no #ifndef guard).
+// libtorrent's build propagates the same define via its usage-requirements,
+// which causes a redefinition error with -Werror. Save and restore so the
+// include can redefine it cleanly without leaking the undef to includers.
+#pragma push_macro("BOOST_MULTI_INDEX_DISABLE_SERIALIZATION")
+#undef BOOST_MULTI_INDEX_DISABLE_SERIALIZATION
 #include <boost/bimap.hpp>
+#pragma pop_macro("BOOST_MULTI_INDEX_DISABLE_SERIALIZATION")
 #include <boost/bimap/list_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
