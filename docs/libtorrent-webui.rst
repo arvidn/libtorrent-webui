@@ -562,6 +562,173 @@ ERROR, more options from add_torrent_params
 The standard response indicates whether adding the torrent was successful or
 not. If the torrent already exists in the session, the call will fail.
 
+get-peers-updates
+.................
+
+function id 21.
+
+This function returns the status of the peers of a torrent.
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 23       | uint32_t           | ``frame-number`` (timestamp)              |
+|          |                    | of last update for this torrent.          |
++----------+--------------------+-------------------------------------------+
+| 27       | uint64_t           | ``field-bitmask`` (only these fields are  |
+|          |                    | returned)                                 |
++----------+--------------------+-------------------------------------------+
+
+The response is:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 4        | uint32_t           | ``frame-number`` (timestamp)              |
+|          |                    | of this update for this torrent.          |
++----------+--------------------+-------------------------------------------+
+| 8        | uint32_t           | ``num-updates`` the number of updates to  |
+|          |                    | follow. New peers are included in the     |
+|          |                    | update.                                   |
++----------+--------------------+-------------------------------------------+
+| 12       | uint32_t           | ``num-removed`` the number of removed     |
+|          |                    | peers since the last update.              |
++----------+--------------------+-------------------------------------------+
+| 16       | *see below*        | peer info updates, one entry for each     |
+|          |                    | num-updates. See the format for peer      |
+|          |                    | updates below.                            |
++----------+--------------------+-------------------------------------------+
+
+Each peer-update has a unique ``uint32_t`` value identifying the peer. This
+is unique within the specific torrent. This is not necessarily based on the
+peer ID or IP.
+
+Followed by a ``uint64_t`` bitmask indicating which peer fields are included in
+the update, followed by those fields.
+
+The peer fields, in bitmask bit-order (LSB is bit 0), are:
+
++----------+---------------------+------------------------------------------+
+| field-id | type                | name                                     |
++==========+=====================+==========================================+
+| 0        | uint32_t            | ``flags`` bitmask with the following     |
+|          |                     | bits:                                    |
+|          |                     |                                          |
+|          |                     |  | 0x000001. interesting                 |
+|          |                     |  | 0x000002. choked                      |
+|          |                     |  | 0x000004. remote interested in us     |
+|          |                     |  | 0x000008. remote choked us            |
+|          |                     |  | 0x000010. supports extensions         |
+|          |                     |  | 0x000020. outgoing                    |
+|          |                     |  | 0x000040. handshake                   |
+|          |                     |  | 0x000080. connecting                  |
+|          |                     |  | 0x000100. -- unused --                |
+|          |                     |  | 0x000200. on parole                   |
+|          |                     |  | 0x000400. seed                        |
+|          |                     |  | 0x000800. optimistic unchoke          |
+|          |                     |  | 0x001000. snubbed                     |
+|          |                     |  | 0x002000. upload-only                 |
+|          |                     |  | 0x004000. end-game mode               |
+|          |                     |  | 0x008000. hole-punched                |
+|          |                     |  | 0x010000. i2p tunnel                  |
+|          |                     |  | 0x020000. uTP transport               |
+|          |                     |  | 0x040000. SSL                         |
+|          |                     |  | 0x080000. RC4 obfuscated              |
+|          |                     |  | 0x100000. plaintext obfuscated        |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 1        | uint8_t             | ``source`` bitmask of sources we found   |
+|          |                     | this peer at:                            |
+|          |                     |                                          |
+|          |                     |  | 0x01. tracker                         |
+|          |                     |  | 0x02. DHT                             |
+|          |                     |  | 0x04. peer exchange                   |
+|          |                     |  | 0x08. local service discovery         |
+|          |                     |  | 0x10. resume data                     |
+|          |                     |  | 0x20. incoming                        |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 2        | uint8_t             | ``read-state`` bitmask of what the peer  |
+|          |                     | is blocked on, for downloading:          |
+|          |                     |                                          |
+|          |                     |  | 0x01. idle (not downloading)          |
+|          |                     |  | 0x02. bandwidth limit                 |
+|          |                     |  | 0x04. network                         |
+|          |                     |  | 0x08. -- unused --                    |
+|          |                     |  | 0x10. disk                            |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 3        | uint8_t             | ``write-state`` bitmask of what the peer |
+|          |                     | is blocked on, for uploading:            |
+|          |                     |                                          |
+|          |                     |  | 0x01. idle (not uploading)            |
+|          |                     |  | 0x02. bandwidth limit                 |
+|          |                     |  | 0x04. network                         |
+|          |                     |  | 0x08. -- unused --                    |
+|          |                     |  | 0x10. disk                            |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 4        | uint8_t, uint8_t[]  | ``client`` advertised name of remote     |
+|          |                     | client software.                         |
++----------+---------------------+------------------------------------------+
+| 5        | uint32_t            | ``num-pieces`` number of pieces this     |
+|          |                     | peer has.                                |
++----------+---------------------+------------------------------------------+
+| 6        | uint32_t            | ``pending-disk-bytes``                   |
++----------+---------------------+------------------------------------------+
+| 7        | uint32_t            | ``pending-disk-read-bytes``              |
++----------+---------------------+------------------------------------------+
+| 8        | uint32_t            | ``hashfails``, the number of failed      |
+|          |                     | piece hashes this peer has been part of  |
++----------+---------------------+------------------------------------------+
+| 9        | uint32_t            | ``down-rate`` in Bytes/s                 |
++----------+---------------------+------------------------------------------+
+| 10       | uint32_t            | ``up-rate`` in Bytes/s                   |
++----------+---------------------+------------------------------------------+
+| 11       | uint8_t[20]         | ``peer-id``                              |
++----------+---------------------+------------------------------------------+
+| 12       | uint32_t            | ``download-queue`` length (in blocks)    |
++----------+---------------------+------------------------------------------+
+| 13       | uint32_t            | ``upload-queue`` length (in blocks)      |
++----------+---------------------+------------------------------------------+
+| 14       | uint32_t            | ``timed-out-reqs``                       |
++----------+---------------------+------------------------------------------+
+| 15       | uint32_t            | ``progress`` in the range [0, 1000000]   |
++----------+---------------------+------------------------------------------+
+| 16       | uint8_t, uint8_t[]  | ``endpoints`` the first byte indicates   |
+|          |                     | the type of endpoint(s):                 |
+|          |                     |                                          |
+|          |                     | | 0. IPv4 (6 bytes local endpoint, 6     |
+|          |                     | |    bytes remote endpoint)              |
+|          |                     | | 1. IPv6 (18 bytes local endpoint, 18   |
+|          |                     | |    bytes remote endpoint)              |
+|          |                     | | 2. I2P (32 bytes endpoint)             |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 17       | uint32_t, uint8_t[] | ``pieces`` a bitmask of the pieces this  |
+|          |                     | peer has. The first word is the number   |
+|          |                     | of bytes following it. the bytes is a    |
+|          |                     | bitmask where each bit represents a      |
+|          |                     | piece in the torrent.                    |
++----------+---------------------+------------------------------------------+
+| 18       | uint64_t            | ``total-download`` total payload bytes   |
+|          |                     | downloaded from this peer.               |
++----------+---------------------+------------------------------------------+
+| 19       | uint64_t            | ``total-upload`` total payload bytes     |
+|          |                     | uploaded to this peer.                   |
++----------+---------------------+------------------------------------------+
+
+If ``num-removed`` is zero, it means that no existing peer connection was lost
+since the last update.
+
+If ``num-removed`` is 0xffffffff, it means that all peers that were not
+included in the updates disconnected.
+
+Otherwise, a list follows of ``num-removed`` peer identifiers that disconnected
+since the last update. A peer identifier is ``uint32_t``.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -617,6 +784,10 @@ Function IDs
 |  19 | get-file-updates          | info-hash, frame-number                 |
 +-----+---------------------------+-----------------------------------------+
 |  20 | add-torrent               | uint16_t, char[]                        |
++-----+---------------------------+-----------------------------------------+
+|  21 | get-peers-updates         | info-hash, frame-number, bitmask        |
+|     |                           | indicating which fields to return       |
+|     |                           | (uint64_t)                              |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
