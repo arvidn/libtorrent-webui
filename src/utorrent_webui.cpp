@@ -386,7 +386,6 @@ void utorrent_webui::set_file_priority(std::vector<char>&, char const* args, per
 {
 	if (!p->allow_set_file_prio()) return;
 
-	char prio_str[10];
 	auto const prio_val = get_query_var(args, "p");
 	if (!prio_val) return;
 	int prio = atoi(url_decode(*prio_val).c_str());
@@ -441,16 +440,17 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 	lt::settings_pack sett = m_ses.get_settings();
 
 	// type: 0 = int, 1= bool, 2=string
-	int first = 1;
+	bool first = true;
 	for (int i = 0; i < lt::settings_pack::num_string_settings; ++i)
 	{
 		if (!p->allow_get_settings(lt::settings_pack::string_type_base + i)) continue;
 
 		int s = lt::settings_pack::string_type_base + i;
-		appendf(response, ",[\"%s\",2,\"%s\",{\"access\":\"%c\"}]\n" + first
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "[\"%s\",2,\"%s\",{\"access\":\"%c\"}]\n"
 			, settings_name(s), escape_json(sett.get_str(s)).c_str()
 			, p->allow_set_settings(s) ? 'Y' : 'R');
-		first = 0;
 	}
 
 	for (int i = 0; i < lt::settings_pack::num_bool_settings; ++i)
@@ -490,10 +490,11 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 			sname = settings_name(s);
 			value = sett.get_bool(s);
 		}
-		appendf(response, ",[\"%s\",1,\"%s\",{\"access\":\"%c\"}]\n" + first
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "[\"%s\",1,\"%s\",{\"access\":\"%c\"}]\n"
 			, sname, value ? "true" : "false"
 			, p->allow_set_settings(s) ? 'Y' : 'R');
-		first = 0;
 	}
 
 	for (int i = 0; i < lt::settings_pack::num_int_settings; ++i)
@@ -541,26 +542,29 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 			value = sett.get_int(s);
 		}
 
-		appendf(response, ",[\"%s\",0,\"%" PRId64 "\",{\"access\":\"%c\"}]\n" + first
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "[\"%s\",0,\"%" PRId64 "\",{\"access\":\"%c\"}]\n"
 			, sname, value, p->allow_set_settings(s) ? 'Y' : 'R');
-		first = 0;
 	}
 
-	appendf(response, ",[\"torrents_start_stopped\",1,\"%s\",{\"access\":\"%c\"}]\n" + first
+	if (!first) response.push_back(',');
+	first = false;
+	appendf(response, "[\"torrents_start_stopped\",1,\"%s\",{\"access\":\"%c\"}]\n"
 		, (m_settings && m_settings->get_int("start_paused", 0)) ? "true" : "false"
 		, p->allow_stop() ? 'Y' : 'R');
-	first = 0;
 
 	if (m_al)
 	{
+		if (!first) response.push_back(',');
+		first = false;
 		appendf(response,
-			",[\"dir_autoload\",2,\"%s\",{\"access\":\"%c\"}]\n"
-			",[\"dir_autoload_flag\",1,\"%s\",{\"access\":\"%c\"}]" + first
+			"[\"dir_autoload\",2,\"%s\",{\"access\":\"%c\"}]\n"
+			",[\"dir_autoload_flag\",1,\"%s\",{\"access\":\"%c\"}]"
 			, escape_json(m_al->auto_load_dir()).c_str()
 			, p->allow_set_settings(-1) ? 'Y' : 'R'
 			, m_al->scan_interval().count() != 0 ? "true" : "false"
 			, p->allow_set_settings(-1) ? 'Y' : 'R');
-		first = 0;
 	}
 
 	if (p->allow_get_settings(lt::settings_pack::enable_outgoing_tcp)
@@ -568,8 +572,10 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		&& p->allow_get_settings(lt::settings_pack::enable_incoming_tcp)
 		&& p->allow_get_settings(lt::settings_pack::enable_incoming_utp))
 	{
+		if (!first) response.push_back(',');
+		first = false;
 		appendf(response,
-			",[\"bt.transp_disposition\",0,\"%d\",{\"access\":\"%c\"}]\n" + first
+			"[\"bt.transp_disposition\",0,\"%d\",{\"access\":\"%c\"}]\n"
 			, (sett.get_bool(lt::settings_pack::enable_outgoing_tcp) ? 1 : 0)
 				+ (sett.get_bool(lt::settings_pack::enable_outgoing_utp) ? 2 : 0)
 				+ (sett.get_bool(lt::settings_pack::enable_incoming_tcp) ? 4 : 0)
@@ -579,15 +585,15 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 					&& p->allow_set_settings(lt::settings_pack::enable_incoming_tcp)
 					&& p->allow_set_settings(lt::settings_pack::enable_incoming_utp))
 				? 'Y' : 'R');
-		first = 0;
 	}
 
 	if (p->allow_get_settings(-1))
 	{
+		if (!first) response.push_back(',');
+		first = false;
 		appendf(response,
-			",[\"dir_active_download\",2,\"%s\",{\"access\":\"%c\"}]\n"
+			"[\"dir_active_download\",2,\"%s\",{\"access\":\"%c\"}]\n"
 			",[\"bind_port\",0,\"%d\",{\"access\":\"%c\"}]\n"
-			+ first
 			, escape_json(m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads").c_str()
 			, p->allow_set_settings(-1) ? 'Y' : 'R'
 			, m_ses.listen_port()
@@ -602,8 +608,9 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 			, p->allow_set_settings(-1) ? 'Y' : 'R');
 	}
 
+	if (!first) response.push_back(',');
 	appendf(response,
-		",[\"webui.cookie\",2,\"%s\",{\"access\":\"Y\"}]\n"
+		"[\"webui.cookie\",2,\"%s\",{\"access\":\"Y\"}]\n"
 		",[\"language\",0,\"0\",{\"access\":\"Y\"}]\n"
 		",[\"webui.enable_listen\",1,\"true\",{\"access\":\"R\"}]\n"
 		",[\"webui.enable_guest\",1,\"false\",{\"access\":\"R\"}]\n"
@@ -614,9 +621,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		// need to define it in order to support peers
 		",[\"webui.uconnect_enable\",1,\"false\",{\"access\":\"R\"}]\n"
 		"]"
-		 + first
 		, escape_json(m_webui_cookie).c_str(), 0);
-	first = 0;
 }
 bool to_bool(std::string const& s)
 {
@@ -801,7 +806,7 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 
 	std::vector<lt::torrent_status> t = parse_torrents(args);
 	appendf(response, ",\"files\":[");
-	int first = 1;
+	bool first = true;
 	std::vector<std::int64_t> progress;
 	std::vector<lt::download_priority_t> file_prio;
 	for (std::vector<lt::torrent_status>::iterator i = t.begin()
@@ -816,8 +821,10 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 		// TODO: get_renamed_files() is synchronous, we should use async functions only
 		lt::renamed_files const renames = i->handle.get_renamed_files();
 
-		appendf(response, ",\"%s\",["+first, to_hex(ti->info_hashes().get_best()).c_str());
-		int first_file = 1;
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "\"%s\",[", to_hex(ti->info_hashes().get_best()).c_str());
+		bool first_file = true;
 		for (lt::file_index_t i : files.file_range())
 		{
 			int first_piece = files.file_offset(i) / files.piece_length();
@@ -825,7 +832,9 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 			// don't round 1 down to 0. 0 is special (do-not-download)
 			if (file_prio[static_cast<int>(i)] == lt::low_priority)
 				file_prio[static_cast<int>(i)] = lt::download_priority_t{2};
-			appendf(response, ",[\"%s\", %" PRId64 ", %" PRId64 ", %d" + first_file
+			if (!first_file) response.push_back(',');
+			first_file = false;
+			appendf(response, "[\"%s\", %" PRId64 ", %" PRId64 ", %d"
 				, escape_json(renames.file_name(files, i)).c_str()
 				, files.file_size(i)
 				, progress[static_cast<int>(i)]
@@ -843,11 +852,9 @@ void utorrent_webui::send_file_list(std::vector<char>& response, char const* arg
 			{
 				response.push_back(']');
 			}
-			first_file = 0;
 		}
 
 		response.push_back(']');
-		first = 0;
 	}
 	response.push_back(']');
 }
@@ -893,13 +900,15 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 
 	std::vector<lt::torrent_status> t = parse_torrents(args);
 	appendf(response, ",\"props\":[");
-	int first = 1;
+	bool first = true;
 	for (std::vector<lt::torrent_status>::iterator i = t.begin()
 		, end(t.end()); i != end; ++i)
 	{
 		lt::torrent_status const& st = *i;
 		std::shared_ptr<const lt::torrent_info> ti = st.torrent_file.lock();
-		appendf(response, ",{\"hash\":\"%s\","
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "{\"hash\":\"%s\","
 			"\"trackers\":\"%s\","
 			"\"ulrate\":%d,"
 			"\"dlrate\":%d,"
@@ -910,7 +919,7 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 			"\"seed_ratio\": %f,"
 			"\"seed_time\": %d,"
 			"\"ulslots\": %d,"
-			"\"seed_num\": %d}" + first
+			"\"seed_num\": %d}"
 			, ti ? to_hex(ti->info_hash()).c_str() : ""
 			, trackers_as_string(i->handle).c_str()
 			, st.handle.download_limit()
@@ -924,7 +933,6 @@ void utorrent_webui::get_properties(std::vector<char>& response, char const* arg
 			, 0
 			, 0
 			);
-		first = 0;
 	}
 	response.push_back(']');
 }
@@ -992,17 +1000,19 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 
 	std::vector<lt::torrent_status> torrents = parse_torrents(args);
 	appendf(response, ",\"peers\":[");
-	int first = 1;
+	bool first = true;
 	for (std::vector<lt::torrent_status>::iterator i = torrents.begin()
 		, end(torrents.end()); i != end; ++i)
 	{
 		std::shared_ptr<const lt::torrent_info> ti = i->torrent_file.lock();
 		if (!ti || !ti->is_valid()) continue;
 
-		appendf(response, ",\"%s\",[" + first
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "\"%s\",["
 			, to_hex(i->info_hashes.get_best()).c_str());
 
-		int first_peer = 1;
+		bool first_peer = true;
 		std::vector<lt::peer_info> peers;
 		i->handle.get_peer_info(peers);
 		for (lt::peer_info const& p : peers)
@@ -1011,8 +1021,10 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 			std::string const ep = addr.is_v6()
 				? str('[', addr, "]:", p.remote_endpoint().port())
 				: str(addr, ":", p.remote_endpoint().port());
-			appendf(response, ",[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
-				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]" + first_peer
+			if (!first_peer) response.push_back(',');
+			first_peer = false;
+			appendf(response, "[\"  \",\"%s\",\"%s\",%d,%d,\"%s\",\"%s\",%d,%d,%d,%d,%d"
+				",%d,%" PRId64 ",%" PRId64 ",%d,%d,%d,%d,%d,%d,%d]"
 				, ep.c_str()
 				, ""
 				, bool(p.flags & lt::peer_info::utp_socket)
@@ -1035,11 +1047,9 @@ void utorrent_webui::send_peer_list(std::vector<char>& response, char const* arg
 				, lt::total_seconds(p.last_active)
 				, 0
 				);
-			first_peer = 0;
 		}
 
 		response.push_back(']');
-		first = 0;
 	}
 	response.push_back(']');
 }
@@ -1153,11 +1163,13 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 	std::vector<lt::torrent_status> torrents;
 	m_hist->updated_since(cid, torrents);
 
-	int first = 1;
+	bool first = true;
 	for (lt::torrent_status const& t : torrents)
 	{
 		std::shared_ptr<const lt::torrent_info> ti = t.torrent_file.lock();
-		appendf(response, ",[\"%s\",%d,\"%s\",%" PRId64 ",%d,%" PRId64 ",%" PRId64 ",%f,%d,%d,%d,\"%s\",%d,%d,%d,%d,%d,%d,%" PRId64 "" + first
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "[\"%s\",%d,\"%s\",%" PRId64 ",%d,%" PRId64 ",%" PRId64 ",%f,%d,%d,%d,\"%s\",%d,%d,%d,%d,%d,%d,%" PRId64 ""
 			, to_hex(t.info_hashes.get_best()).c_str()
 			, utorrent_status(t)
 			, escape_json(t.name).c_str()
@@ -1198,17 +1210,17 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		{
 			response.push_back(']');
 		}
-		first = 0;
 	}
 
 	std::vector<lt::info_hash_t> const removed = m_hist->removed_since(cid);
 
 	appendf(response, "], \"torrentm\": [");
-	first = 1;
+	first = true;
 	for (lt::info_hash_t const& i : removed)
 	{
-		appendf(response, ",\"%s\"" + first, to_hex(i.get_best()).c_str());
-		first = 0;
+		if (!first) response.push_back(',');
+		first = false;
+		appendf(response, "\"%s\"", to_hex(i.get_best()).c_str());
 	}
 	// TODO: support labels
 	appendf(response, "], \"label\": [], \"torrentc\": \"%d\"", m_hist->frame());

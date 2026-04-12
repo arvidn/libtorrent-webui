@@ -179,7 +179,6 @@ void save_resume::handle_alert(lt::alert const* a) try
 	{
 		TORRENT_ASSERT(m_num_in_flight > 0);
 		--m_num_in_flight;
-		lt::error_code ec;
 		std::vector<char> buf = write_resume_data_buf(sr->params);
 
 		sqlite3_stmt* stmt = nullptr;

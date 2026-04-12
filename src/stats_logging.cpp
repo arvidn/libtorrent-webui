@@ -22,9 +22,8 @@ namespace ltweb {
 using namespace std::placeholders;
 
 
-stats_logging::stats_logging(lt::session& s, alert_handler* h)
+stats_logging::stats_logging(alert_handler* h)
 	: m_alerts(h)
-	, m_ses(s)
 	, m_log_seq(0)
 {
 	m_alerts->subscribe(this, 0

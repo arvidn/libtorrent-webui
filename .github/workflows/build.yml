@@ -32,7 +32,7 @@ jobs:
             echo "using darwin ;" >>~/user-config.jam
 
       - name: Build
-        run: b2 webtorrent=on
+        run: b2 webtorrent=on warnings-as-errors=on warnings=all
 
       - name: Test
-        run: cd tests && b2 webtorrent=on
+        run: cd tests && b2 webtorrent=on warnings-as-errors=on warnings=all

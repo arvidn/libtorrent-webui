@@ -23,7 +23,7 @@ namespace ltweb
 /// logs are rotated each hour. Use parse_session_stats.py to parse logs.
 struct stats_logging : alert_observer
 {
-	stats_logging(lt::session& s, alert_handler* h);
+	stats_logging(alert_handler* h);
 	~stats_logging();
 
 private:
@@ -35,8 +35,6 @@ private:
 
 	// the last time we rotated the log file
 	lt::time_point m_last_log_rotation;
-
-	lt::session& m_ses;
 
 	std::ofstream m_stats_logger;
 	// sequence number for log file. Log files are

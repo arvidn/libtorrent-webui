@@ -77,7 +77,7 @@ int main(int argc, char *const argv[])
 	resume.load(ec);
 	// TODO: log error if ec is set
 
-	stats_logging log(ses, &alerts);
+	stats_logging log(&alerts);
 
 	webui_base webport(8090, "server.pem");
 
