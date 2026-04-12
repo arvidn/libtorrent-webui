@@ -927,6 +927,9 @@ namespace {
 		lt::torrent_handle h = m_ses.find_torrent(ih);
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
+		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
+		if (!t) return error(st, f, resource_not_found);
+
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
@@ -934,16 +937,20 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
-		std::vector<std::int64_t> fp;
-		h.file_progress(fp, lt::torrent_handle::piece_granularity);
+		// TODO: file_progress() is a synchronous call
+		std::vector<std::int64_t> fp = h.file_progress(lt::torrent_handle::piece_granularity);
 
-		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
-		if (!t) return error(st, f, resource_not_found);
+		// TODO: file_status() is a synchronous call
+		std::vector<lt::open_file_state> const fstatus = h.file_status();
+
+		// TODO: get_file_priorities() is a synchronous call
+		std::vector<lt::download_priority_t> fprio = h.get_file_priorities();
 
 		lt::file_storage const& fs = t->layout();
 
 		// just in case
 		fp.resize(fs.num_files(), 0);
+		fprio.resize(fs.num_files(), lt::default_priority);
 
 		// frame number
 		write_uint32(0, ptr);
@@ -963,8 +970,8 @@ namespace {
 				write_uint8(mask, ptr);
 			}
 
-			// file update bitmask (all 4 fields)
-			write_uint16(0xf, ptr);
+			// file update bitmask (all 6 fields)
+			write_uint16(0x3f, ptr);
 
 			// flags
 			write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
@@ -980,6 +987,21 @@ namespace {
 
 			// total downloaded
 			write_uint64(fp[static_cast<int>(fi)], ptr);
+
+			// priority
+			write_uint8(static_cast<std::uint8_t>(fprio[static_cast<int>(fi)]), ptr);
+
+			// open-mode
+			auto const file_status = std::find_if(fstatus.begin(), fstatus.end()
+				, [fi](lt::open_file_state const& st) { return st.file_index == fi; });
+			if (file_status == fstatus.end())
+			{
+				write_uint8(0, ptr);
+			}
+			else
+			{
+				write_uint8(static_cast<std::uint8_t>(file_status->open_mode), ptr);
+			}
 		}
 
 		return st->send_packet(&response[0], response.size());

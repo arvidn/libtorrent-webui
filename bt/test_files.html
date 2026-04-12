@@ -27,6 +27,8 @@ update_file_list = function(files)
 			row.insertCell(1);
 			row.insertCell(2);
 			row.insertCell(3);
+			row.insertCell(4);
+			row.insertCell(5);
 		} else {
 			row = table.rows[i + 1];
 		}
@@ -49,6 +51,22 @@ update_file_list = function(files)
 					+ 'border:none; margin:0;" align="left" width='
 					+ (f['downloaded']*100/f['size']) + '% />';
 			row.cells[3].textContent = f['downloaded'];
+		}
+		if ('prio' in f)
+		{
+			row.cells[4].textContent = f['prio'];
+		}
+		if ('open-mode' in f)
+		{
+			let mode = [];
+			const bits = f['open-mode'];
+			if (bits & 0x01) mode.push('write-only');
+			if (bits & 0x02) mode.push('read-write');
+			if (bits & 0x04) mode.push('sparse');
+			if (bits & 0x08) mode.push('no-atime');
+			if (bits & 0x10) mode.push('random-access');
+			if (bits & 0x40) mode.push('memory-mapped');
+			row.cells[5].textContent = mode.join(' ');
 		}
 	}
 };
@@ -75,7 +93,7 @@ window.onload = function() {
 <table id="files" border="1" style="border-collapse: collapse;">
 <h1 id="headline"></h1>
 <form>
-<tr><th>Name</th><th>Size</th><th>Progress</th><th>Downloaded</th></tr>
+<tr><th>Name</th><th>Size</th><th>Progress</th><th>Downloaded</th><th>Priority</th><th>mode</th></tr>
 </table>
 </form>
 </html>

@@ -698,6 +698,14 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
 						file['downloaded'] = read_uint64(view, offset);
 						offset += 8;
 						break;
+					case 4: // priority
+						file['prio'] = view.getUint8(offset);
+						offset += 1;
+						break;
+					case 5: // open-mode
+						file['open-mode'] = view.getUint8(offset);
+						offset += 1;
+						break;
 				}
 			}
 			ret.push(file);
