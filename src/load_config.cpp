@@ -8,9 +8,10 @@ see LICENSE file.
 */
 
 #include <string>
-#include <sys/stat.h>
+#include <fstream>
+#include <filesystem>
+#include <cerrno>
 #include <syslog.h>
-#include <stdio.h>
 #include "libtorrent/settings_pack.hpp"
 #include "load_config.hpp"
 
@@ -22,34 +23,28 @@ namespace ltweb
 // simple text file, where each line is a key value pair. The keys are
 // the keys used by libtorrent. The values are either strings, integers
 // or booleans.
-void load_config(std::string const& config_file, lt::settings_pack& p, lt::error_code& ec)
+void load_config(std::string const& config_file, lt::settings_pack& p, std::error_code& ec)
 {
-	static time_t last_load = 0;
+	static std::filesystem::file_time_type last_load{};
 
-	struct ::stat st;
-	if (::stat(config_file.c_str(), &st) < 0)
-	{
-		ec = lt::error_code(errno, boost::system::system_category());
-		return;
-	}
+	auto const mtime = std::filesystem::last_write_time(config_file, ec);
+	if (ec) return;
 
 	// if the config file hasn't changed, don't do anything
-	if (st.st_mtime == last_load) return;
-	last_load = st.st_mtime;
+	if (mtime == last_load) return;
+	last_load = mtime;
 
-	FILE* f = fopen(config_file.c_str(), "r");
-	if (f == NULL)
+	std::ifstream f(config_file);
+	if (!f)
 	{
-		ec = lt::error_code(errno, boost::system::system_category());
+		ec = std::error_code(errno, std::system_category());
 		return;
 	}
 
-	char key[512];
-	char value[512];
-
-	while (fscanf(f, "%512s %512s\n", key, value) == 2)
+	std::string key, value;
+	while (f >> key >> value)
 	{
-		int setting_name = lt::setting_by_name(key);
+		int setting_name = lt::setting_by_name(key.c_str());
 		if (setting_name < 0) continue;
 
 		int type = setting_name & lt::settings_pack::type_mask;
@@ -59,15 +54,13 @@ void load_config(std::string const& config_file, lt::settings_pack& p, lt::error
 				p.set_str(setting_name, value);
 				break;
 			case lt::settings_pack::int_type_base:
-				p.set_int(setting_name, atoi(value));
+				p.set_int(setting_name, std::stoi(value));
 				break;
 			case lt::settings_pack::bool_type_base:
-				p.set_bool(setting_name, atoi(value));
+				p.set_bool(setting_name, std::stoi(value) != 0);
 				break;
 		};
 	}
-
-	fclose(f);
 }
 
 }
