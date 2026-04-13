@@ -1,3 +1,12 @@
+/*
+
+Copyright (c) 2026, Arvid Norberg
+All rights reserved.
+
+You may use, distribute and modify this code under the terms of the BSD license,
+see LICENSE file.
+*/
+
 #define BOOST_TEST_MODULE base64
 #include <boost/test/included/unit_test.hpp>
 
