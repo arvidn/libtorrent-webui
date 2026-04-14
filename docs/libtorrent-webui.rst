@@ -474,6 +474,15 @@ This function returns the status of the files of a torrent.
 | 23       | uint32_t           | ``frame-number`` (timestamp)              |
 |          |                    | of last update for this torrent.          |
 +----------+--------------------+-------------------------------------------+
+| 27       | uint16_t           | ``field-mask`` bitmask selecting which    |
+|          |                    | fields to include in each file update.    |
+|          |                    | Bit positions match the field-id column   |
+|          |                    | in the fields table below (bit 0 =        |
+|          |                    | flags, …, bit 5 = open-mode). Bits for    |
+|          |                    | ``priority`` (bit 4) and ``open-mode``    |
+|          |                    | (bit 5) require extra server-side work;   |
+|          |                    | omit them when not needed.                |
++----------+--------------------+-------------------------------------------+
 
 The response is:
 
@@ -781,7 +790,7 @@ Function IDs
 +-----+---------------------------+-----------------------------------------+
 |  18 | get-stats                 | frame, num-stats, stats-id, ...         |
 +-----+---------------------------+-----------------------------------------+
-|  19 | get-file-updates          | info-hash, frame-number                 |
+|  19 | get-file-updates          | info-hash, frame-number, field-mask     |
 +-----+---------------------------+-----------------------------------------+
 |  20 | add-torrent               | uint16_t, char[]                        |
 +-----+---------------------------+-----------------------------------------+

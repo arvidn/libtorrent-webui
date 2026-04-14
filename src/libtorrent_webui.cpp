@@ -921,17 +921,40 @@ namespace {
 			return error(st, f, permission_denied);
 
 		char const* iptr = f.data;
-		if (f.len != 24) return error(st, f, invalid_number_of_args);
+		if (f.len != 26) return error(st, f, invalid_number_of_args);
 		lt::sha1_hash ih(iptr);
 		iptr += 20;
 		frame_t const frame = read_int32(iptr);
 		(void)frame;
+		std::uint16_t const field_mask = read_uint16(iptr);
 
 		lt::torrent_handle h = m_ses.find_torrent(ih);
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
 		if (!t) return error(st, f, resource_not_found);
+
+		lt::file_storage const& fs = t->layout();
+
+		// Only fetch data for the fields the client requested.
+		// file_progress(), get_file_priorities() and file_status() are all
+		// synchronous calls; skip them when not needed.
+		std::vector<std::int64_t> fp;
+		if (field_mask & 0x08)
+		{
+			fp = h.file_progress(lt::torrent_handle::piece_granularity);
+			fp.resize(fs.num_files(), 0);
+		}
+
+		std::vector<lt::download_priority_t> fprio;
+		if (field_mask & 0x10)
+		{
+			fprio = h.get_file_priorities();
+			fprio.resize(fs.num_files(), lt::default_priority);
+		}
+
+		std::vector<lt::open_file_state> fstatus;
+		if (field_mask & 0x20) fstatus = h.file_status();
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -940,30 +963,12 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
-		// TODO: file_progress() is a synchronous call
-		std::vector<std::int64_t> fp = h.file_progress(lt::torrent_handle::piece_granularity);
-
-		// TODO: file_status() is a synchronous call
-		std::vector<lt::open_file_state> const fstatus = h.file_status();
-
-		// TODO: get_file_priorities() is a synchronous call
-		std::vector<lt::download_priority_t> fprio = h.get_file_priorities();
-
-		lt::file_storage const& fs = t->layout();
-
-		// just in case
-		fp.resize(fs.num_files(), 0);
-		fprio.resize(fs.num_files(), lt::default_priority);
-
-		// frame number
-		// TODO: implement delta tracking
+		// frame number (delta tracking not yet implemented)
 		write_uint32(0, ptr);
 
 		// number of files
 		write_uint32(fs.num_files(), ptr);
 
-		// TODO: we should really just send differences since last time
-		// for now, just send full updates
 		for (auto const fi : fs.file_range())
 		{
 			if ((static_cast<int>(fi) % 8) == 0)
@@ -974,37 +979,36 @@ namespace {
 				write_uint8(mask, ptr);
 			}
 
-			// file update bitmask (all 6 fields)
-			write_uint16(0x3f, ptr);
+			// per-file field bitmask mirrors the requested field_mask
+			write_uint16(field_mask & 0x3f, ptr);
 
-			// flags
-			write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
+			if (field_mask & 0x01)
+				write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
 
-			// name
-			std::string name = fs.file_path(fi);
-			if (name.size() > 65535) name.resize(65535);
-			write_uint16(name.size(), ptr);
-			std::copy(name.begin(), name.end(), ptr);
-
-			// total-size
-			write_uint64(fs.file_size(fi), ptr);
-
-			// total downloaded
-			write_uint64(fp[static_cast<int>(fi)], ptr);
-
-			// priority
-			write_uint8(static_cast<std::uint8_t>(fprio[static_cast<int>(fi)]), ptr);
-
-			// open-mode
-			auto const file_status = std::find_if(fstatus.begin(), fstatus.end()
-				, [fi](lt::open_file_state const& st) { return st.file_index == fi; });
-			if (file_status == fstatus.end())
+			if (field_mask & 0x02)
 			{
-				write_uint8(0, ptr);
+				std::string name = fs.file_path(fi);
+				if (name.size() > 65535) name.resize(65535);
+				write_uint16(name.size(), ptr);
+				std::copy(name.begin(), name.end(), ptr);
 			}
-			else
+
+			if (field_mask & 0x04)
+				write_uint64(fs.file_size(fi), ptr);
+
+			if (field_mask & 0x08)
+				write_uint64(fp[static_cast<int>(fi)], ptr);
+
+			if (field_mask & 0x10)
+				write_uint8(static_cast<std::uint8_t>(fprio[static_cast<int>(fi)]), ptr);
+
+			if (field_mask & 0x20)
 			{
-				write_uint8(static_cast<std::uint8_t>(file_status->open_mode), ptr);
+				auto const file_status = std::find_if(fstatus.begin(), fstatus.end()
+					, [fi](lt::open_file_state const& st) { return st.file_index == fi; });
+				write_uint8(file_status == fstatus.end()
+					? std::uint8_t(0)
+					: static_cast<std::uint8_t>(file_status->open_mode), ptr);
 			}
 		}
 
