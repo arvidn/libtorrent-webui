@@ -20,6 +20,7 @@ see LICENSE file.
 #include "libtorrent/alert_types.hpp"
 #include "libtorrent/magnet_uri.hpp"
 #include "libtorrent/peer_info.hpp"
+#include "libtorrent/hasher.hpp"
 
 #include "auth.hpp"
 #include "save_settings.hpp"
@@ -38,6 +39,40 @@ using namespace lt::literals;
 
 namespace ltweb {
 namespace {
+
+	std::uint32_t peer_identifier(lt::peer_info const& pi)
+	{
+		lt::hasher h;
+		h.update(pi.pid);
+#if TORRENT_USE_I2P
+		if (pi.flags & lt::peer_info::i2p_socket)
+		{
+			lt::sha256_hash const dest = pi.i2p_destination();
+			h.update(dest);
+		}
+		else
+#endif
+		{
+			auto const ep = pi.remote_endpoint();
+			if (ep.address().is_v6())
+			{
+				auto const b = ep.address().to_v6().to_bytes();
+				h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
+			}
+			else
+			{
+				auto const b = ep.address().to_v4().to_bytes();
+				h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
+			}
+			std::uint8_t const port_bytes[2] = {
+				std::uint8_t(ep.port() >> 8), std::uint8_t(ep.port())};
+			h.update({reinterpret_cast<char const*>(port_bytes), 2});
+		}
+		lt::sha1_hash const digest = h.final();
+		std::uint32_t ret;
+		std::memcpy(&ret, digest.data(), sizeof(ret));
+		return ret;
+	}
 
 	template <typename It> std::uint8_t read_uint8(It& p) { return static_cast<std::uint8_t>(*p++); }
 	template <typename It> std::uint16_t read_uint16(It& p) {
@@ -80,7 +115,7 @@ namespace {
 		bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 	};
 
-	static std::array<rpc_entry, 22> const functions =
+	static std::array<rpc_entry, 23> const functions =
 	{{
 		{ "get-torrent-updates", &libtorrent_webui::get_torrent_updates },
 		{ "start", &libtorrent_webui::start },
@@ -104,6 +139,7 @@ namespace {
 		{ "get-file-updates", &libtorrent_webui::get_file_updates },
 		{ "add-torrent", &libtorrent_webui::add_torrent },
 		{ "get-peers-updates", &libtorrent_webui::get_peers_updates },
+		{ "get-piece-updates", &libtorrent_webui::get_piece_updates },
 	}};
 
 	// maps torrent field to RPC field. These fields are the ones defined in
@@ -1063,14 +1099,9 @@ namespace {
 		// num-removed: 0xffffffff means "all peers not in this update disconnected"
 		write_uint32(0xffffffff, ptr);
 
-		for (std::uint32_t idx = 0; idx < static_cast<std::uint32_t>(peers.size()); ++idx)
+		for (lt::peer_info const& pi : peers)
 		{
-			lt::peer_info const& pi = peers[idx];
-
-			// peer identifier: just the index for now
-			// TODO: this needs to be an actual unique identifier. Maybe the
-			// hash of the peer_id + endpoint
-			write_uint32(idx, ptr);
+			write_uint32(peer_identifier(pi), ptr);
 
 			// build bitmask of fields we will include
 			std::uint64_t bitmask = field_mask & 0xfffff; // 20 defined fields (bits 0-19)
@@ -1204,6 +1235,78 @@ namespace {
 			// field 19: total-upload
 			if (bitmask & (1ULL << 19))
 				write_uint64(static_cast<std::uint64_t>(pi.total_upload), ptr);
+		}
+
+		return st->send_packet(response.data(), response.size());
+	}
+
+	bool libtorrent_webui::get_piece_updates(websocket_conn* st, function_call f)
+	{
+		if (!st->perms()->allow_list())
+			return error(st, f, permission_denied);
+
+		char const* iptr = f.data;
+		if (f.len != 24) return error(st, f, invalid_number_of_args);
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		frame_t const client_frame = read_uint32(iptr);
+
+		lt::torrent_handle h = m_ses.find_torrent(ih);
+		if (!h.is_valid()) return error(st, f, invalid_argument);
+
+		auto pieces = h.get_download_queue();
+		frame_t const new_frame = m_hist->frame();
+
+		// Find or create the piece_history for this info-hash in the LRU cache.
+		auto it = std::find_if(m_piece_histories.begin(), m_piece_histories.end(),
+			[&](piece_history const& ph) { return ph.info_hash() == ih; });
+		if (it != m_piece_histories.end())
+			m_piece_histories.splice(m_piece_histories.begin(), m_piece_histories, it);
+		else
+		{
+			m_piece_histories.emplace_front(ih);
+			if (m_piece_histories.size() > 10)
+				m_piece_histories.pop_back();
+		}
+		m_piece_histories.front().update(new_frame, pieces);
+
+		auto [full_pieces, block_updates, removed] = m_piece_histories.front().query(client_frame);
+
+		bool const snapshot = (client_frame == 0);
+
+		// cap all counts to 16-bit
+		if (full_pieces.size()   > 0xffffu) full_pieces.resize(0xffff);
+		if (block_updates.size() > 0xffffu) block_updates.resize(0xffff);
+		if (removed.size()       > 0xffffu) removed.resize(0xffff);
+
+		std::vector<char> response;
+		std::back_insert_iterator<std::vector<char>> ptr(response);
+
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
+		write_uint32(new_frame, ptr);
+		write_uint16(static_cast<std::uint16_t>(full_pieces.size()), ptr);
+		write_uint16(static_cast<std::uint16_t>(block_updates.size()), ptr);
+		write_uint16(snapshot ? std::uint16_t(0xffffu)
+			: static_cast<std::uint16_t>(removed.size()), ptr);
+
+		for (auto const* e : full_pieces)
+		{
+			write_uint32(static_cast<int>(e->piece_index), ptr);
+			write_uint16(static_cast<std::uint16_t>(e->blocks.size()), ptr);
+			for (auto const& b : e->blocks) write_uint8(b.state, ptr);
+		}
+		for (auto const& bu : block_updates)
+		{
+			write_uint32(static_cast<int>(bu.piece_index), ptr);
+			write_uint16(static_cast<std::uint16_t>(bu.block_index), ptr);
+			write_uint8(bu.state, ptr);
+		}
+		if (!snapshot)
+		{
+			for (auto const idx : removed)
+				write_uint16(static_cast<std::uint16_t>(static_cast<int>(idx)), ptr);
 		}
 
 		return st->send_packet(response.data(), response.size());

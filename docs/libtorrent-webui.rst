@@ -738,6 +738,100 @@ included in the updates disconnected.
 Otherwise, a list follows of ``num-removed`` peer identifiers that disconnected
 since the last update. A peer identifier is ``uint32_t``.
 
+get-piece-updates
+.................
+
+function id 22.
+
+This function returns the state of the currently downloading pieces for a torrent.
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 23       | uint32_t           | ``frame-number`` (timestamp)              |
+|          |                    | of last update for this torrent.          |
++----------+--------------------+-------------------------------------------+
+
+The response is:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 4        | uint32_t           | ``frame-number`` (timestamp)              |
+|          |                    | of this update for this torrent.          |
++----------+--------------------+-------------------------------------------+
+| 8        | uint16_t           | ``num-updates`` the number of fill piece  |
+|          |                    | updates to follow. New pieces are         |
+|          |                    | included in the update.                   |
++----------+--------------------+-------------------------------------------+
+| 10       | uint16_t           | ``num-block-updates`` the number of       |
+|          |                    | updates to single blocks, since the last  |
+|          |                    | update.                                   |
++----------+--------------------+-------------------------------------------+
+| 12       | uint16_t           | ``num-removed`` the number of removed     |
+|          |                    | pieces since the last update. If this     |
+|          |                    | is 0xffff, any piece not mentioned in one |
+|          |                    | of the update listse were removed.        |
++----------+--------------------+-------------------------------------------+
+| 14       | *see below*        | peer info updates, one entry for each     |
+|          |                    | num-updates. See the format for peer      |
+|          |                    | updates below.                            |
++----------+--------------------+-------------------------------------------+
+
+What follows are 3 lists. A list of full piece updates, a list of individual
+block updates and pieces removed from the download list.
+
+First the list of full piece updates follow. It has ``num-updates`` entries.
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 0        | uint32_t           | ``piece-index`` the piece index           |
++----------+--------------------+-------------------------------------------+
+| 4        | uint16_t           | ``num-blocks`` the number of blocks in    |
+|          |                    | this piece.                               |
++----------+--------------------+-------------------------------------------+
+| 6        | uint8_t[]          | ``block-state`` this is repeated for each |
+|          |                    | block in the piece. Each byte has this    |
+|          |                    | meaning:                                  |
+|          |                    |                                           |
+|          |                    | | 0. not requested                        |
+|          |                    | | 1. requested                            |
+|          |                    | | 2. writing (or in disk cache)           |
+|          |                    | | 3. written to disk                      |
+|          |                    |                                           |
++----------+--------------------+-------------------------------------------+
+
+After the list of full piece updates come the *block* updates. If a piece has
+few changes since the last update, only the blocks that have changed are
+updated.
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 0        | uint32_t           | ``piece-index`` the piece index           |
++----------+--------------------+-------------------------------------------+
+| 4        | uint16_t           | ``block-index`` the block index           |
++----------+--------------------+-------------------------------------------+
+| 6        | uint8_t[]          | ``block-state`` the new state of the      |
+|          |                    | specified block.                          |
+|          |                    |                                           |
+|          |                    | | 0. not requested                        |
+|          |                    | | 1. requested                            |
+|          |                    | | 2. writing (or in disk cache)           |
+|          |                    | | 3. written to disk                      |
+|          |                    |                                           |
++----------+--------------------+-------------------------------------------+
+
+The list of removed pieces has ``num-removed`` entries. A length of ``0xffff``
+is a special value to mean the update is a complete snapshot of the pieces. The
+removed pieces list is empty in this case.
+
+This list just has one ``uint16_t`` per entry, the index of the piece that's
+being removed.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -797,6 +891,8 @@ Function IDs
 |  21 | get-peers-updates         | info-hash, frame-number, bitmask        |
 |     |                           | indicating which fields to return       |
 |     |                           | (uint64_t)                              |
++-----+---------------------------+-----------------------------------------+
+|  22 | get-piece-updates         | info-hash, frame-number                 |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
