@@ -84,7 +84,7 @@ window.onload = function() {
 
 
 		window.setInterval(function() {
-				conn.get_file_updates(window.location.hash.substring(1), update_file_list);
+				conn.get_file_updates(window.location.hash.substring(1), file_fields.flags | file_fields.name | file_flags.size | file_fields.downloaded | file_fields.priority | file_fields.open_mode, update_file_list);
 			}, 1000);
 	});
 };

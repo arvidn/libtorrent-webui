@@ -632,14 +632,14 @@ libtorrent_connection.prototype['get_stats'] = function(stats, callback)
 	this._socket.send(call);
 }
 
-libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
+libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, callback)
 {
 	if (this._socket.readyState != WebSocket.OPEN)
 	{
 		window.setTimeout( function() { callback("socket closed"); }, 0);
 		return;
 	}
-	
+
 	var tid = this._tid++;
 	if (this._tid > 65535) this._tid = 0;
 
@@ -714,7 +714,8 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
 		if (typeof(callback) !== 'undefined') callback(ret);
 	};
 
-	var call = new ArrayBuffer(27);
+	// 3 header + 20 info-hash + 4 frame + 2 field-mask = 29 bytes
+	var call = new ArrayBuffer(29);
 	var view = new DataView(call);
 	// function 19
 	view.setUint8(0, 19);
@@ -731,8 +732,11 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, callback)
 
 	// frame-number
 	view.setUint32(offset, 0);
+	offset += 4;
 
-//	console.log('CALL get_file_updates() tid = ' + tid);
+	// field-mask
+	view.setUint16(offset, field_mask);
+
 	this._socket.send(call);
 }
 libtorrent_connection.prototype['start'] = function(info_hashes, callback)
@@ -1090,6 +1094,16 @@ fields =
 	'redundant_bytes': 1 << 22
 };
 
+var file_fields =
+{
+	'flags':      1 << 0,
+	'name':       1 << 1,
+	'size':       1 << 2,
+	'downloaded': 1 << 3,
+	'priority':   1 << 4, // extra cost: fetches all file priorities
+	'open_mode':  1 << 5  // extra cost: fetches open file status
+};
+
 var peer_fields =
 {
 	'flags':                  1 << 0,
@@ -1117,5 +1131,6 @@ var peer_fields =
 // prevent the compiler from optimizing these away
 window['libtorrent_connection'] = libtorrent_connection;
 window['fields'] = fields;
+window['file_fields'] = file_fields;
 window['peer_fields'] = peer_fields;
 
