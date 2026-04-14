@@ -1029,6 +1029,99 @@ libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callba
 	this._socket.send(call);
 }
 
+libtorrent_connection.prototype['get_piece_updates'] = function(ih, last_frame, callback)
+{
+	if (this._socket.readyState != WebSocket.OPEN)
+	{
+		window.setTimeout(function() { callback("socket closed"); }, 0);
+		return;
+	}
+
+	var tid = this._tid++;
+	if (this._tid > 65535) this._tid = 0;
+
+	this._transactions[tid] = function(view, fun, e)
+	{
+		if (_check_error(e, callback)) return;
+
+		var frame = view.getUint32(4);
+		var num_pieces = view.getUint16(8);
+		var num_block_updates = view.getUint16(10);
+		var num_removed = view.getUint16(12);
+
+		var ret = {};
+		ret['frame'] = frame;
+		ret['snapshot'] = (num_removed === 0xffff);
+		var offset = 14;
+
+		var pieces = [];
+		for (var pi = 0; pi < num_pieces; ++pi)
+		{
+			var piece = {};
+			piece['index'] = view.getUint32(offset);
+			offset += 4;
+			var nb = view.getUint16(offset);
+			piece['num-blocks'] = nb;
+			offset += 2;
+
+			var blocks = [];
+			for (var bi = 0; bi < nb; ++bi)
+			{
+				blocks.push(view.getUint8(offset));
+				offset += 1;
+			}
+			piece['blocks'] = blocks;
+			pieces.push(piece);
+		}
+		ret['pieces'] = pieces;
+
+		var block_updates = [];
+		for (var bi = 0; bi < num_block_updates; ++bi)
+		{
+			var bu = {};
+			bu['piece'] = view.getUint32(offset);
+			offset += 4;
+			bu['block'] = view.getUint16(offset);
+			offset += 2;
+			bu['state'] = view.getUint8(offset);
+			offset += 1;
+			block_updates.push(bu);
+		}
+		ret['block-updates'] = block_updates;
+
+		var removed = [];
+		if (num_removed !== 0xffff)
+		{
+			for (var ri = 0; ri < num_removed; ++ri)
+			{
+				removed.push(view.getUint16(offset));
+				offset += 2;
+			}
+		}
+		ret['removed'] = removed;
+
+		console.log(ret)
+		if (typeof(callback) !== 'undefined') callback(ret);
+	};
+
+	// request: 3 header + 20 info-hash + 4 frame = 27 bytes
+	let call = new ArrayBuffer(27);
+	let view = new DataView(call);
+	view.setUint8(0, 22);
+	view.setUint16(1, tid);
+
+	let offset = 3;
+	for (let i = 0; i < 40; i += 2)
+	{
+		view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+		offset += 1;
+	}
+	view.setUint32(offset, last_frame);
+	offset += 4;
+
+	this._socket.send(call);
+}
+
 libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
 {
 	const encoder = new TextEncoder();

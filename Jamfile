@@ -31,6 +31,7 @@ SOURCES =
 	save_settings
 	save_resume
 	torrent_history
+	piece_history
 	auth
 	no_auth
 	load_config

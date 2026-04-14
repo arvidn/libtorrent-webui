@@ -11,6 +11,7 @@ see LICENSE file.
 #define LTWEB_LIBTORRENT_WEBUI_HPP
 
 #include "torrent_history.hpp" // for frame_t
+#include "piece_history.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
 #include "alert_observer.hpp"
@@ -21,6 +22,7 @@ see LICENSE file.
 #include "libtorrent/fwd.hpp"
 
 #include <atomic>
+#include <list>
 
 #include <boost/beast/websocket/stream.hpp>
 #include <boost/beast/http.hpp>
@@ -66,6 +68,7 @@ namespace ltweb
 		bool get_file_updates(websocket_conn* st, function_call f);
 		bool add_torrent(websocket_conn* st, function_call f);
 		bool get_peers_updates(websocket_conn* st, function_call f);
+		bool get_piece_updates(websocket_conn* st, function_call f);
 
 		bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
@@ -93,6 +96,10 @@ namespace ltweb
 		auth_interface const* m_auth;
 		alert_handler* m_alert;
 		save_settings_interface* m_settings;
+
+		// LRU cache of piece histories, most-recently-used at the front.
+		// Capped at 10 entries; the least-recently-used is evicted when full.
+		std::list<piece_history> m_piece_histories;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class
