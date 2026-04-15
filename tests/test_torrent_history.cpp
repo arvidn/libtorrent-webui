@@ -42,6 +42,7 @@ void wait_for(lt::session& ses, ltweb::alert_handler& handler, int n, int const 
 
 lt::settings_pack make_settings_pack()
 {
+	// Minimal session: networking disabled, not needed for these tests
 	lt::settings_pack sp;
 	sp.set_bool(lt::settings_pack::enable_dht, false);
 	sp.set_bool(lt::settings_pack::enable_lsd, false);
@@ -69,14 +70,7 @@ lt::sha256_hash make_v2(unsigned char fill)
 
 BOOST_AUTO_TEST_CASE(integration)
 {
-	// Minimal session: networking disabled, not needed for these tests
-	lt::settings_pack sp;
-	sp.set_bool(lt::settings_pack::enable_dht, false);
-	sp.set_bool(lt::settings_pack::enable_lsd, false);
-	sp.set_bool(lt::settings_pack::enable_upnp, false);
-	sp.set_bool(lt::settings_pack::enable_natpmp, false);
-	sp.set_str(lt::settings_pack::listen_interfaces, "127.0.0.1:0");
-	lt::session ses(sp);
+	lt::session ses(make_settings_pack());
 
 	ltweb::alert_handler handler(ses);
 	ltweb::torrent_history history(&handler);
