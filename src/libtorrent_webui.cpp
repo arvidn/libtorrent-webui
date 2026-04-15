@@ -1255,7 +1255,6 @@ namespace {
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		auto pieces = h.get_download_queue();
-		frame_t const new_frame = m_hist->frame();
 
 		// Find or create the piece_history for this info-hash in the LRU cache.
 		auto it = std::find_if(m_piece_histories.begin(), m_piece_histories.end(),
@@ -1268,7 +1267,7 @@ namespace {
 			if (m_piece_histories.size() > 10)
 				m_piece_histories.pop_back();
 		}
-		m_piece_histories.front().update(new_frame, pieces);
+		frame_t const new_frame = m_piece_histories.front().update(pieces);
 
 		auto [full_pieces, block_updates, removed] = m_piece_histories.front().query(client_frame);
 
@@ -1306,7 +1305,7 @@ namespace {
 		if (!snapshot)
 		{
 			for (auto const idx : removed)
-				write_uint16(static_cast<std::uint16_t>(static_cast<int>(idx)), ptr);
+				write_uint32(static_cast<int>(idx), ptr);
 		}
 
 		return st->send_packet(response.data(), response.size());

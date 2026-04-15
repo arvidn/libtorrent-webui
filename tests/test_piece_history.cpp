@@ -74,7 +74,7 @@ BOOST_AUTO_TEST_CASE(snapshot)
 	q.add(0, {0, 1, 2, 3});
 	q.add(5, {1, 1});
 
-	ph.update(10, q.pieces);
+	ph.update(q.pieces);
 	auto const r = ph.query(0);
 
 	BOOST_TEST(r.full_pieces.size() == 2u);
@@ -90,10 +90,10 @@ BOOST_AUTO_TEST_CASE(delta_no_change)
 	fake_queue q;
 	q.add(0, {1, 1, 1, 1});
 
-	ph.update(10, q.pieces);
-	ph.update(11, q.pieces);  // identical state
+	auto const f1 = ph.update(q.pieces);
+	ph.update(q.pieces);  // identical state
 
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 	BOOST_TEST(r.full_pieces.empty());
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -110,10 +110,10 @@ BOOST_AUTO_TEST_CASE(delta_sends_individual_block_updates)
 	q1.add(0, {0, 0, 0, 0});
 	q2.add(0, {0, 1, 0, 0});  // only block 1 changes
 
-	ph.update(10, q1.pieces);
-	ph.update(11, q2.pieces);
+	auto const f1 = ph.update(q1.pieces);
+	ph.update(q2.pieces);
 
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 	BOOST_TEST(r.full_pieces.empty());
 	BOOST_TEST(r.block_updates.size() == 1u);
 	BOOST_TEST(r.removed.empty());
@@ -136,10 +136,10 @@ BOOST_AUTO_TEST_CASE(delta_sends_full_piece_when_cheaper)
 	q1.add(0, {0, 0, 0, 0});
 	q2.add(0, {1, 2, 3, 3});  // all four blocks change
 
-	ph.update(10, q1.pieces);
-	ph.update(11, q2.pieces);
+	auto const f1 = ph.update(q1.pieces);
+	ph.update(q2.pieces);
 
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 	BOOST_TEST(r.full_pieces.size() == 1u);
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -156,10 +156,10 @@ BOOST_AUTO_TEST_CASE(new_piece_sent_as_full_piece)
 	q2.add(0, {1, 1});
 	q2.add(7, {0, 1});  // piece 7 is new
 
-	ph.update(10, q1.pieces);
-	ph.update(11, q2.pieces);
+	auto const f1 = ph.update(q1.pieces);
+	ph.update(q2.pieces);
 
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 	BOOST_TEST(r.full_pieces.size() == 1u);
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -178,12 +178,12 @@ BOOST_AUTO_TEST_CASE(removed_piece_reported_to_client)
 	q1.add(3, {1, 1, 1});
 	// q2 is empty: piece 3 is gone
 
-	ph.update(10, q1.pieces);  // piece 3 added (added_frame = 10)
-	ph.update(11, q2.pieces);  // piece 3 removed (removed_frame = 11)
+	auto const f1 = ph.update(q1.pieces);  // piece 3 added
+	ph.update(q2.pieces);                  // piece 3 removed
 
-	// Client last polled at frame 10 -- it saw piece 3 -- so it must be told
+	// Client last polled at f1 -- it saw piece 3 -- so it must be told
 	// about the removal.
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 	BOOST_TEST(r.removed.size() == 1u);
 	if (!r.removed.empty())
 		BOOST_TEST((r.removed[0] == lt::piece_index_t(3)));
@@ -198,16 +198,16 @@ BOOST_AUTO_TEST_CASE(removed_piece_not_reported_if_client_never_saw_add)
 	fake_queue q0, q1, q2;
 	q1.add(3, {1, 1});
 
-	ph.update(10, q0.pieces);  // empty; client polls here -> f0 = 10
-	ph.update(11, q1.pieces);  // piece 3 appears (added_frame = 11)
-	ph.update(12, q2.pieces);  // piece 3 disappears (removed_frame = 12)
+	auto const f0 = ph.update(q0.pieces);  // empty; client polls here
+	auto const f1 = ph.update(q1.pieces);  // piece 3 appears
+	ph.update(q2.pieces);                  // piece 3 disappears
 
-	// Client at f0=10: added_frame 11 > 10 -> not in removed
-	auto const r = ph.query(10);
+	// Client at f0: added_frame > f0 -> not in removed
+	auto const r = ph.query(f0);
 	BOOST_TEST(r.removed.empty());
 
-	// Client at f1=11: added_frame 11 <= 11 -> should be in removed
-	auto const r2 = ph.query(11);
+	// Client at f1: added_frame <= f1 -> should be in removed
+	auto const r2 = ph.query(f1);
 	BOOST_TEST(r2.removed.size() == 1u);
 	if (!r2.removed.empty())
 		BOOST_TEST((r2.removed[0] == lt::piece_index_t(3)));
@@ -223,20 +223,20 @@ BOOST_AUTO_TEST_CASE(piece_reappears_after_removal)
 	q1.add(2, {1, 1});
 	q3.add(2, {0, 0});  // piece 2 comes back
 
-	ph.update(10, q1.pieces);  // piece 2 added (added_frame = 10)
-	ph.update(11, q2.pieces);  // piece 2 removed (removed_frame = 11)
-	ph.update(12, q3.pieces);  // piece 2 re-added (removed entry erased)
+	auto const f1 = ph.update(q1.pieces);  // piece 2 added
+	ph.update(q2.pieces);                  // piece 2 removed
+	ph.update(q3.pieces);                  // piece 2 re-added (removed entry erased)
 
-	// Client at frame 10: piece 2 was removed then re-added.
+	// Client at f1: piece 2 was removed then re-added.
 	// The removal entry was cleaned up on re-add, so removed must be empty.
-	auto const r = ph.query(10);
+	auto const r = ph.query(f1);
 
 	bool in_removed = false;
 	for (auto idx : r.removed)
 		if (idx == lt::piece_index_t(2)) in_removed = true;
 	BOOST_TEST(!in_removed);
 
-	// The re-added piece has added_frame=12 > 10, so it must appear as a full
+	// The re-added piece has added_frame > f1, so it must appear as a full
 	// piece update (client has no state for the new incarnation).
 	bool in_full = false;
 	for (auto const* e : r.full_pieces)
