@@ -40,6 +40,17 @@ void wait_for(lt::session& ses, ltweb::alert_handler& handler, int n, int const 
 	}
 }
 
+lt::settings_pack make_settings_pack()
+{
+	lt::settings_pack sp;
+	sp.set_bool(lt::settings_pack::enable_dht, false);
+	sp.set_bool(lt::settings_pack::enable_lsd, false);
+	sp.set_bool(lt::settings_pack::enable_upnp, false);
+	sp.set_bool(lt::settings_pack::enable_natpmp, false);
+	sp.set_str(lt::settings_pack::listen_interfaces, "127.0.0.1:0");
+	return sp;
+}
+
 lt::sha1_hash make_v1(unsigned char fill)
 {
 	lt::sha1_hash h;
@@ -186,5 +197,49 @@ BOOST_AUTO_TEST_CASE(integration)
 		BOOST_TEST(remaining.size() == 3);
 		for (auto const& s : remaining)
 			BOOST_TEST((s.info_hashes != lt::info_hash_t(v1_hash)));
+	}
+}
+
+// A torrent that is added and removed between two client polls should not
+// appear in removed_since() for a client whose last frame predates the add.
+BOOST_AUTO_TEST_CASE(removed_before_client_saw_add)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	// Snapshot the frame before the torrent ever existed.
+	ltweb::frame_t const f0 = history.frame();
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	p.info_hashes = lt::info_hash_t(make_v1(0xbb));
+	lt::torrent_handle h = ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	// Advance the frame counter so the add and the snapshot below land in
+	// a distinct frame from f0.
+	ses.post_torrent_updates();
+	wait_for(ses, handler, 1, lt::state_update_alert::alert_type);
+	ltweb::frame_t const f1 = history.frame();
+	BOOST_TEST(f1 > f0);
+
+	// Now remove the torrent without any client having polled at f1.
+	ses.remove_torrent(h);
+	wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
+
+	// A client at f0 never saw the torrent — it should not receive a removal.
+	{
+		auto const removed = history.removed_since(f0);
+		BOOST_TEST(removed.empty());
+	}
+
+	// A client at f1 (after the add) should receive the removal.
+	{
+		auto const removed = history.removed_since(f1);
+		BOOST_TEST(removed.size() == 1);
+		if (!removed.empty())
+			BOOST_TEST((removed[0] == lt::info_hash_t(make_v1(0xbb))));
 	}
 }
