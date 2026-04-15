@@ -43,10 +43,11 @@ struct piece_history
 	explicit piece_history(lt::sha1_hash const& ih);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
+	frame_t frame() const { return m_frame; }
 
-	// Feed a fresh download queue snapshot at the given global frame number.
-	void update(frame_t frame,
-		std::vector<lt::partial_piece_info> const& pieces);
+	// Feed a fresh download queue snapshot.
+	// Increments the internal frame counter and returns the new frame.
+	frame_t update(std::vector<lt::partial_piece_info> const& pieces);
 
 	struct block_update
 	{
@@ -86,6 +87,7 @@ struct piece_history
 
 private:
 	lt::sha1_hash const m_ih;
+	frame_t m_frame = 0;
 
 	// ordered by piece_index for deterministic iteration
 	std::map<lt::piece_index_t, piece_history_entry> m_pieces;

@@ -17,9 +17,11 @@ piece_history::piece_history(lt::sha1_hash const& ih)
 	: m_ih(ih)
 {}
 
-void piece_history::update(frame_t frame,
+frame_t piece_history::update(
 	std::vector<lt::partial_piece_info> const& pieces)
 {
+	frame_t const frame = ++m_frame;
+
 	// Build the set of incoming piece indices.
 	std::set<lt::piece_index_t> incoming;
 	for (auto const& p : pieces) incoming.insert(p.piece_index);
@@ -70,13 +72,15 @@ void piece_history::update(frame_t frame,
 		}
 	}
 
-	// Prune very old removal entries to keep the deque bounded.
+	// Prune old removal entries to keep the deque bounded.
 	if (m_removed.size() > 1000)
 	{
 		auto const it = std::remove_if(m_removed.begin(), m_removed.end(),
-			[&](auto const& r) { return r.removed_frame < frame - 60; });
+			[&](auto const& r) { return frame - r.removed_frame > 60; });
 		m_removed.erase(it, m_removed.end());
 	}
+
+	return frame;
 }
 
 piece_history::query_result piece_history::query(frame_t since_frame) const

@@ -762,7 +762,7 @@ The response is:
 | 4        | uint32_t           | ``frame-number`` (timestamp)              |
 |          |                    | of this update for this torrent.          |
 +----------+--------------------+-------------------------------------------+
-| 8        | uint16_t           | ``num-updates`` the number of fill piece  |
+| 8        | uint16_t           | ``num-updates`` the number of full piece  |
 |          |                    | updates to follow. New pieces are         |
 |          |                    | included in the update.                   |
 +----------+--------------------+-------------------------------------------+
@@ -773,11 +773,10 @@ The response is:
 | 12       | uint16_t           | ``num-removed`` the number of removed     |
 |          |                    | pieces since the last update. If this     |
 |          |                    | is 0xffff, any piece not mentioned in one |
-|          |                    | of the update listse were removed.        |
+|          |                    | of the update lists were removed.         |
 +----------+--------------------+-------------------------------------------+
-| 14       | *see below*        | peer info updates, one entry for each     |
-|          |                    | num-updates. See the format for peer      |
-|          |                    | updates below.                            |
+| 14       | *see below*        | piece update lists: full piece updates,   |
+|          |                    | block updates, removed pieces.            |
 +----------+--------------------+-------------------------------------------+
 
 What follows are 3 lists. A list of full piece updates, a list of individual
@@ -815,7 +814,7 @@ updated.
 +----------+--------------------+-------------------------------------------+
 | 4        | uint16_t           | ``block-index`` the block index           |
 +----------+--------------------+-------------------------------------------+
-| 6        | uint8_t[]          | ``block-state`` the new state of the      |
+| 6        | uint8_t            | ``block-state`` the new state of the      |
 |          |                    | specified block.                          |
 |          |                    |                                           |
 |          |                    | | 0. not requested                        |
@@ -829,7 +828,7 @@ The list of removed pieces has ``num-removed`` entries. A length of ``0xffff``
 is a special value to mean the update is a complete snapshot of the pieces. The
 removed pieces list is empty in this case.
 
-This list just has one ``uint16_t`` per entry, the index of the piece that's
+This list just has one ``uint32_t`` per entry, the index of the piece that's
 being removed.
 
 .. raw:: pdf

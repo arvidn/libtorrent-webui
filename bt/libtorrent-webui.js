@@ -1094,13 +1094,12 @@ libtorrent_connection.prototype['get_piece_updates'] = function(ih, last_frame, 
 		{
 			for (var ri = 0; ri < num_removed; ++ri)
 			{
-				removed.push(view.getUint16(offset));
-				offset += 2;
+				removed.push(view.getUint32(offset));
+				offset += 4;
 			}
 		}
 		ret['removed'] = removed;
 
-		console.log(ret)
 		if (typeof(callback) !== 'undefined') callback(ret);
 	};
 
