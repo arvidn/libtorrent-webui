@@ -119,10 +119,14 @@ namespace ltweb
 		// these are the frames each individual field was last changed
 		std::array<frame_t, num_fields> frame;
 
+		// the frame this entry was first added
+		frame_t added_frame = 0;
+
 		torrent_history_entry() {}
 
 		torrent_history_entry(lt::torrent_status const& st, frame_t const f)
 			: status(st)
+			, added_frame(f)
 		{
 			frame.fill(f);
 		}
@@ -169,7 +173,13 @@ namespace ltweb
 
 		queue_t m_queue;
 
-		std::deque<std::pair<frame_t, lt::info_hash_t> > m_removed;
+		struct removed_entry
+		{
+			frame_t removed_frame;
+			frame_t added_frame;
+			lt::info_hash_t ih;
+		};
+		std::deque<removed_entry> m_removed;
 
 		alert_handler* m_alerts;
 

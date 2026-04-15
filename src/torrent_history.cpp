@@ -50,19 +50,30 @@ namespace ltweb
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
 
-			m_removed.push_front(std::make_pair(m_frame + 1, td->info_hashes));
 			torrent_history_entry st;
 			st.status.info_hashes = td->info_hashes;
-			m_queue.right.erase(st);
+
+			// Determine when this torrent was first seen, so that removed_since()
+			// can skip notifying clients that never received an add for it.
+			frame_t added_frame = m_frame + 1;
+			auto const it = m_queue.right.find(st);
+			if (it != m_queue.right.end())
+			{
+				added_frame = it->first.added_frame;
+				m_queue.right.erase(it);
+			}
+
+			m_removed.push_front({m_frame + 1, added_frame, td->info_hashes});
+
 			// weed out torrents that were removed a long time ago
 			if (m_removed.size() > 1000)
 			{
-				auto const it = std::remove_if(
+				auto const pruned = std::remove_if(
 					m_removed.begin()
 					, m_removed.end()
-					, [&](auto const& pair) { return pair.first < m_frame - 60; }
+					, [&](auto const& e) { return e.removed_frame < m_frame - 60; }
 				);
-				m_removed.erase(it, m_removed.end());
+				m_removed.erase(pruned, m_removed.end());
 			}
 
 			m_deferred_frame_count = true;
@@ -105,8 +116,12 @@ namespace ltweb
 		std::unique_lock<std::mutex> l(m_mutex);
 		for (auto const& e : m_removed)
 		{
-			if (e.first <= frame) break;
-			torrents.push_back(e.second);
+			if (e.removed_frame <= frame) break;
+			// Only notify clients that could have seen the add. If the torrent
+			// was added after the client's last frame it was never visible to
+			// that client, so there is nothing to remove on their side.
+			if (e.added_frame <= frame)
+				torrents.push_back(e.ih);
 		}
 		return torrents;
 	}
