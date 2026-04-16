@@ -1159,7 +1159,49 @@ libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
 	this._socket.send(call);
 };
 
-fields =
+libtorrent_connection.prototype['set_file_priority'] = function(ih, updates, callback)
+{
+	if (this._socket.readyState != WebSocket.OPEN)
+	{
+		window.setTimeout(function() { callback("socket closed"); }, 0);
+		return;
+	}
+
+	var tid = this._tid++;
+	if (this._tid > 65535) this._tid = 0;
+
+	this._transactions[tid] = function(view, fun, e)
+	{
+		if (typeof(callback) !== 'undefined') callback(e);
+	};
+
+	// 3 header + 20 info-hash + 4 num-updates + updates.length * 5
+	var call = new ArrayBuffer(3 + 20 + 4 + updates.length * 5);
+	var view = new DataView(call);
+	view.setUint8(0, 23);
+	view.setUint16(1, tid);
+
+	var offset = 3;
+	for (var i = 0; i < 40; i += 2)
+	{
+		view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+		offset += 1;
+	}
+	view.setUint32(offset, updates.length);
+	offset += 4;
+
+	for (var i = 0; i < updates.length; ++i)
+	{
+		view.setUint32(offset, updates[i]['index']);
+		offset += 4;
+		view.setUint8(offset, updates[i]['priority']);
+		offset += 1;
+	}
+
+	this._socket.send(call);
+};
+
+var fields =
 {
 	'flags': 1 << 0,
 	'name': 1 << 1,
