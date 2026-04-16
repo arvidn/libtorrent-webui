@@ -115,7 +115,7 @@ namespace {
 		bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 	};
 
-	static std::array<rpc_entry, 23> const functions =
+	static std::array<rpc_entry, 24> const functions =
 	{{
 		{ "get-torrent-updates", &libtorrent_webui::get_torrent_updates },
 		{ "start", &libtorrent_webui::start },
@@ -140,6 +140,7 @@ namespace {
 		{ "add-torrent", &libtorrent_webui::add_torrent },
 		{ "get-peers-updates", &libtorrent_webui::get_peers_updates },
 		{ "get-piece-updates", &libtorrent_webui::get_piece_updates },
+		{ "set-file-priority", &libtorrent_webui::set_file_priority },
 	}};
 
 	// maps torrent field to RPC field. These fields are the ones defined in
@@ -961,7 +962,7 @@ namespace {
 		(void)frame;
 		std::uint16_t const field_mask = read_uint16(iptr);
 
-		lt::torrent_handle h = m_ses.find_torrent(ih);
+		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
@@ -1061,7 +1062,7 @@ namespace {
 		(void)frame;
 		std::uint64_t const field_mask = read_uint64(iptr);
 
-		lt::torrent_handle h = m_ses.find_torrent(ih);
+		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::vector<lt::peer_info> peers;
@@ -1248,7 +1249,7 @@ namespace {
 		iptr += 20;
 		frame_t const client_frame = read_uint32(iptr);
 
-		lt::torrent_handle h = m_ses.find_torrent(ih);
+		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		auto pieces = h.get_download_queue();
@@ -1306,6 +1307,42 @@ namespace {
 		}
 
 		return st->send_packet(response.data(), response.size());
+	}
+
+	bool libtorrent_webui::set_file_priority(websocket_conn* st, function_call f)
+	{
+		if (!st->perms()->allow_set_file_prio())
+			return error(st, f, permission_denied);
+
+		char const* iptr = f.data;
+
+		// minimum: 20-byte info-hash + 4-byte num-updates
+		if (f.len < 24) return error(st, f, invalid_number_of_args);
+
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		std::uint32_t const num_updates = read_uint32(iptr);
+
+		if (num_updates > 0xffffff)
+			return error(st, f, invalid_number_of_args);
+
+		// each update is 5 bytes: uint32_t file-index + uint8_t priority
+		if (f.len != 24 + int(num_updates) * 5)
+			return error(st, f, invalid_number_of_args);
+
+		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
+		if (!h.is_valid()) return error(st, f, invalid_argument);
+
+		for (std::uint32_t i = 0; i < num_updates; ++i)
+		{
+			// libtorrent will ignore invalid file indices, and clamp the
+			// priority to a valid value
+			lt::file_index_t const file_idx(read_int32(iptr));
+			lt::download_priority_t const prio(read_uint8(iptr));
+			h.file_priority(file_idx, prio);
+		}
+
+		return error(st, f, no_error);
 	}
 
 	bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
