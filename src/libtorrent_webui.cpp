@@ -958,8 +958,7 @@ namespace {
 		if (f.len != 26) return error(st, f, invalid_number_of_args);
 		lt::sha1_hash ih(iptr);
 		iptr += 20;
-		frame_t const frame = read_int32(iptr);
-		(void)frame;
+		frame_t const client_frame = read_uint32(iptr);
 		std::uint16_t const field_mask = read_uint16(iptr);
 
 		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
@@ -990,6 +989,26 @@ namespace {
 		std::vector<lt::open_file_state> fstatus;
 		if (field_mask & 0x20) fstatus = h.file_status();
 
+		// Find or create the file_history for this info-hash in the LRU cache.
+		auto fh_it = std::find_if(m_file_histories.begin(), m_file_histories.end(),
+			[&](file_history const& fh) { return fh.info_hash() == ih; });
+		if (fh_it != m_file_histories.end())
+			m_file_histories.splice(m_file_histories.begin(), m_file_histories, fh_it);
+		else
+		{
+			m_file_histories.emplace_front(ih, fs);
+			if (m_file_histories.size() > 10)
+				m_file_histories.pop_back();
+		}
+		file_history& fh = m_file_histories.front();
+
+		frame_t const new_frame = fh.update(
+			(field_mask & 0x08) ? &fp    : nullptr,
+			(field_mask & 0x10) ? &fprio : nullptr,
+			(field_mask & 0x20) ? &fstatus : nullptr);
+
+		auto const per_file_masks = fh.query(client_frame, field_mask);
+
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
 
@@ -997,29 +1016,36 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
-		// frame number (delta tracking not yet implemented)
-		write_uint32(0, ptr);
+		write_uint32(new_frame, ptr);
 
 		// number of files
 		write_uint32(fs.num_files(), ptr);
 
 		for (auto const fi : fs.file_range())
 		{
-			if ((static_cast<int>(fi) % 8) == 0)
+			int const i = static_cast<int>(fi);
+
+			if ((i % 8) == 0)
 			{
-				std::uint8_t mask = 0xff;
-				if (fs.num_files() - static_cast<int>(fi) < 8)
-					mask <<= 8 - fs.num_files() + static_cast<int>(fi);
-				write_uint8(mask, ptr);
+				// Build the 8-file presence bitmask using per-file masks.
+				int const remaining = fs.num_files() - i;
+				int const chunk = remaining < 8 ? remaining : 8;
+				std::uint8_t presence = 0;
+				for (int k = 0; k < chunk; ++k)
+					if (per_file_masks[i + k] != 0)
+						presence |= std::uint8_t(0x80 >> k);
+				write_uint8(presence, ptr);
 			}
 
-			// per-file field bitmask mirrors the requested field_mask
-			write_uint16(field_mask & 0x3f, ptr);
+			std::uint16_t const fmask = per_file_masks[i];
+			if (fmask == 0) continue;
 
-			if (field_mask & 0x01)
+			write_uint16(fmask, ptr);
+
+			if (fmask & 0x01)
 				write_uint8(static_cast<std::uint8_t>(fs.file_flags(fi)), ptr);
 
-			if (field_mask & 0x02)
+			if (fmask & 0x02)
 			{
 				std::string name = fs.file_path(fi);
 				if (name.size() > 65535) name.resize(65535);
@@ -1027,23 +1053,17 @@ namespace {
 				std::copy(name.begin(), name.end(), ptr);
 			}
 
-			if (field_mask & 0x04)
+			if (fmask & 0x04)
 				write_uint64(fs.file_size(fi), ptr);
 
-			if (field_mask & 0x08)
-				write_uint64(fp[static_cast<int>(fi)], ptr);
+			if (fmask & 0x08)
+				write_uint64(fh.progress(i), ptr);
 
-			if (field_mask & 0x10)
-				write_uint8(static_cast<std::uint8_t>(fprio[static_cast<int>(fi)]), ptr);
+			if (fmask & 0x10)
+				write_uint8(static_cast<std::uint8_t>(fh.priority(i)), ptr);
 
-			if (field_mask & 0x20)
-			{
-				auto const file_status = std::find_if(fstatus.begin(), fstatus.end()
-					, [fi](lt::open_file_state const& st) { return st.file_index == fi; });
-				write_uint8(file_status == fstatus.end()
-					? std::uint8_t(0)
-					: static_cast<std::uint8_t>(file_status->open_mode), ptr);
-			}
+			if (fmask & 0x20)
+				write_uint8(fh.open_mode(i), ptr);
 		}
 
 		return st->send_packet(&response[0], response.size());
