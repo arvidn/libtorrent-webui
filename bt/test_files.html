@@ -6,14 +6,15 @@
 
 var conn = null;
 
-update_file_list = function(files)
+var update_file_list = function(data)
 {
-	if (typeof(files) === 'string')
+	if (typeof(data) === 'string')
 	{
-		console.log("ERROR: " + files);
+		console.log("ERROR: " + data);
 		return;
 	}
 
+	var files = data['files'];
 	var table = document.getElementById("files");
 
 	var req = [];
@@ -84,7 +85,7 @@ window.onload = function() {
 
 
 		window.setInterval(function() {
-				conn.get_file_updates(window.location.hash.substring(1), file_fields.flags | file_fields.name | file_flags.size | file_fields.downloaded | file_fields.priority | file_fields.open_mode, update_file_list);
+				conn.get_file_updates(window.location.hash.substring(1), 0, file_fields.flags | file_fields.name | file_fields.size | file_fields.downloaded | file_fields.priority | file_fields.open_mode, update_file_list);
 			}, 1000);
 	});
 };

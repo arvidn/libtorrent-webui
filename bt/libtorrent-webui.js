@@ -632,7 +632,7 @@ libtorrent_connection.prototype['get_stats'] = function(stats, callback)
 	this._socket.send(call);
 }
 
-libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, callback)
+libtorrent_connection.prototype['get_file_updates'] = function(ih, last_frame, field_mask, callback)
 {
 	if (this._socket.readyState != WebSocket.OPEN)
 	{
@@ -653,8 +653,7 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, c
 
 		var frame = view.getUint32(4);
 		var num_files = view.getUint32(8);
-//		console.log('frame: ' + frame + ' num-files: ' + num_files);
-		ret = [];
+		var files = [];
 		var offset = 12;
 		var mask = 0;
 		for (var i = 0; i < num_files; ++i)
@@ -668,17 +667,17 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, c
 			}
 			if  ((mask & (0x80 >> (i & 7))) == 0)
 			{
-				ret.push(file);
+				files.push(file);
 				continue
 			}
 
-			var field_mask = view.getUint16(offset)
+			var file_mask = view.getUint16(offset)
 			offset += 2;
 
 			for (var field = 0; field < 16; ++field)
 			{
 				var bit = 1 << field;
-				if ((field_mask & bit) == 0) continue;
+				if ((file_mask & bit) == 0) continue;
 				switch (field)
 				{
 					case 0: // flags
@@ -708,10 +707,10 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, c
 						break;
 				}
 			}
-			ret.push(file);
+			files.push(file);
 		}
 
-		if (typeof(callback) !== 'undefined') callback(ret);
+		if (typeof(callback) !== 'undefined') callback({frame: frame, files: files});
 	};
 
 	// 3 header + 20 info-hash + 4 frame + 2 field-mask = 29 bytes
@@ -731,7 +730,7 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, field_mask, c
 	}
 
 	// frame-number
-	view.setUint32(offset, 0);
+	view.setUint32(offset, last_frame);
 	offset += 4;
 
 	// field-mask

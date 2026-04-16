@@ -12,6 +12,7 @@ see LICENSE file.
 
 #include "torrent_history.hpp" // for frame_t
 #include "piece_history.hpp"
+#include "file_history.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
 #include "alert_observer.hpp"
@@ -101,6 +102,9 @@ namespace ltweb
 		// LRU cache of piece histories, most-recently-used at the front.
 		// Capped at 10 entries; the least-recently-used is evicted when full.
 		std::list<piece_history> m_piece_histories;
+
+		// LRU cache of file histories, same eviction policy.
+		std::list<file_history> m_file_histories;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class

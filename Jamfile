@@ -43,6 +43,7 @@ SOURCES =
 	serve_files
 	hex
 	utorrent_webui
+	file_history
 	;
 
 lib torrent-webui
