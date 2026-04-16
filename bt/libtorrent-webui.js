@@ -1,28 +1,18 @@
 
+
+var utf8_decoder = new TextDecoder('utf-8');
+
 // read a string with a 16 bit length prefix
 function read_string16(view, offset)
 {
 	var len = view.getUint16(offset);
-	var str = '';
-	offset += 2;
-	for (var j = 0; j < len; ++j)
-	{
-		str += String.fromCharCode(view.getUint8(offset));
-		++offset;
-	}
-	return str;
+	return [utf8_decoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 2, len)), len];
 }
+
 function read_string8(view, offset)
 {
 	var len = view.getUint8(offset);
-	var str = '';
-	++offset;
-	for (var j = 0; j < len; ++j)
-	{
-		str += String.fromCharCode(view.getUint8(offset));
-		++offset;
-	}
-	return str;
+	return [utf8_decoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset + 1, len)), len];
 }
 
 function read_infohash(view, offset)
@@ -140,8 +130,8 @@ libtorrent_connection.prototype['list_settings'] = function(callback)
 		var offset = 16;
 		for (var i = 0; i < num_strings + num_ints + num_bools; ++i)
 		{
-			var name = read_string8(view, offset);
-			offset += 1 + name.length;
+			var [name, len] = read_string8(view, offset);
+			offset += 1 + len;
 			var code = view.getUint16(offset);
 			offset += 2;
 			var type;
@@ -224,9 +214,9 @@ libtorrent_connection.prototype['get_settings'] = function(settings, callback)
 			switch (type)
 			{
 				case 0: // string
-					var n = read_string16(view, offset);
+					var [n, len] = read_string16(view, offset);
 					ret.push(n);
-					offset += 2 + n.length;
+					offset += 2 + len;
 					break;
 				case 1: // int
 					ret.push(view.getUint32(offset));
@@ -400,8 +390,8 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 						offset += 4;
 						break;
 					case 1: // name
-						var name = read_string16(view, offset);
-						offset += 2 + name.length;
+						var [name, len] = read_string16(view, offset);
+						offset += 2 + len;
 						torrent['name'] = name;
 						break;
 					case 2: // total-uploaded
@@ -433,8 +423,8 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 						offset += 4;
 						break;
 					case 9: // error
-						var e = read_string16(view, offset);
-						offset += 2 + e.length;
+						var [e, len] = read_string16(view, offset);
+						offset += 2 + len;
 						torrent['error'] = e;
 						break;
 					case 10: // connected-peers
@@ -551,10 +541,10 @@ libtorrent_connection.prototype['list_stats'] = function(callback)
 		{
 			var id = view.getUint16(offset);
 			var type = view.getUint8(offset + 2);
-			var name = read_string8(view, offset + 3);
+			var [name, len] = read_string8(view, offset + 3);
 			ret[name] = { type: type, id: id};
 			self._stats[id] = name;
-			offset += 4 + name.length;
+			offset += 4 + len;
 		}
 		if (typeof(callback) !== 'undefined') callback(ret);
 	};
@@ -685,8 +675,8 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, last_frame, f
 						offset += 1;
 						break;
 					case 1: // name
-						var name = read_string16(view, offset);
-						offset += 2 + name.length;
+						var [name, len] = read_string16(view, offset);
+						offset += 2 + len;
 						file['name'] = name;
 						break;
 					case 2: // total-size
@@ -877,8 +867,8 @@ libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callba
 						offset += 1;
 						break;
 					case 4: // client (uint8 length prefix)
-						var client = read_string8(view, offset);
-						offset += 1 + client.length;
+						var [client, len] = read_string8(view, offset);
+						offset += 1 + len;
 						peer['client'] = client;
 						break;
 					case 5: // num-pieces

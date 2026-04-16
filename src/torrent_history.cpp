@@ -38,6 +38,7 @@ namespace ltweb
 	{
 		if (lt::add_torrent_alert const* ta = lt::alert_cast<lt::add_torrent_alert>(a))
 		{
+			// TODO: This is a synchronous call. use post_torrent_updates() instead
 			lt::torrent_status st = ta->handle.status();
 			TORRENT_ASSERT(st.info_hashes == st.handle.info_hashes());
 			TORRENT_ASSERT(st.handle == ta->handle);
