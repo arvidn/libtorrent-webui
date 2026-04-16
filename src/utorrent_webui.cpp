@@ -44,22 +44,16 @@ see LICENSE file.
 namespace ltweb
 {
 
-utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface* sett
-	, auto_load* al, torrent_history* hist
-	, auth_interface const* auth)
+utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface& sett
+	, torrent_history& hist, auth_interface const& auth
+	, auto_load* al)
 	: m_ses(s)
-	, m_al(al)
 	, m_auth(auth)
 	, m_settings(sett)
 //	, m_rss_filter(rss_filter)
 	, m_hist(hist)
+	, m_al(al)
 {
-	if (m_auth == nullptr)
-	{
-		const static no_auth n;
-		m_auth = &n;
-	}
-
 	m_start_time = time(nullptr);
 	m_version = 1;
 
@@ -69,10 +63,9 @@ utorrent_webui::utorrent_webui(lt::session& s, save_settings_interface* sett
 
 	m_webui_cookie = "{}";
 
-	if (m_settings)
 	{
-		m_webui_cookie = m_settings->get_str("ut_webui_cookie", "{}");
-		int port = m_settings->get_int("listen_port", -1);
+		m_webui_cookie = m_settings.get_str("ut_webui_cookie", "{}");
+		int port = m_settings.get_int("listen_port", -1);
 		if (port != -1)
 		{
 			lt::settings_pack pack;
@@ -183,7 +176,7 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 		return;
 	}
 
-	permissions_interface const* perms = parse_http_auth(request, m_auth);
+	permissions_interface const* perms = parse_http_auth(request, &m_auth);
 	if (!perms)
 	{
 		http::response<http::empty_body> res{http::status::unauthorized, request.version()};
@@ -251,9 +244,8 @@ void utorrent_webui::handle_http(http::request<http::string_body> request
 				return;
 			}
 
-			std::string const save_path = m_settings
-				? m_settings->get_str("save_path", "./downloads") : "./downloads";
-			bool const start_paused = m_settings && m_settings->get_int("start_paused", 0);
+			std::string const save_path = m_settings.get_str("save_path", "./downloads");
+			bool const start_paused = m_settings.get_int("start_paused", 0) != 0;
 			for (auto& p : params)
 			{
 				p.save_path = save_path;
@@ -427,7 +419,7 @@ void utorrent_webui::remove_torrent_and_data(std::vector<char>&, char const* arg
 
 void utorrent_webui::list_dirs(std::vector<char>& response, char const* args, permissions_interface const* p)
 {
-	std::string const save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
+	std::string const save_path = m_settings.get_str("save_path", "./downloads");
 	appendf(response, ", \"download-dirs\": [{\"path\":\"%s\",\"available\":%" PRId64 "}]"
 		, escape_json(save_path).c_str()
 		, free_disk_space(save_path) / 1024 / 1024);
@@ -557,7 +549,7 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 	if (!first) response.push_back(',');
 	first = false;
 	appendf(response, "[\"torrents_start_stopped\",1,\"%s\",{\"access\":\"%c\"}]\n"
-		, (m_settings && m_settings->get_int("start_paused", 0)) ? "true" : "false"
+		, m_settings.get_int("start_paused", 0) ? "true" : "false"
 		, p->allow_stop() ? 'Y' : 'R');
 
 	if (m_al)
@@ -600,19 +592,16 @@ void utorrent_webui::get_settings(std::vector<char>& response, char const* args
 		appendf(response,
 			"[\"dir_active_download\",2,\"%s\",{\"access\":\"%c\"}]\n"
 			",[\"bind_port\",0,\"%d\",{\"access\":\"%c\"}]\n"
-			, escape_json(m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads").c_str()
+			, escape_json(m_settings.get_str("save_path", "./downloads")).c_str()
 			, p->allow_set_settings(-1) ? 'Y' : 'R'
 			, m_ses.listen_port()
 			, p->allow_set_settings(-1) ? 'Y' : 'R');
 	}
 
-	if (m_settings)
-	{
-		appendf(response,
-			",[\"gui.default_del_action\",0,\"%d\",{\"access\":\"%c\"}]\n"
-			, m_settings->get_int("default_del_action", 0)
-			, p->allow_set_settings(-1) ? 'Y' : 'R');
-	}
+	appendf(response,
+		",[\"gui.default_del_action\",0,\"%d\",{\"access\":\"%c\"}]\n"
+		, m_settings.get_int("default_del_action", 0)
+		, p->allow_set_settings(-1) ? 'Y' : 'R');
 
 	if (!first) response.push_back(',');
 	appendf(response,
@@ -666,7 +655,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			// TODO: store this in some lt::session-specific store, so multiple
 			// users don't clobber each other
 			m_webui_cookie = value;
-			if (m_settings) m_settings->set_str("ut_webui_cookie", value);
+			m_settings.set_str("ut_webui_cookie", value);
 		}
 		else if (key == "bind_port")
 		{
@@ -674,7 +663,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			int port = atoi(value.c_str());
 			std::string const listen_interface = "0.0.0.0:" + std::to_string(port);
 			pack.set_str(lt::settings_pack::listen_interfaces, listen_interface.c_str());
-			if (m_settings) m_settings->set_int("listen_port", port);
+			m_settings.set_int("listen_port", port);
 		}
 		else if (key == "bt.transp_disposition")
 		{
@@ -715,7 +704,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		else if (key == "torrents_start_stopped")
 		{
 			if (!p->allow_stop()) continue;
-			if (m_settings) m_settings->set_int("start_paused", to_bool(value));
+			m_settings.set_int("start_paused", to_bool(value));
 		}
 		else if (key == "dir_autoload" && m_al)
 		{
@@ -730,7 +719,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 		else if (key == "dir_active_download")
 		{
 			if (!p->allow_set_settings(-1)) continue;
-			if (m_settings) m_settings->set_str("save_path", value);
+			m_settings.set_str("save_path", value);
 		}
 /*
 		else if (key == "cache.override_size")
@@ -771,9 +760,9 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 			if (!p->allow_set_settings(lt::settings_pack::enable_lsd)) continue;
 			pack.set_bool(lt::settings_pack::enable_lsd, to_bool(value));
 		}
-		else if (key == "gui.default_del_action" && m_settings)
+		else if (key == "gui.default_del_action")
 		{
-			m_settings->set_int("default_del_action", atoi(value.c_str()));
+			m_settings.set_int("default_del_action", atoi(value.c_str()));
 		}
 		else
 		{
@@ -803,7 +792,7 @@ void utorrent_webui::set_settings(std::vector<char>& response, char const* args,
 	m_ses.apply_settings(pack);
 
 	lt::error_code ec;
-	if (m_settings) m_settings->save(ec);
+	m_settings.save(ec);
 }
 
 void utorrent_webui::send_file_list(std::vector<char>& response, char const* args, permissions_interface const* p)
@@ -891,8 +880,8 @@ void utorrent_webui::add_url(std::vector<char>&, char const* args, permissions_i
 	std::string const url_str = url_decode(*url_val);
 
 	lt::add_torrent_params atp = lt::parse_magnet_uri(url_str);
-	atp.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
-	if (m_settings && m_settings->get_int("start_paused", 0))
+	atp.save_path = m_settings.get_str("save_path", "./downloads");
+	if (m_settings.get_int("start_paused", 0))
 		atp.flags = (atp.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
 	else
 		atp.flags = (atp.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
@@ -1167,7 +1156,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 	appendf(response, cid > 0 ? ",\"torrentp\":[" : ",\"torrents\":[");
 
 	std::vector<lt::torrent_status> torrents;
-	m_hist->updated_since(cid, torrents);
+	m_hist.updated_since(cid, torrents);
 
 	bool first = true;
 	for (lt::torrent_status const& t : torrents)
@@ -1218,7 +1207,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		}
 	}
 
-	std::vector<lt::sha1_hash> const removed = m_hist->removed_since(cid);
+	std::vector<lt::sha1_hash> const removed = m_hist.removed_since(cid);
 
 	appendf(response, "], \"torrentm\": [");
 	first = true;
@@ -1229,7 +1218,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		appendf(response, "\"%s\"", to_hex(i).c_str());
 	}
 	// TODO: support labels
-	appendf(response, "], \"label\": [], \"torrentc\": \"%" PRIu32 "\"", m_hist->frame());
+	appendf(response, "], \"label\": [], \"torrentc\": \"%" PRIu32 "\"", m_hist.frame());
 }
 
 void utorrent_webui::send_rss_list(std::vector<char>& response, char const* args, permissions_interface const* p)
@@ -1251,7 +1240,7 @@ std::vector<lt::torrent_status> utorrent_webui::parse_torrents(char const* args)
 		lt::sha1_hash h;
 		bool ok = from_hex({hash, 40}, h.data());
 		if (!ok) continue;
-		lt::torrent_status ts = m_hist->get_torrent_status(h);
+		lt::torrent_status ts = m_hist.get_torrent_status(h);
 		if (!ts.handle.is_valid()) continue;
 		ret.push_back(ts);
 	}
