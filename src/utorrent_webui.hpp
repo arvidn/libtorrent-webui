@@ -28,9 +28,9 @@ namespace ltweb
 
 	struct utorrent_webui : http_handler
 	{
-		utorrent_webui(lt::session& s, save_settings_interface* sett = NULL
-			, auto_load* al = NULL, torrent_history* hist = NULL
-			, auth_interface const* auth = NULL);
+		utorrent_webui(lt::session& s, save_settings_interface& sett
+			, torrent_history& hist, auth_interface const& auth
+			, auto_load* al = nullptr);
 		~utorrent_webui();
 
 		virtual std::string path_prefix() const override { return "/gui"; }
@@ -81,13 +81,9 @@ namespace ltweb
 		lt::session& m_ses;
 		std::string m_webui_cookie;
 
-		// optional auto loader, controllable
-		// via webui settings
-		auto_load* m_al;
+		auth_interface const& m_auth;
 
-		auth_interface const* m_auth;
-
-		save_settings_interface* m_settings;
+		save_settings_interface& m_settings;
 
 		// a list of the most recent rss filter rules that were
 		// removed. first = cid, second rss_ident.
@@ -95,7 +91,11 @@ namespace ltweb
 
 		// used to detect which torrents have been updated
 		// since last time
-		torrent_history* m_hist;
+		torrent_history& m_hist;
+
+		// optional auto loader, controllable
+		// via webui settings
+		auto_load* m_al;
 
 		int m_version;
 		std::string m_token;

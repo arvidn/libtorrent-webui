@@ -88,7 +88,7 @@ int main(int argc, char *const argv[])
 
 	// websocket access to controlling the bittorrent client exposed at HTTP
 	// path /bt/control
-	libtorrent_webui lt_handler(ses, &hist, &authorizer, &alerts, &sett);
+	libtorrent_webui lt_handler(ses, hist, authorizer, alerts, sett);
 	webport.add_handler(&lt_handler);
 
 	torrent_post_handler post(ses, &authorizer, &sett);

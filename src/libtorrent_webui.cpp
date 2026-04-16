@@ -245,9 +245,9 @@ namespace {
 		int len;
 	};
 
-	libtorrent_webui::libtorrent_webui(lt::session& ses, torrent_history const* hist
-		, auth_interface const* auth, alert_handler* alert
-		, save_settings_interface* sett)
+	libtorrent_webui::libtorrent_webui(lt::session& ses, torrent_history const& hist
+		, auth_interface const& auth, alert_handler& alert
+		, save_settings_interface& sett)
 		: m_ses(ses)
 		, m_hist(hist)
 		, m_auth(auth)
@@ -259,7 +259,7 @@ namespace {
 			m_stats.resize(lt::counters::num_counters
 				, std::pair<std::int64_t, frame_t>(0, 0));
 
-		m_alert->subscribe(this, 0
+		m_alert.subscribe(this, 0
 			, lt::session_stats_alert::alert_type
 			, lt::add_torrent_alert::alert_type
 			, 0);
@@ -267,7 +267,7 @@ namespace {
 
 	libtorrent_webui::~libtorrent_webui()
 	{
-		m_alert->unsubscribe(this);
+		m_alert.unsubscribe(this);
 	}
 
 	std::string libtorrent_webui::path_prefix() const
@@ -280,7 +280,7 @@ namespace {
 		, std::function<void(bool)> done)
 	{
 		// authenticate
-		permissions_interface const* perms = parse_http_auth(request, m_auth);
+		permissions_interface const* perms = parse_http_auth(request, &m_auth);
 		if (!perms)
 			return send_http(socket, std::move(done), http_error(request, http::status::unauthorized));
 
@@ -312,9 +312,9 @@ namespace {
 		f.len -= 12;
 
 		std::vector<torrent_history_entry> torrents;
-		m_hist->updated_fields_since(frame, torrents);
+		m_hist.updated_fields_since(frame, torrents);
 
-		std::vector<lt::sha1_hash> const removed_torrents = m_hist->removed_since(frame);
+		std::vector<lt::sha1_hash> const removed_torrents = m_hist.removed_since(frame);
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -324,7 +324,7 @@ namespace {
 		write_uint8(no_error, ptr);
 
 		// frame number (uint32)
-		write_uint32(m_hist->frame(), ptr);
+		write_uint32(m_hist.frame(), ptr);
 
 		// allocate space for torrent count
 		// this will be filled in later when we know
@@ -533,7 +533,7 @@ namespace {
 			// bittorrent-v2
 			lt::sha1_hash const h(ptr + i*20);
 
-			lt::torrent_status ts = m_hist->get_torrent_status(h);
+			lt::torrent_status ts = m_hist.get_torrent_status(h);
 			if (!ts.handle.is_valid()) continue;
 			fun(ts.handle);
 			++counter;
@@ -961,7 +961,7 @@ namespace {
 		frame_t const client_frame = read_uint32(iptr);
 		std::uint16_t const field_mask = read_uint16(iptr);
 
-		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
+		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
@@ -1082,7 +1082,7 @@ namespace {
 		(void)frame;
 		std::uint64_t const field_mask = read_uint64(iptr);
 
-		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
+		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::vector<lt::peer_info> peers;
@@ -1269,7 +1269,7 @@ namespace {
 		iptr += 20;
 		frame_t const client_frame = read_uint32(iptr);
 
-		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
+		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		auto pieces = h.get_download_queue();
@@ -1350,7 +1350,7 @@ namespace {
 		if (f.len != 24 + int(num_updates) * 5)
 			return error(st, f, invalid_number_of_args);
 
-		lt::torrent_handle h = m_hist->get_torrent_status(ih).handle;
+		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		for (std::uint32_t i = 0; i < num_updates; ++i)
@@ -1390,8 +1390,8 @@ namespace {
 		lt::parse_magnet_uri(magnet_link, atp, ec);
 		if (ec) return error(st, f, parse_error);
 
-		atp.save_path = m_settings ? m_settings->get_str("save_path", "./downloads") : "./downloads";
-		if (m_settings && m_settings->get_int("start_paused", 0))
+		atp.save_path = m_settings.get_str("save_path", "./downloads");
+		if (m_settings.get_int("start_paused", 0))
 			atp.flags = (atp.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
 		else
 			atp.flags = (atp.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;

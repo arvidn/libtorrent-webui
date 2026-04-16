@@ -41,9 +41,9 @@ namespace ltweb
 
 	struct libtorrent_webui : http_handler, alert_observer
 	{
-		libtorrent_webui(lt::session& ses, torrent_history const* hist
-			, auth_interface const* auth, alert_handler* alerts
-			, save_settings_interface* sett = nullptr);
+		libtorrent_webui(lt::session& ses, torrent_history const& hist
+			, auth_interface const& auth, alert_handler& alerts
+			, save_settings_interface& sett);
 		~libtorrent_webui();
 
 		// internal
@@ -94,10 +94,10 @@ namespace ltweb
 		bool apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun);
 
 		lt::session& m_ses;
-		torrent_history const* m_hist;
-		auth_interface const* m_auth;
-		alert_handler* m_alert;
-		save_settings_interface* m_settings;
+		torrent_history const& m_hist;
+		auth_interface const& m_auth;
+		alert_handler& m_alert;
+		save_settings_interface& m_settings;
 
 		// LRU cache of piece histories, most-recently-used at the front.
 		// Capped at 10 entries; the least-recently-used is evicted when full.
