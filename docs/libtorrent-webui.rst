@@ -831,6 +831,40 @@ removed pieces list is empty in this case.
 This list just has one ``uint32_t`` per entry, the index of the piece that's
 being removed.
 
+set-file-priority
+.................
+
+function id 23.
+
+This function sets the download priority of one or more files in a torrent.
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 23       | uint32_t           | ``num-updates`` the number of             |
+|          |                    | file-priority updates that follow.        |
++----------+--------------------+-------------------------------------------+
+| 27       | *see below*        | list of file-priority updates.            |
++----------+--------------------+-------------------------------------------+
+
+The list is ``num-updates`` entries long. Each entry in the list has the
+following format:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 0        | uint32_t           | ``file-index`` the index of the file      |
+|          |                    | within the torrent.                       |
++----------+--------------------+-------------------------------------------+
+| 4        | uint8_t            | ``priority`` the new download priority    |
+|          |                    | for the file. 0 means "do not download",  |
+|          |                    | 7 is the highest priority and 4 is        |
+|          |                    | default.                                  |
+|          |                    |                                           |
++----------+--------------------+-------------------------------------------+
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -892,6 +926,10 @@ Function IDs
 |     |                           | (uint64_t)                              |
 +-----+---------------------------+-----------------------------------------+
 |  22 | get-piece-updates         | info-hash, frame-number                 |
++-----+---------------------------+-----------------------------------------+
+|  23 | set-file-priority         | info-hash, num-updates,                 |
+|     |                           | file-index (uint32_t),                  |
+|     |                           | priority (uint8_t), ...                 |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
