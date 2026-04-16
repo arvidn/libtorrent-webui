@@ -63,7 +63,7 @@ namespace ltweb
 				m_queue.right.erase(it);
 			}
 
-			m_removed.push_front({m_frame + 1, added_frame, td->info_hashes});
+			m_removed.push_front({m_frame + 1, added_frame, td->info_hashes.get_best()});
 
 			// weed out torrents that were removed a long time ago
 			if (m_removed.size() > 1000)
@@ -110,9 +110,9 @@ namespace ltweb
 	}
 	catch (std::exception const&) {}
 
-    std::vector<lt::info_hash_t> torrent_history::removed_since(frame_t frame) const
+	std::vector<lt::sha1_hash> torrent_history::removed_since(frame_t frame) const
 	{
-        std::vector<lt::info_hash_t> torrents;
+		std::vector<lt::sha1_hash> torrents;
 		std::unique_lock<std::mutex> l(m_mutex);
 		for (auto const& e : m_removed)
 		{
@@ -154,25 +154,6 @@ namespace ltweb
 		std::unique_lock<std::mutex> l(m_mutex);
 
 		queue_t::right_const_iterator it = m_queue.right.find(st);
-		if (it != m_queue.right.end()) return it->first.status;
-		return st.status;
-	}
-
-	lt::torrent_status torrent_history::get_torrent_status(lt::sha256_hash const& ih) const
-	{
-		torrent_history_entry st;
-		st.status.info_hashes.v2 = ih;
-
-		std::unique_lock<std::mutex> l(m_mutex);
-
-		queue_t::right_const_iterator it = m_queue.right.find(st);
-		if (it != m_queue.right.end()) return it->first.status;
-
-        // if we can't find it by the v2 hash, try a truncated v2 hash
-		// (a torrent added via v2-only magnet link may be stored with only the
-		// first 20 bytes of the sha256 in v1, and v2 left empty)
-		st.status.info_hashes = lt::info_hash_t(lt::sha1_hash(ih.data()));
-		it = m_queue.right.find(st);
 		if (it != m_queue.right.end()) return it->first.status;
 		return st.status;
 	}

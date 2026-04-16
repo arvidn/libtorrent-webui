@@ -1218,15 +1218,15 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		}
 	}
 
-	std::vector<lt::info_hash_t> const removed = m_hist->removed_since(cid);
+	std::vector<lt::sha1_hash> const removed = m_hist->removed_since(cid);
 
 	appendf(response, "], \"torrentm\": [");
 	first = true;
-	for (lt::info_hash_t const& i : removed)
+	for (lt::sha1_hash const& i : removed)
 	{
 		if (!first) response.push_back(',');
 		first = false;
-		appendf(response, "\"%s\"", to_hex(i.get_best()).c_str());
+		appendf(response, "\"%s\"", to_hex(i).c_str());
 	}
 	// TODO: support labels
 	appendf(response, "], \"label\": [], \"torrentc\": \"%d\"", m_hist->frame());

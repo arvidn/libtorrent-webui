@@ -313,7 +313,7 @@ namespace {
 		std::vector<torrent_history_entry> torrents;
 		m_hist->updated_fields_since(frame, torrents);
 
-		std::vector<lt::info_hash_t> const removed_torrents = m_hist->removed_since(frame);
+		std::vector<lt::sha1_hash> const removed_torrents = m_hist->removed_since(frame);
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -507,11 +507,8 @@ namespace {
 		write_uint32(num_torrents, ptr2);
 
 		// send list of removed torrents
-		for (auto const& i : removed_torrents)
-		{
-			auto const ih = i.get_best();
+		for (auto const& ih : removed_torrents)
 			std::copy(ih.begin(), ih.end(), ptr);
-		}
 
 		return st->send_packet(response.data(), response.size());
 	}

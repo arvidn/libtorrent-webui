@@ -45,7 +45,7 @@ namespace ltweb
 
 		void update_status(lt::torrent_status const& s, frame_t frame);
 
-		bool operator==(torrent_history_entry const& e) const { return e.status.info_hashes == status.info_hashes; }
+		bool operator==(torrent_history_entry const& e) const { return e.status.info_hashes.get_best() == status.info_hashes.get_best(); }
 
 		enum
 		{
@@ -135,7 +135,7 @@ namespace ltweb
 	};
 
 	inline std::size_t hash_value(torrent_history_entry const& te)
-	{ return std::hash<lt::info_hash_t>{}(te.status.info_hashes); }
+	{ return std::hash<lt::sha1_hash>{}(te.status.info_hashes.get_best()); }
 
 	struct torrent_history : alert_observer
 	{
@@ -145,7 +145,7 @@ namespace ltweb
 
 		// returns the info-hashes of the torrents that have been
 		// removed since the specified frame number
-		std::vector<lt::info_hash_t> removed_since(frame_t frame) const;
+		std::vector<lt::sha1_hash> removed_since(frame_t frame) const;
 
 		// returns the lt::torrent_status structures for the torrents
 		// that have changed since the specified frame number
@@ -154,7 +154,6 @@ namespace ltweb
 		void updated_fields_since(frame_t frame, std::vector<torrent_history_entry>& torrents) const;
 
 		lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
-		lt::torrent_status get_torrent_status(lt::sha256_hash const& ih) const;
 
 		// the current frame number
 		frame_t frame() const;
@@ -177,7 +176,7 @@ namespace ltweb
 		{
 			frame_t removed_frame;
 			frame_t added_frame;
-			lt::info_hash_t ih;
+			lt::sha1_hash ih;
 		};
 		std::deque<removed_entry> m_removed;
 
