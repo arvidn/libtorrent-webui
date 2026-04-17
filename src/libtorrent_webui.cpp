@@ -670,25 +670,40 @@ namespace {
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 
+		std::size_t const string_count_offset = response.size();
 		write_uint32(lt::settings_pack::num_string_settings, ptr);
+		std::size_t const int_count_offset = response.size();
 		write_uint32(lt::settings_pack::num_int_settings, ptr);
+		std::size_t const bool_count_offset = response.size();
 		write_uint32(lt::settings_pack::num_bool_settings, ptr);
 
+		int count = 0;
 		for (int i = lt::settings_pack::string_type_base;
 			i < lt::settings_pack::max_string_setting_internal; ++i)
 		{
+			// these should not be exposed to users
+			if (i == lt::settings_pack::user_agent
+				|| i == lt::settings_pack::peer_fingerprint)
+				continue;
+
 			if (!st->perms()->allow_get_settings(i))
 				continue;
 
 			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
+			// ignore deprecated settings
+			if (len == 0) continue;
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
 			write_uint16(i, ptr);
+			++count;
 		}
+		char* patch = response.data() + string_count_offset;
+		write_uint32(count, patch);
 
+		count = 0;
 		for (int i = lt::settings_pack::int_type_base;
 			i < lt::settings_pack::max_int_setting_internal; ++i)
 		{
@@ -697,13 +712,19 @@ namespace {
 
 			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
+			// ignore deprecated settings
+			if (len == 0) continue;
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
 			write_uint16(i, ptr);
+			++count;
 		}
+		patch = response.data() + int_count_offset;
+		write_uint32(count, patch);
 
+		count = 0;
 		for (int i = lt::settings_pack::bool_type_base;
 			i < lt::settings_pack::max_bool_setting_internal; ++i)
 		{
@@ -712,12 +733,17 @@ namespace {
 
 			char const* n = lt::name_for_setting(i);
 			int len = strlen(n);
+			// ignore deprecated settings
+			if (len == 0) continue;
 			TORRENT_ASSERT(len < 256);
 			write_uint8(len, ptr);
 			std::copy(n, n + len, ptr);
 			TORRENT_ASSERT(i < 65536);
 			write_uint16(i, ptr);
+			++count;
 		}
+		patch = response.data() + bool_count_offset;
+		write_uint32(count, patch);
 		return st->send_packet(&response[0], response.size());
 	}
 
@@ -740,6 +766,12 @@ namespace {
 			if (!st->perms()->allow_set_settings(sett))
 				return error(st, f, permission_denied);
 
+			if (sett == lt::settings_pack::user_agent
+				|| sett == lt::settings_pack::peer_fingerprint)
+				return error(st, f, permission_denied);
+
+			if (strlen(lt::name_for_setting(sett)) == 0)
+				return error(st, f, invalid_argument);
 			if (sett >= lt::settings_pack::string_type_base && sett < lt::settings_pack::max_string_setting_internal)
 			{
 				if (f.len < 2) return error(st, f, invalid_number_of_args);
@@ -750,6 +782,7 @@ namespace {
 				if (f.len < len) return error(st, f, invalid_number_of_args);
 				std::copy(ptr, ptr + len, str.begin());
 				ptr += len;
+				f.len -= len;
 				pack.set_str(sett, str);
 			}
 			else if (sett >= lt::settings_pack::int_type_base && sett < lt::settings_pack::max_int_setting_internal)
@@ -802,18 +835,37 @@ namespace {
 			if (!st->perms()->allow_get_settings(sett))
 				return error(st, f, permission_denied);
 
+			if (sett == lt::settings_pack::user_agent
+				|| sett == lt::settings_pack::peer_fingerprint)
+				return error(st, f, permission_denied);
+
 			if (sett >= lt::settings_pack::string_type_base && sett < lt::settings_pack::max_string_setting_internal)
 			{
+				char const* n = lt::name_for_setting(sett);
+				int len = strlen(n);
+				// can't request deprecated settings
+				if (len == 0)
+					return error(st, f, invalid_argument);
 				std::string const& v = s.get_str(sett);
 				write_uint16(v.length(), ptr);
 				std::copy(v.begin(), v.end(), ptr);
 			}
 			else if (sett >= lt::settings_pack::int_type_base && sett < lt::settings_pack::max_int_setting_internal)
 			{
+				char const* n = lt::name_for_setting(sett);
+				int len = strlen(n);
+				// can't request deprecated settings
+				if (len == 0)
+					return error(st, f, invalid_argument);
 				write_uint32(s.get_int(sett), ptr);
 			}
 			else if (sett >= lt::settings_pack::bool_type_base && sett < lt::settings_pack::max_bool_setting_internal)
 			{
+				char const* n = lt::name_for_setting(sett);
+				int len = strlen(n);
+				// can't request deprecated settings
+				if (len == 0)
+					return error(st, f, invalid_argument);
 				write_uint8(s.get_bool(sett), ptr);
 			}
 			else
