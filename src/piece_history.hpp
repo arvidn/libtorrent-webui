@@ -40,10 +40,14 @@ struct piece_history_entry
 // instance for a different torrent.
 struct piece_history
 {
-	explicit piece_history(lt::sha1_hash const& ih);
+	explicit piece_history(lt::sha1_hash const& ih, std::size_t max_tombstones = 1000);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
 	frame_t frame() const { return m_frame; }
+
+	// The oldest frame for which delta queries are reliable.
+	// Any query with since_frame < horizon() is treated as a full snapshot.
+	frame_t horizon() const { return m_horizon; }
 
 	// Feed a fresh download queue snapshot.
 	// Increments the internal frame counter and returns the new frame.
@@ -58,6 +62,9 @@ struct piece_history
 
 	struct query_result
 	{
+		// true when since_frame was 0 or was clamped to 0 due to horizon eviction.
+		bool is_snapshot = false;
+
 		// Pieces whose full block array should be sent.
 		// Includes: pieces new since since_frame, and pieces where sending all
 		// blocks is cheaper than individual block updates.
@@ -69,7 +76,7 @@ struct piece_history
 		// Piece indices removed since since_frame.
 		// Only includes pieces whose added_frame <= since_frame (i.e. the client
 		// had already seen the piece before it was removed).
-		// Empty when since_frame == 0 (snapshot mode; caller sends 0xffff).
+		// Empty when is_snapshot is true (caller sends num_removed=0xffff).
 		std::vector<lt::piece_index_t> removed;
 	};
 
@@ -88,6 +95,8 @@ struct piece_history
 private:
 	lt::sha1_hash const m_ih;
 	frame_t m_frame = 0;
+	frame_t m_horizon = 0;
+	std::size_t m_max_tombstones;
 
 	// ordered by piece_index for deterministic iteration
 	std::map<lt::piece_index_t, piece_history_entry> m_pieces;

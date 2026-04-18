@@ -1153,14 +1153,14 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 	if (auto const cid_val = get_query_var(args, "cid"))
 		cid = atoi(url_decode(*cid_val).c_str());
 
-	appendf(response, cid > 0 ? ",\"torrentp\":[" : ",\"torrents\":[");
+	auto const r = m_hist.query(cid);
 
-	std::vector<lt::torrent_status> torrents;
-	m_hist.updated_since(cid, torrents);
+	appendf(response, !r.is_snapshot ? ",\"torrentp\":[" : ",\"torrents\":[");
 
 	bool first = true;
-	for (lt::torrent_status const& t : torrents)
+	for (torrent_history_entry const& e : r.updated)
 	{
+		lt::torrent_status const& t = e.status;
 		std::shared_ptr<const lt::torrent_info> ti = t.torrent_file.lock();
 		if (!first) response.push_back(',');
 		first = false;
@@ -1207,11 +1207,9 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		}
 	}
 
-	std::vector<lt::sha1_hash> const removed = m_hist.removed_since(cid);
-
 	appendf(response, "], \"torrentm\": [");
 	first = true;
-	for (lt::sha1_hash const& i : removed)
+	for (lt::sha1_hash const& i : r.removed)
 	{
 		if (!first) response.push_back(',');
 		first = false;

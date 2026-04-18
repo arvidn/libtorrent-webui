@@ -13,8 +13,9 @@ see LICENSE file.
 
 namespace ltweb {
 
-piece_history::piece_history(lt::sha1_hash const& ih)
+piece_history::piece_history(lt::sha1_hash const& ih, std::size_t max_tombstones)
 	: m_ih(ih)
+	, m_max_tombstones(max_tombstones)
 {}
 
 frame_t piece_history::update(
@@ -72,12 +73,11 @@ frame_t piece_history::update(
 		}
 	}
 
-	// Prune old removal entries to keep the deque bounded.
-	if (m_removed.size() > 1000)
+	// Evict oldest tombstones when over the limit (deque is newest-first).
+	while (m_removed.size() > m_max_tombstones)
 	{
-		auto const it = std::remove_if(m_removed.begin(), m_removed.end(),
-			[&](auto const& r) { return frame - r.removed_frame > 60; });
-		m_removed.erase(it, m_removed.end());
+		m_horizon = std::max(m_horizon, m_removed.back().removed_frame + 1);
+		m_removed.pop_back();
 	}
 
 	return frame;
@@ -87,9 +87,11 @@ piece_history::query_result piece_history::query(frame_t since_frame) const
 {
 	query_result result;
 
-	if (since_frame == 0)
+	if (since_frame < m_horizon) since_frame = 0;
+	result.is_snapshot = (since_frame == 0);
+
+	if (result.is_snapshot)
 	{
-		// Full snapshot: every current piece as a full update.
 		for (auto const& [idx, entry] : m_pieces)
 			result.full_pieces.push_back(&entry);
 		return result;
@@ -109,7 +111,6 @@ piece_history::query_result piece_history::query(frame_t since_frame) const
 	{
 		if (entry.added_frame > since_frame)
 		{
-			// New piece: client doesn't know about it; must send all blocks.
 			result.full_pieces.push_back(&entry);
 			continue;
 		}
@@ -121,8 +122,6 @@ piece_history::query_result piece_history::query(frame_t since_frame) const
 
 		if (changed == 0) continue;
 
-		// Full update costs (num_blocks + 6) bytes.
-		// Individual block updates cost (changed * 7) bytes.
 		if (num_blocks + 6 <= changed * 7)
 		{
 			result.full_pieces.push_back(&entry);

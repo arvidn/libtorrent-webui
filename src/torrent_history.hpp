@@ -140,23 +140,32 @@ namespace ltweb
 	struct torrent_history : alert_observer
 	{
 
-		torrent_history(alert_handler* h);
+		torrent_history(alert_handler* h, std::size_t max_tombstones = 1000);
 		~torrent_history();
 
-		// returns the info-hashes of the torrents that have been
-		// removed since the specified frame number
-		std::vector<lt::sha1_hash> removed_since(frame_t frame) const;
+		struct query_result
+		{
+			bool is_snapshot = false;
+			std::vector<torrent_history_entry> updated;
+			std::vector<lt::sha1_hash> removed;
+		};
 
-		// returns the lt::torrent_status structures for the torrents
-		// that have changed since the specified frame number
-		void updated_since(frame_t frame, std::vector<lt::torrent_status>& torrents) const;
-
-		void updated_fields_since(frame_t frame, std::vector<torrent_history_entry>& torrents) const;
+		// Returns all torrents updated since since_frame and all info-hashes
+		// removed since since_frame, in a single locked operation.
+		// If since_frame < horizon(), the result is promoted to a full snapshot:
+		// is_snapshot is true, updated contains all live torrents, removed is empty.
+		query_result query(frame_t since_frame) const;
 
 		lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
 
 		// the current frame number
 		frame_t frame() const;
+
+		// the oldest frame for which delta queries are reliable.
+		// Any query with since_frame < horizon() will be treated as a full
+		// snapshot (since_frame == 0), because tombstones older than this
+		// frame have been evicted.
+		frame_t horizon() const;
 
 		virtual void handle_alert(lt::alert const* a);
 
@@ -195,6 +204,13 @@ namespace ltweb
 		// happen and once after we've received an
 		// update and increment the frame counter
 		mutable bool m_deferred_frame_count;
+
+		// The oldest frame for which we still have complete tombstone data.
+		// Advanced whenever tombstones are evicted from m_removed.
+		frame_t m_horizon = 0;
+
+		// Maximum number of tombstones to keep. Configurable for testing.
+		std::size_t m_max_tombstones;
 	};
 }
 

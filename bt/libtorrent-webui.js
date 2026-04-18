@@ -487,11 +487,16 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 			ret[infohash] = torrent;
 		}
 
+		ret['snapshot'] = num_removed_torrents == 0xffffffff;
+
 		var removed = [];
-		for (var i = 0; i < num_removed_torrents; ++i)
+		if (num_removed_torrents != 0xffffffff)
 		{
-			removed.push(read_infohash(view, offset));
-			offset += 20;
+			for (var i = 0; i < num_removed_torrents; ++i)
+			{
+				removed.push(read_infohash(view, offset));
+				offset += 20;
+			}
 		}
 		ret['removed'] = removed;
 

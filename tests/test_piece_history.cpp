@@ -77,6 +77,7 @@ BOOST_AUTO_TEST_CASE(snapshot)
 	ph.update(q.pieces);
 	auto const r = ph.query(0);
 
+	BOOST_TEST(r.is_snapshot);
 	BOOST_TEST(r.full_pieces.size() == 2u);
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -94,6 +95,7 @@ BOOST_AUTO_TEST_CASE(delta_no_change)
 	ph.update(q.pieces);  // identical state
 
 	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.full_pieces.empty());
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -114,6 +116,7 @@ BOOST_AUTO_TEST_CASE(delta_sends_individual_block_updates)
 	ph.update(q2.pieces);
 
 	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.full_pieces.empty());
 	BOOST_TEST(r.block_updates.size() == 1u);
 	BOOST_TEST(r.removed.empty());
@@ -140,6 +143,7 @@ BOOST_AUTO_TEST_CASE(delta_sends_full_piece_when_cheaper)
 	ph.update(q2.pieces);
 
 	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.full_pieces.size() == 1u);
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -160,6 +164,7 @@ BOOST_AUTO_TEST_CASE(new_piece_sent_as_full_piece)
 	ph.update(q2.pieces);
 
 	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.full_pieces.size() == 1u);
 	BOOST_TEST(r.block_updates.empty());
 	BOOST_TEST(r.removed.empty());
@@ -184,6 +189,7 @@ BOOST_AUTO_TEST_CASE(removed_piece_reported_to_client)
 	// Client last polled at f1 -- it saw piece 3 -- so it must be told
 	// about the removal.
 	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.removed.size() == 1u);
 	if (!r.removed.empty())
 		BOOST_TEST((r.removed[0] == lt::piece_index_t(3)));
@@ -203,14 +209,14 @@ BOOST_AUTO_TEST_CASE(removed_piece_not_reported_if_client_never_saw_add)
 	ph.update(q2.pieces);                  // piece 3 disappears
 
 	// Client at f0: added_frame > f0 -> not in removed
-	auto const r = ph.query(f0);
-	BOOST_TEST(r.removed.empty());
+	auto const r0 = ph.query(f0);
+	BOOST_TEST(r0.removed.empty());
 
 	// Client at f1: added_frame <= f1 -> should be in removed
-	auto const r2 = ph.query(f1);
-	BOOST_TEST(r2.removed.size() == 1u);
-	if (!r2.removed.empty())
-		BOOST_TEST((r2.removed[0] == lt::piece_index_t(3)));
+	auto const r1 = ph.query(f1);
+	BOOST_TEST(r1.removed.size() == 1u);
+	if (!r1.removed.empty())
+		BOOST_TEST((r1.removed[0] == lt::piece_index_t(3)));
 }
 
 // When a piece reappears after being removed, its removal entry must be
@@ -242,4 +248,63 @@ BOOST_AUTO_TEST_CASE(piece_reappears_after_removal)
 	for (auto const* e : r.full_pieces)
 		if (e->piece_index == lt::piece_index_t(2)) in_full = true;
 	BOOST_TEST(in_full);
+}
+
+// When tombstones overflow the limit the oldest are evicted and the horizon
+// advances.  A query with since_frame < horizon() must behave like a full
+// snapshot (since_frame == 0): all current pieces in full_pieces, removed empty.
+BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)
+{
+	// Limit to 2 tombstones so the third removal triggers eviction.
+	ltweb::piece_history ph(make_hash(0x11), 2);
+
+	BOOST_TEST(ph.horizon() == 0u);
+
+	// Frame 1: add pieces 0, 1, 2.
+	fake_queue q_add;
+	q_add.add(0, {1, 1});
+	q_add.add(1, {1, 1});
+	q_add.add(2, {1, 1});
+	auto const f_client = ph.update(q_add.pieces);
+
+	// Frame 2: remove all three pieces (empty queue).
+	// The third tombstone overflows the limit; one is evicted and horizon advances.
+	fake_queue q_empty;
+	ph.update(q_empty.pieces);
+
+	BOOST_TEST(ph.horizon() > 0u);
+
+	// Frame 3: add a new piece so there is something to snapshot.
+	fake_queue q_new;
+	q_new.add(5, {0, 1});
+	ph.update(q_new.pieces);
+
+	// A stale client at f_client (< horizon) gets a full snapshot:
+	// piece 5 in full_pieces, removed is empty.
+	auto const r = ph.query(f_client);
+	BOOST_TEST(r.is_snapshot);
+	BOOST_TEST(r.removed.empty());
+	BOOST_TEST(r.full_pieces.size() == 1u);
+	if (!r.full_pieces.empty())
+		BOOST_TEST((r.full_pieces[0]->piece_index == lt::piece_index_t(5)));
+}
+
+// Before any eviction the horizon is 0 and deltas work normally.
+BOOST_AUTO_TEST_CASE(horizon_zero_before_eviction)
+{
+	ltweb::piece_history ph(make_hash(0x11), 10);
+	BOOST_TEST(ph.horizon() == 0u);
+
+	fake_queue q1, q2;
+	q1.add(0, {1, 1});
+	auto const f1 = ph.update(q1.pieces);
+	ph.update(q2.pieces);  // piece 0 removed
+
+	// Still under the limit, so horizon stays 0.
+	BOOST_TEST(ph.horizon() == 0u);
+
+	// Normal delta: piece 0 should appear in removed.
+	auto const r = ph.query(f1);
+	BOOST_TEST(!r.is_snapshot);
+	BOOST_TEST(r.removed.size() == 1u);
 }
