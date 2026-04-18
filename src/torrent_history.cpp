@@ -17,10 +17,11 @@ see LICENSE file.
 
 namespace ltweb
 {
-	torrent_history::torrent_history(alert_handler* h)
+	torrent_history::torrent_history(alert_handler* h, std::size_t max_tombstones)
 		: m_alerts(h)
 		, m_frame(1)
 		, m_deferred_frame_count(false)
+		, m_max_tombstones(max_tombstones)
 	{
 		m_alerts->subscribe(this, 0
 			, lt::add_torrent_alert::alert_type
@@ -66,15 +67,12 @@ namespace ltweb
 
 			m_removed.push_front({m_frame + 1, added_frame, td->info_hashes.get_best()});
 
-			// weed out torrents that were removed a long time ago
-			if (m_removed.size() > 1000)
+			// Evict oldest tombstones when over the limit. The deque is
+			// newest-first, so back() is always the oldest entry.
+			while (m_removed.size() > m_max_tombstones)
 			{
-				auto const pruned = std::remove_if(
-					m_removed.begin()
-					, m_removed.end()
-					, [&](auto const& e) { return e.removed_frame < m_frame - 60; }
-				);
-				m_removed.erase(pruned, m_removed.end());
+				m_horizon = std::max(m_horizon, m_removed.back().removed_frame + 1);
+				m_removed.pop_back();
 			}
 
 			m_deferred_frame_count = true;
@@ -111,40 +109,36 @@ namespace ltweb
 	}
 	catch (std::exception const&) {}
 
-	std::vector<lt::sha1_hash> torrent_history::removed_since(frame_t frame) const
+	torrent_history::query_result torrent_history::query(frame_t since_frame) const
 	{
-		std::vector<lt::sha1_hash> torrents;
+		query_result result;
 		std::unique_lock<std::mutex> l(m_mutex);
-		for (auto const& e : m_removed)
-		{
-			if (e.removed_frame <= frame) break;
-			// Only notify clients that could have seen the add. If the torrent
-			// was added after the client's last frame it was never visible to
-			// that client, so there is nothing to remove on their side.
-			if (e.added_frame <= frame)
-				torrents.push_back(e.ih);
-		}
-		return torrents;
-	}
+		if (since_frame < m_horizon) since_frame = 0;
+		result.is_snapshot = (since_frame == 0);
 
-	void torrent_history::updated_since(frame_t frame, std::vector<lt::torrent_status>& torrents) const
-	{
-		std::unique_lock<std::mutex> l(m_mutex);
 		for (auto const& e : m_queue.left)
 		{
-			if (e.first <= frame) break;
-			torrents.push_back(e.second.status);
+			if (e.first <= since_frame) break;
+			result.updated.push_back(e.second);
 		}
+
+		if (!result.is_snapshot)
+		{
+			for (auto const& e : m_removed)
+			{
+				if (e.removed_frame <= since_frame) break;
+				if (e.added_frame <= since_frame)
+					result.removed.push_back(e.ih);
+			}
+		}
+
+		return result;
 	}
 
-	void torrent_history::updated_fields_since(frame_t frame, std::vector<torrent_history_entry>& torrents) const
+	frame_t torrent_history::horizon() const
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
-		for (auto const& e : m_queue.left)
-		{
-			if (e.first <= frame) break;
-			torrents.push_back(e.second);
-		}
+		return m_horizon;
 	}
 
 	lt::torrent_status torrent_history::get_torrent_status(lt::sha1_hash const& ih) const

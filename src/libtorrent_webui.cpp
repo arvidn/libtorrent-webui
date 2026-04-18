@@ -332,10 +332,9 @@ namespace {
 		std::uint64_t user_mask = read_uint64(f.data);
 		f.len -= 12;
 
-		std::vector<torrent_history_entry> torrents;
-		m_hist.updated_fields_since(frame, torrents);
-
-		std::vector<lt::sha1_hash> const removed_torrents = m_hist.removed_since(frame);
+		auto const r = m_hist.query(frame);
+		auto const& torrents = r.updated;
+		auto const& removed_torrents = r.removed;
 
 		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char> > ptr(response);
@@ -353,9 +352,9 @@ namespace {
 		int const num_torrents_pos = response.size();
 		write_uint32(num_torrents, ptr);
 
-		write_uint32(removed_torrents.size(), ptr);
+		write_uint32(r.is_snapshot ? 0xffffffff : removed_torrents.size(), ptr);
 
-		for (std::vector<torrent_history_entry>::iterator i = torrents.begin()
+		for (std::vector<torrent_history_entry>::const_iterator i = torrents.begin()
 			, end(torrents.end()); i != end; ++i)
 		{
 			std::uint64_t bitmask = 0;
@@ -366,7 +365,7 @@ namespace {
 			{
 				int f = torrent_field_map[k];
 				if (f < 0) continue;
-				if (i->frame[k] <= frame) continue;
+				if (i->frame[k] <= frame && !r.is_snapshot) continue;
 
 				// this field has changed and should be included in this update
 				bitmask |= 1 << f;
@@ -1367,15 +1366,12 @@ namespace {
 		}
 		frame_t const new_frame = m_piece_histories.front().update(pieces);
 
-		auto const [full_pieces, block_updates, removed] =
-			m_piece_histories.front().query(client_frame);
-
-		bool const snapshot = (client_frame == 0);
+		auto const r = m_piece_histories.front().query(client_frame);
 
 		// cap all counts to 16-bit
-		std::uint16_t const n_full = static_cast<std::uint16_t>(std::min(full_pieces.size(), std::size_t(0xffffu)));
-		std::uint16_t const n_updates = static_cast<std::uint16_t>(std::min(block_updates.size(), std::size_t(0xffffu)));
-		std::uint16_t const n_removed = static_cast<std::uint16_t>(std::min(removed.size(), std::size_t(0xffffu)));
+		std::uint16_t const n_full = static_cast<std::uint16_t>(std::min(r.full_pieces.size(), std::size_t(0xffffu)));
+		std::uint16_t const n_updates = static_cast<std::uint16_t>(std::min(r.block_updates.size(), std::size_t(0xffffu)));
+		std::uint16_t const n_removed = static_cast<std::uint16_t>(std::min(r.removed.size(), std::size_t(0xffffu)));
 
 		std::back_insert_iterator<std::vector<char>> ptr(response);
 
@@ -1385,26 +1381,26 @@ namespace {
 		write_uint32(new_frame, ptr);
 		write_uint16(n_full, ptr);
 		write_uint16(n_updates, ptr);
-		write_uint16(snapshot ? std::uint16_t(0xffffu) : n_removed, ptr);
+		write_uint16(r.is_snapshot ? std::uint16_t(0xffffu) : n_removed, ptr);
 
 		for (std::uint16_t i = 0; i < n_full; ++i)
 		{
-			auto const* e = full_pieces[i];
+			auto const* e = r.full_pieces[i];
 			write_uint32(static_cast<int>(e->piece_index), ptr);
 			write_uint16(static_cast<std::uint16_t>(e->blocks.size()), ptr);
 			for (auto const& b : e->blocks) write_uint8(b.state, ptr);
 		}
 		for (std::uint16_t i = 0; i < n_updates; ++i)
 		{
-			auto const& bu = block_updates[i];
+			auto const& bu = r.block_updates[i];
 			write_uint32(static_cast<int>(bu.piece_index), ptr);
 			write_uint16(static_cast<std::uint16_t>(bu.block_index), ptr);
 			write_uint8(bu.state, ptr);
 		}
-		if (!snapshot)
+		if (!r.is_snapshot)
 		{
 			for (std::uint16_t i = 0; i < n_removed; ++i)
-				write_uint32(static_cast<int>(removed[i]), ptr);
+				write_uint32(static_cast<int>(r.removed[i]), ptr);
 		}
 		l.unlock();
 
