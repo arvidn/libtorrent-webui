@@ -24,7 +24,9 @@ see LICENSE file.
 
 #include <atomic>
 #include <list>
+#include <memory>
 #include <mutex>
+#include <vector>
 
 #include <boost/beast/websocket/stream.hpp>
 #include <boost/beast/http.hpp>
@@ -75,6 +77,8 @@ namespace ltweb
 
 		bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
+		void shutdown() override;
+
 	private:
 
 		std::string path_prefix() const override;
@@ -95,6 +99,8 @@ namespace ltweb
 		bool apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun);
 
 		lt::session& m_ses;
+		// TODO: all of these should be protected by individual mutexes.
+		// websockets are serviced from a thread pool
 		torrent_history const& m_hist;
 		auth_interface const& m_auth;
 		alert_handler& m_alert;
@@ -110,6 +116,9 @@ namespace ltweb
 		// m_file_mutex protects both the list structure and the entries in it.
 		std::mutex m_file_mutex;
 		std::list<file_history> m_file_histories;
+
+		std::mutex m_conns_mutex;
+		std::vector<std::weak_ptr<websocket_conn>> m_connections;
 
 		std::mutex m_stats_mutex;
 		// TODO: factor this out into its own class

@@ -39,22 +39,23 @@ struct websocket_conn : std::enable_shared_from_this<websocket_conn>
 	// TODO: this should take a span
 	bool send_packet(char const* buffer, int len);
 	void start_accept(http::request<http::string_body> const& request);
+	void close();
 
 	permissions_interface const* perms() const { return m_perms; }
 
 private:
 
 	void on_accept(beast::error_code const& ec);
-	void do_send();;
+	void do_send();
 	void on_send(beast::error_code const& ec, std::size_t);
 	void do_read();
 	void on_read(beast::error_code const& ec, std::size_t num_bytes);
-	void close();
 	void do_close();
 	void on_close(beast::error_code const& ec);
 	void on_shutdown(beast::error_code const& ec);
 
-	ws::stream<beast::ssl_stream<beast::tcp_stream>> m_conn;
+	using socket_type = ws::stream<beast::ssl_stream<beast::tcp_stream>>;
+	socket_type m_conn;
 	std::deque<std::vector<char>> m_send_buffer;
 	std::function<void(bool)> m_done;
 	beast::flat_buffer m_read_buffer;

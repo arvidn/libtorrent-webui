@@ -14,6 +14,7 @@ see LICENSE file.
 #include <string>
 #include <thread>
 #include <map>
+#include <functional>
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -38,6 +39,12 @@ struct http_handler
 	virtual void handle_http(http::request<http::string_body> request
 		, beast::ssl_stream<beast::tcp_stream>& socket
 		, std::function<void(bool)> done) = 0;
+
+	// called when the webui is destructing. The handler must close any
+	// connections it's still keeping alive. The webui destructor will join the
+	// threads which wait for all io contexts to finish all their work and
+	// exit.
+	virtual void shutdown() {};
 };
 
 struct listener;

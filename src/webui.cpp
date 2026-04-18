@@ -166,7 +166,7 @@ private:
 	void do_close()
 	{
 		// Set the timeout.
-		beast::get_lowest_layer(m_stream).expires_after(30s);
+		beast::get_lowest_layer(m_stream).expires_after(10s);
 
 		// Perform the SSL shutdown
 		m_stream.async_shutdown(
@@ -257,10 +257,9 @@ private:
 ltweb::webui_base::~webui_base()
 {
 	m_listener->stop();
-//	m_ioc.run_for(2s);
-//	m_ioc.stop();
 
-	// TODO: long lived websocket connections aren't closed here
+	for (auto const& h : m_handlers)
+		h.second->shutdown();
 
 	for (auto& t : m_threads)
 		t.join();

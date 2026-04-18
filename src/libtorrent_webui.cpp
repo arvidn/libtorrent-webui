@@ -12,6 +12,7 @@ see LICENSE file.
 #include <chrono>
 #include <string_view>
 #include <vector>
+#include <algorithm>
 
 #include "libtorrent_webui.hpp"
 #include "libtorrent/session.hpp"
@@ -294,7 +295,27 @@ namespace {
 		ws::stream<beast::ssl_stream<beast::tcp_stream>> conn(std::move(socket));
 		conn.binary(true);
 		auto st = std::make_shared<websocket_conn>(this, perms, std::move(conn), std::move(done));
+		{
+			std::lock_guard<std::mutex> l(m_conns_mutex);
+			// Prune expired entries to keep the list bounded.
+			m_connections.erase(
+				std::remove_if(m_connections.begin(), m_connections.end(),
+					[](auto const& w) { return w.expired(); }),
+				m_connections.end());
+			m_connections.push_back(st);
+		}
 		st->start_accept(request);
+	}
+
+	void libtorrent_webui::shutdown()
+	{
+		std::lock_guard<std::mutex> l(m_conns_mutex);
+		for (auto const& w : m_connections)
+		{
+			if (auto conn = w.lock())
+				conn->close();
+		}
+		m_connections.clear();
 	}
 
 	// this is one of the key functions in the interface. It goes to

@@ -9,6 +9,8 @@ see LICENSE file.
 
 #include <memory> // enable_shared_from_this
 
+#include <boost/asio/dispatch.hpp>
+
 #include "websocket_conn.hpp"
 #include "auth.hpp"
 
@@ -30,7 +32,7 @@ websocket_conn::websocket_conn(libtorrent_webui* parent, permissions_interface c
 
 websocket_conn::~websocket_conn()
 {
-	assert(m_stopping);
+	TORRENT_ASSERT(m_stopping);
 }
 
 bool websocket_conn::send_packet(char const* buffer, int len)
@@ -68,7 +70,7 @@ void websocket_conn::on_send(beast::error_code const& ec, std::size_t)
 		m_send_buffer.clear();
 		return close();
 	}
-	assert(m_send_buffer.size() >= 1);
+	TORRENT_ASSERT(m_send_buffer.size() >= 1);
 	m_send_buffer.pop_front();
 
 	if (!m_send_buffer.empty()) do_send();
@@ -101,11 +103,13 @@ void websocket_conn::on_read(beast::error_code const& ec, std::size_t num_bytes)
 
 void websocket_conn::close()
 {
-	if (m_stopping) return;
-	m_stopping = true;
-
-	if (!m_send_buffer.empty()) return;
-	do_close();
+	boost::asio::dispatch(beast::get_lowest_layer(m_conn).get_executor()
+		, [self = shared_from_this()]() {
+			if (self->m_stopping) return;
+			self->m_stopping = true;
+			if (!self->m_send_buffer.empty()) return;
+			self->do_close();
+		});
 }
 
 void websocket_conn::do_close()
@@ -114,7 +118,7 @@ void websocket_conn::do_close()
 	// socket from the http connection. We have to shut it down
 	// ourselves
 
-	beast::get_lowest_layer(m_conn).expires_after(30s);
+	beast::get_lowest_layer(m_conn).expires_after(10s);
 
 	m_conn.async_close(ws::close_reason{}
 		, beast::bind_front_handler(&websocket_conn::on_close, shared_from_this()));
