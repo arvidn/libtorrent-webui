@@ -44,7 +44,7 @@ struct http_handler
 	// connections it's still keeping alive. The webui destructor will join the
 	// threads which wait for all io contexts to finish all their work and
 	// exit.
-	virtual void shutdown() {};
+	virtual void shutdown() {}
 };
 
 struct listener;
