@@ -101,7 +101,7 @@ namespace {
 	template <typename It> void write_uint32(std::uint32_t v, It& p) {
 		write_uint8(std::uint8_t(v >> 24), p);
 		write_uint8(std::uint8_t(v >> 16), p);
-		write_uint8(std::uint8_t(v >>  8), p);
+		write_uint8(std::uint8_t(v >> 8), p);
 		write_uint8(std::uint8_t(v), p);
 	}
 	template <typename It> void write_uint64(std::uint64_t v, It& p) {
@@ -388,7 +388,7 @@ namespace {
 							| ((s.flags & lt::torrent_flags::upload_mode) ? 0x200 : 0)
 							| ((s.flags & lt::torrent_flags::share_mode) ? 0x400 : 0)
 							| ((s.flags & lt::torrent_flags::super_seeding) ? 0x800 : 0)
-							| (s.moving_storage  ? 0x1000 : 0)
+							| (s.moving_storage ? 0x1000 : 0)
 							| (s.announcing_to_trackers ? 0x2000 : 0)
 							| (s.announcing_to_lsd ? 0x4000 : 0)
 							| (s.announcing_to_dht ? 0x8000 : 0)
@@ -1042,6 +1042,9 @@ namespace {
 		if (field_mask & 0x20) fstatus = h.file_status();
 
 		// Find or create the file_history for this info-hash in the LRU cache.
+		// Hold the mutex through response serialisation; release before send_packet.
+		std::vector<char> response;
+		std::unique_lock<std::mutex> l(m_file_mutex);
 		auto fh_it = std::find_if(m_file_histories.begin(), m_file_histories.end(),
 			[&](file_history const& fh) { return fh.info_hash() == ih; });
 		if (fh_it != m_file_histories.end())
@@ -1055,14 +1058,13 @@ namespace {
 		file_history& fh = m_file_histories.front();
 
 		frame_t const new_frame = fh.update(
-			(field_mask & 0x08) ? &fp    : nullptr,
+			(field_mask & 0x08) ? &fp : nullptr,
 			(field_mask & 0x10) ? &fprio : nullptr,
 			(field_mask & 0x20) ? &fstatus : nullptr);
 
 		auto const per_file_masks = fh.query(client_frame, field_mask);
 
-		std::vector<char> response;
-		std::back_insert_iterator<std::vector<char> > ptr(response);
+		std::back_insert_iterator<std::vector<char>> ptr(response);
 
 		write_uint8(f.function_id | 0x80, ptr);
 		write_uint16(f.transaction_id, ptr);
@@ -1117,8 +1119,9 @@ namespace {
 			if (fmask & 0x20)
 				write_uint8(fh.open_mode(i), ptr);
 		}
+		l.unlock();
 
-		return st->send_packet(&response[0], response.size());
+		return st->send_packet(response.data(), response.size());
 	}
 
 	bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
@@ -1260,7 +1263,7 @@ namespace {
 #endif
 				{
 					auto const remote = pi.remote_endpoint();
-					auto const local  = pi.local_endpoint();
+					auto const local = pi.local_endpoint();
 					bool const is_v6 = remote.address().is_v6();
 					write_uint8(is_v6 ? 1 : 0, ptr);
 
@@ -1324,9 +1327,13 @@ namespace {
 		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
-		auto pieces = h.get_download_queue();
-
 		// Find or create the piece_history for this info-hash in the LRU cache.
+		// get_download_queue() returns block_info pointers into libtorrent's shared
+		// internal storage; concurrent calls are not safe. Hold the mutex across
+		// the call and all access to its result, releasing before send_packet.
+		std::vector<char> response;
+		std::unique_lock<std::mutex> l(m_piece_mutex);
+		auto pieces = h.get_download_queue();
 		auto it = std::find_if(m_piece_histories.begin(), m_piece_histories.end(),
 			[&](piece_history const& ph) { return ph.info_hash() == ih; });
 		if (it != m_piece_histories.end())
@@ -1339,44 +1346,46 @@ namespace {
 		}
 		frame_t const new_frame = m_piece_histories.front().update(pieces);
 
-		auto [full_pieces, block_updates, removed] = m_piece_histories.front().query(client_frame);
+		auto const [full_pieces, block_updates, removed] =
+			m_piece_histories.front().query(client_frame);
 
 		bool const snapshot = (client_frame == 0);
 
 		// cap all counts to 16-bit
-		if (full_pieces.size()   > 0xffffu) full_pieces.resize(0xffff);
-		if (block_updates.size() > 0xffffu) block_updates.resize(0xffff);
-		if (removed.size()       > 0xffffu) removed.resize(0xffff);
+		std::uint16_t const n_full = static_cast<std::uint16_t>(std::min(full_pieces.size(), std::size_t(0xffffu)));
+		std::uint16_t const n_updates = static_cast<std::uint16_t>(std::min(block_updates.size(), std::size_t(0xffffu)));
+		std::uint16_t const n_removed = static_cast<std::uint16_t>(std::min(removed.size(), std::size_t(0xffffu)));
 
-		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char>> ptr(response);
 
 		write_uint8(f.function_id | 0x80, ptr);
 		write_uint16(f.transaction_id, ptr);
 		write_uint8(no_error, ptr);
 		write_uint32(new_frame, ptr);
-		write_uint16(static_cast<std::uint16_t>(full_pieces.size()), ptr);
-		write_uint16(static_cast<std::uint16_t>(block_updates.size()), ptr);
-		write_uint16(snapshot ? std::uint16_t(0xffffu)
-			: static_cast<std::uint16_t>(removed.size()), ptr);
+		write_uint16(n_full, ptr);
+		write_uint16(n_updates, ptr);
+		write_uint16(snapshot ? std::uint16_t(0xffffu) : n_removed, ptr);
 
-		for (auto const* e : full_pieces)
+		for (std::uint16_t i = 0; i < n_full; ++i)
 		{
+			auto const* e = full_pieces[i];
 			write_uint32(static_cast<int>(e->piece_index), ptr);
 			write_uint16(static_cast<std::uint16_t>(e->blocks.size()), ptr);
 			for (auto const& b : e->blocks) write_uint8(b.state, ptr);
 		}
-		for (auto const& bu : block_updates)
+		for (std::uint16_t i = 0; i < n_updates; ++i)
 		{
+			auto const& bu = block_updates[i];
 			write_uint32(static_cast<int>(bu.piece_index), ptr);
 			write_uint16(static_cast<std::uint16_t>(bu.block_index), ptr);
 			write_uint8(bu.state, ptr);
 		}
 		if (!snapshot)
 		{
-			for (auto const idx : removed)
-				write_uint32(static_cast<int>(idx), ptr);
+			for (std::uint16_t i = 0; i < n_removed; ++i)
+				write_uint32(static_cast<int>(removed[i]), ptr);
 		}
+		l.unlock();
 
 		return st->send_packet(response.data(), response.size());
 	}
