@@ -24,6 +24,7 @@ see LICENSE file.
 
 #include <atomic>
 #include <list>
+#include <mutex>
 
 #include <boost/beast/websocket/stream.hpp>
 #include <boost/beast/http.hpp>
@@ -101,9 +102,13 @@ namespace ltweb
 
 		// LRU cache of piece histories, most-recently-used at the front.
 		// Capped at 10 entries; the least-recently-used is evicted when full.
+		// m_piece_mutex protects both the list structure and the entries in it.
+		std::mutex m_piece_mutex;
 		std::list<piece_history> m_piece_histories;
 
 		// LRU cache of file histories, same eviction policy.
+		// m_file_mutex protects both the list structure and the entries in it.
+		std::mutex m_file_mutex;
 		std::list<file_history> m_file_histories;
 
 		std::mutex m_stats_mutex;
