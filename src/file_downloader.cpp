@@ -411,7 +411,7 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	if (range_request)
 	{
 		std::stringstream range;
-		range << range_first_byte << '-' << range_last_byte << '/' << file_size;
+		range << "bytes " << range_first_byte << '-' << range_last_byte << '/' << file_size;
 		op->res.set(http::field::content_range, range.str());
 	}
 
