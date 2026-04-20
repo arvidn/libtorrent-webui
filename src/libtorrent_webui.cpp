@@ -23,6 +23,7 @@ see LICENSE file.
 #include "libtorrent/magnet_uri.hpp"
 #include "libtorrent/peer_info.hpp"
 #include "libtorrent/hasher.hpp"
+#include "libtorrent/announce_entry.hpp"
 
 #include "auth.hpp"
 #include "save_settings.hpp"
@@ -117,7 +118,7 @@ namespace {
 		bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 	};
 
-	static std::array<rpc_entry, 24> const functions =
+	static std::array<rpc_entry, 25> const functions =
 	{{
 		{ "get-torrent-updates", &libtorrent_webui::get_torrent_updates },
 		{ "start", &libtorrent_webui::start },
@@ -143,6 +144,7 @@ namespace {
 		{ "get-peers-updates", &libtorrent_webui::get_peers_updates },
 		{ "get-piece-updates", &libtorrent_webui::get_piece_updates },
 		{ "set-file-priority", &libtorrent_webui::set_file_priority },
+		{ "get-tracker-updates", &libtorrent_webui::get_tracker_updates },
 	}};
 
 	// maps torrent field to RPC field. These fields are the ones defined in
@@ -1454,6 +1456,152 @@ namespace {
 		}
 
 		return error(st, f, no_error);
+	}
+
+	bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
+	{
+		if (!st->perms()->allow_list())
+			return error(st, f, permission_denied);
+
+		char const* iptr = f.data;
+		if (f.len != 24) return error(st, f, invalid_number_of_args);
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		/* client_frame = */ read_uint32(iptr); // delta tracking not yet implemented
+
+		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
+		if (!h.is_valid()) return error(st, f, invalid_argument);
+
+		std::vector<lt::announce_entry> const trackers = h.trackers();
+
+		std::vector<char> response;
+		std::back_insert_iterator<std::vector<char>> ptr(response);
+
+		write_uint8(f.function_id | 0x80, ptr);
+		write_uint16(f.transaction_id, ptr);
+		write_uint8(no_error, ptr);
+
+		// frame-number (0: delta tracking not yet implemented)
+		write_uint32(0, ptr);
+
+		// timestamp: lt::clock_type seconds since epoch, reference for next-announce values
+		auto const now32 = std::chrono::time_point_cast<lt::seconds32>(lt::clock_type::now());
+		write_uint32(static_cast<std::uint32_t>(now32.time_since_epoch().count()), ptr);
+
+		// reserve space for num-updates; fill in after iterating
+		std::size_t const num_updates_pos = response.size();
+		write_uint16(0, ptr);
+
+		// 0xffff = full snapshot, no removed-id list follows
+		write_uint16(0xffff, ptr);
+
+		std::uint16_t num_updates = 0;
+		std::uint16_t tracker_id = 0;
+		for (lt::announce_entry const& entry : trackers)
+		{
+			for (lt::announce_endpoint const& ep : entry.endpoints)
+			{
+				for (lt::protocol_version const proto : lt::all_versions)
+				{
+					lt::announce_infohash const& aih = ep.info_hashes[proto];
+
+					write_uint16(tracker_id++, ptr);
+					write_uint16(0x0fff, ptr); // all 12 fields (bits 0-11)
+
+					// field 0: url (uint16_t length + bytes)
+					{
+						std::size_t const len = std::min(entry.url.size(), std::size_t(65535));
+						write_uint16(static_cast<std::uint16_t>(len), ptr);
+						std::copy(entry.url.begin(), entry.url.begin() + len, ptr);
+					}
+
+					// field 1: tier
+					write_uint8(entry.tier, ptr);
+
+					// field 2: source
+					write_uint8(entry.source, ptr);
+
+					// field 3: complete (int32_t; -1 = unknown)
+					write_uint32(static_cast<std::uint32_t>(aih.scrape_complete), ptr);
+
+					// field 4: incomplete (int32_t; -1 = unknown)
+					write_uint32(static_cast<std::uint32_t>(aih.scrape_incomplete), ptr);
+
+					// field 5: downloaded (int32_t; -1 = unknown)
+					write_uint32(static_cast<std::uint32_t>(aih.scrape_downloaded), ptr);
+
+					// field 6: next-announce (lt::clock_type seconds since epoch; 0 = not scheduled)
+					{
+						std::int32_t ts = 0;
+						if (aih.next_announce != lt::time_point32::min())
+							ts = aih.next_announce.time_since_epoch().count();
+						write_uint32(static_cast<std::uint32_t>(ts), ptr);
+					}
+
+					// field 7: min-announce (lt::clock_type seconds since epoch; 0 = not set)
+					{
+						std::int32_t ts = 0;
+						if (aih.min_announce != lt::time_point32::min())
+							ts = aih.min_announce.time_since_epoch().count();
+						write_uint32(static_cast<std::uint32_t>(ts), ptr);
+					}
+
+					// field 8: last-error (uint8_t length + bytes, max 255)
+					{
+						std::string const msg = aih.last_error
+							? aih.last_error.message() : std::string{};
+						std::size_t const len = std::min(msg.size(), std::size_t(255));
+						write_uint8(static_cast<std::uint8_t>(len), ptr);
+						std::copy(msg.begin(), msg.begin() + len, ptr);
+					}
+
+					// field 9: message (uint8_t length + bytes, max 255)
+					{
+						std::size_t const len = std::min(aih.message.size(), std::size_t(255));
+						write_uint8(static_cast<std::uint8_t>(len), ptr);
+						std::copy(aih.message.begin(), aih.message.begin() + len, ptr);
+					}
+
+					// field 10: flags
+					// 0x01=updating, 0x02=complete-sent, 0x04=verified, 0x08=enabled, 0x10=v2
+					{
+						std::uint8_t flags = 0;
+						if (aih.updating) flags |= 0x01;
+						if (aih.complete_sent) flags |= 0x02;
+						if (entry.verified) flags |= 0x04;
+						if (ep.enabled) flags |= 0x08;
+						if (proto == lt::protocol_version::V2) flags |= 0x10;
+						write_uint8(flags, ptr);
+					}
+
+					// field 11: local-endpoint (uint8_t type + addr bytes + uint16_t port)
+					// type byte: 0 = IPv4 (4 addr bytes), 1 = IPv6 (16 addr bytes)
+					{
+						auto const& addr = ep.local_endpoint.address();
+						if (addr.is_v6())
+						{
+							write_uint8(1, ptr);
+							auto const bytes = addr.to_v6().to_bytes();
+							std::copy(bytes.begin(), bytes.end(), ptr);
+						}
+						else
+						{
+							write_uint8(0, ptr);
+							auto const bytes = addr.to_v4().to_bytes();
+							std::copy(bytes.begin(), bytes.end(), ptr);
+						}
+						write_uint16(static_cast<std::uint16_t>(ep.local_endpoint.port()), ptr);
+					}
+
+					++num_updates;
+				}
+			}
+		}
+
+		char* patch = response.data() + num_updates_pos;
+		write_uint16(num_updates, patch);
+
+		return st->send_packet(response.data(), response.size());
 	}
 
 	bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
