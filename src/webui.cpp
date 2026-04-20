@@ -38,26 +38,7 @@ using ltweb::http_error;
 #include <boost/asio/dispatch.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/config.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-
-using boost::algorithm::starts_with;
 namespace ssl = boost::asio::ssl;
-
-template <typename Container, typename StringView>
-auto find_longest_prefix(Container const& c, StringView const path)
-{
-	auto best = c.end();
-	int length = -1;
-	for (auto it = c.begin(); it != c.end(); ++it)
-	{
-		if (int(it->first.size()) <= length || !starts_with(path, it->first))
-			continue;
-
-		best = it;
-		length = int(it->first.size());
-	}
-	return best;
-}
 
 // Report a failure
 void fail(beast::error_code ec, char const* what)
@@ -142,7 +123,7 @@ private:
 
 		auto const req_path = m_req.target();
 
-		auto it = find_longest_prefix(m_handlers, req_path);
+		auto it = ltweb::aux::find_longest_prefix(m_handlers, req_path);
 		if (it == m_handlers.end())
 			return send_http(m_stream, done_function{*this, m_req.need_eof()}
 				, http_error(m_req, http::status::not_found));

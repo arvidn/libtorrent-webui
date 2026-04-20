@@ -16,6 +16,8 @@ see LICENSE file.
 #include <map>
 #include <functional>
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/ssl.hpp>
@@ -49,8 +51,29 @@ struct http_handler
 
 struct listener;
 
-namespace ltweb
+namespace ltweb {
+namespace aux {
+
+// Returns an iterator to the entry in c whose key is the longest prefix of path.
+// Returns c.end() if no entry's key is a prefix of path.
+template <typename Container>
+auto find_longest_prefix(Container const& c, std::string_view const path)
 {
+	auto best = c.end();
+	int length = -1;
+	for (auto it = c.begin(); it != c.end(); ++it)
+	{
+		if (int(it->first.size()) <= length || !boost::algorithm::starts_with(path, it->first))
+			continue;
+
+		best = it;
+		length = int(it->first.size());
+	}
+	return best;
+}
+
+} // aux
+
 	template<typename Body, typename Fields>
 	void send_http(beast::ssl_stream<beast::tcp_stream>& socket
 		, std::function<void(bool)> done
