@@ -865,6 +865,162 @@ following format:
 |          |                    |                                           |
 +----------+--------------------+-------------------------------------------+
 
+get-tracker-updates
+...................
+
+function id 24.
+
+This function returns the status of the trackers of a torrent. Internally
+libtorrent represents trackers as a three-level hierarchy
+(``announce_entry`` → ``announce_endpoint`` → ``announce_infohash``), but
+this protocol flattens that hierarchy into a single list of **tracker
+records**. Each tracker record corresponds to one leaf of that tree: a unique
+combination of tracker URL, local network interface, and hash protocol (v1 or
+v2). The server assigns each such leaf a stable ``tracker-id`` (``uint16_t``)
+that the client uses to match delta updates to known tracker state.
+
+Only changed fields are sent per update. A ``uint16_t`` bitmask in each
+update record indicates which fields are present. Passing a ``frame-number``
+of ``0`` requests a full snapshot.
+
+The call is (offset includes RPC call header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 23       | uint32_t           | ``frame-number`` timestamp of the last    |
+|          |                    | update received by the caller. Pass 0     |
+|          |                    | to request a full snapshot.               |
++----------+--------------------+-------------------------------------------+
+
+The response is (offset includes RPC response header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 4        | uint32_t           | ``frame-number`` timestamp of this        |
+|          |                    | response.                                 |
++----------+--------------------+-------------------------------------------+
+| 8        | uint32_t           | ``timestamp`` current wall-clock time on  |
+|          |                    | the server, in seconds. Used as the       |
+|          |                    | reference clock for ``next-announce``     |
+|          |                    | values in this response. This clock has   |
+|          |                    | an unspecified epoch.                     |
++----------+--------------------+-------------------------------------------+
+| 12       | uint16_t           | ``num-updates`` number of tracker update  |
+|          |                    | records to follow.                        |
++----------+--------------------+-------------------------------------------+
+| 14       | uint16_t           | ``num-removed`` number of removed         |
+|          |                    | ``tracker-id`` values that follow the     |
+|          |                    | update records. ``0xffff`` means this     |
+|          |                    | response is a full snapshot; any          |
+|          |                    | ``tracker-id`` not present in the update  |
+|          |                    | list no longer exists, and no removed-id  |
+|          |                    | list follows.                             |
++----------+--------------------+-------------------------------------------+
+| 16       | *see below*        | tracker updates                           |
++----------+--------------------+-------------------------------------------+
+
+Each **tracker update record** has the following format:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 0        | uint16_t           | ``tracker-id`` server-assigned identifier |
+|          |                    | for this tracker record. Stable across    |
+|          |                    | delta updates.                            |
++----------+--------------------+-------------------------------------------+
+| 2        | uint16_t           | ``field-bitmask`` indicates which fields  |
+|          |                    | follow. Bit positions match the field-id  |
+|          |                    | table below (bit 0 = LSB).                |
++----------+--------------------+-------------------------------------------+
+| 4        | *see below*        | the fields indicated by                   |
+|          |                    | ``field-bitmask``, in field-id order.     |
++----------+--------------------+-------------------------------------------+
+
+The tracker fields, in bitmask bit-order (LSB is bit 0), are:
+
++----------+---------------------+------------------------------------------+
+| field-id | type                | name                                     |
++==========+=====================+==========================================+
+| 0        | uint16_t, uint8_t[] | ``url`` the tracker announce URL.        |
+|          |                     | 16-bit length prefix, UTF-8 encoded.     |
+|          |                     | This field is only sent when the tracker |
+|          |                     | first appears or its URL changes.        |
++----------+---------------------+------------------------------------------+
+| 1        | uint8_t             | ``tier`` the tracker tier. Trackers in   |
+|          |                     | lower tiers are contacted first.         |
++----------+---------------------+------------------------------------------+
+| 2        | uint8_t             | ``source`` bitmask indicating how this   |
+|          |                     | tracker was added:                       |
+|          |                     |                                          |
+|          |                     |  | 0x01. torrent file                    |
+|          |                     |  | 0x02. client (added manually)         |
+|          |                     |  | 0x04. magnet link                     |
+|          |                     |  | 0x08. tracker exchange (tex)          |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 3        | int32_t             | ``complete`` the number of seeders as    |
+|          |                     | reported by the tracker. ``-1`` means    |
+|          |                     | the tracker did not report this value.   |
++----------+---------------------+------------------------------------------+
+| 4        | int32_t             | ``incomplete`` the number of leechers    |
+|          |                     | as reported by the tracker. ``-1``       |
+|          |                     | means unknown.                           |
++----------+---------------------+------------------------------------------+
+| 5        | int32_t             | ``downloaded`` the number of times the   |
+|          |                     | torrent has been downloaded as reported  |
+|          |                     | by the tracker (scrape). ``-1`` means    |
+|          |                     | unknown.                                 |
++----------+---------------------+------------------------------------------+
+| 6        | int32_t             | ``next-announce`` absolute timestamp (in |
+|          |                     | seconds) of the next scheduled announce, |
+|          |                     | in the same clock as ``timestamp`` at    |
+|          |                     | the top of the response. May be in the   |
+|          |                     | past if an announce is overdue. Only     |
+|          |                     | sent when the scheduled time changes,    |
+|          |                     | not on every poll.                       |
++----------+---------------------+------------------------------------------+
+| 7        | int32_t             | ``min-announce`` minimum interval in     |
+|          |                     | seconds between announces, as requested  |
+|          |                     | by the tracker.                          |
++----------+---------------------+------------------------------------------+
+| 8        | uint8_t, uint8_t[]  | ``last-error`` error message from the    |
+|          |                     | most recent failed announce. 8-bit       |
+|          |                     | length prefix, UTF-8 encoded, truncated  |
+|          |                     | to 255 bytes. Empty string if the last   |
+|          |                     | announce succeeded.                      |
++----------+---------------------+------------------------------------------+
+| 9        | uint8_t, uint8_t[]  | ``message`` message returned by the      |
+|          |                     | tracker in the last announce response.   |
+|          |                     | 8-bit length prefix, UTF-8 encoded,      |
+|          |                     | truncated to 255 bytes.                  |
++----------+---------------------+------------------------------------------+
+| 10       | uint8_t             | ``flags`` bitmask:                       |
+|          |                     |                                          |
+|          |                     |  | 0x01. updating (announce in progress) |
+|          |                     |  | 0x02. complete-sent (stop event sent  |
+|          |                     |  |       on seeding completion)          |
+|          |                     |  | 0x04. verified (tracker has           |
+|          |                     |  |       successfully responded)         |
+|          |                     |  | 0x08. enabled (endpoint is active)    |
+|          |                     |  | 0x10. v2 torrent (this flag being     |
+|          |                     |  |       clear means a v1 torrent)       |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+| 11       | uint8_t,            | ``local-endpoint`` the local network     |
+|          | uint8_t[], uint16_t | interface used for this tracker. The     |
+|          |                     | first byte is the address type:          |
+|          |                     |                                          |
+|          |                     |  | 0. IPv4 (4 address bytes + 2 port     |
+|          |                     |  |    bytes)                             |
+|          |                     |  | 1. IPv6 (16 address bytes + 2 port    |
+|          |                     |  |    bytes)                             |
+|          |                     |                                          |
++----------+---------------------+------------------------------------------+
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -930,6 +1086,8 @@ Function IDs
 |  23 | set-file-priority         | info-hash, num-updates,                 |
 |     |                           | file-index (uint32_t),                  |
 |     |                           | priority (uint8_t), ...                 |
++-----+---------------------------+-----------------------------------------+
+|  24 | get-tracker-updates       | info-hash, frame-number (uint32_t)      |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
