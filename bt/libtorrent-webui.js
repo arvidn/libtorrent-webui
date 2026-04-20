@@ -1194,6 +1194,174 @@ libtorrent_connection.prototype['set_file_priority'] = function(ih, updates, cal
 	this._socket.send(call);
 };
 
+libtorrent_connection.prototype['get_tracker_updates'] = function(ih, last_frame, callback)
+{
+	if (this._socket.readyState != WebSocket.OPEN)
+	{
+		window.setTimeout(function() { callback("socket closed"); }, 0);
+		return;
+	}
+
+	var tid = this._tid++;
+	if (this._tid > 65535) this._tid = 0;
+
+	this._transactions[tid] = function(view, fun, e)
+	{
+		if (_check_error(e, callback)) return;
+
+		var frame = view.getUint32(4);
+		var timestamp = view.getUint32(8);
+		var num_updates = view.getUint16(12);
+		var num_removed = view.getUint16(14);
+		var snapshot = (num_removed === 0xffff);
+
+		var offset = 16;
+		var updates = {};
+
+		for (var i = 0; i < num_updates; ++i)
+		{
+			var tracker_id = view.getUint16(offset);
+			offset += 2;
+			var field_mask = view.getUint16(offset);
+			offset += 2;
+
+			var tracker = {};
+
+			// field 0: url (uint16_t length + bytes)
+			if (field_mask & 0x001)
+			{
+				var [url, url_len] = read_string16(view, offset);
+				offset += 2 + url_len;
+				tracker['url'] = url;
+			}
+			// field 1: tier (uint8_t)
+			if (field_mask & 0x002)
+			{
+				tracker['tier'] = view.getUint8(offset);
+				offset += 1;
+			}
+			// field 2: source (uint8_t bitmask)
+			if (field_mask & 0x004)
+			{
+				tracker['source'] = view.getUint8(offset);
+				offset += 1;
+			}
+			// field 3: complete (int32_t; -1 = unknown)
+			if (field_mask & 0x008)
+			{
+				tracker['complete'] = view.getInt32(offset);
+				offset += 4;
+			}
+			// field 4: incomplete (int32_t; -1 = unknown)
+			if (field_mask & 0x010)
+			{
+				tracker['incomplete'] = view.getInt32(offset);
+				offset += 4;
+			}
+			// field 5: downloaded (int32_t; -1 = unknown)
+			if (field_mask & 0x020)
+			{
+				tracker['downloaded'] = view.getInt32(offset);
+				offset += 4;
+			}
+			// field 6: next-announce (int32_t, lt::clock_type seconds; 0 = not scheduled)
+			if (field_mask & 0x040)
+			{
+				tracker['next-announce'] = view.getInt32(offset);
+				offset += 4;
+			}
+			// field 7: min-announce (int32_t, lt::clock_type seconds; 0 = not set)
+			if (field_mask & 0x080)
+			{
+				tracker['min-announce'] = view.getInt32(offset);
+				offset += 4;
+			}
+			// field 8: last-error (uint8_t length + bytes, max 255)
+			if (field_mask & 0x100)
+			{
+				var [err_str, err_len] = read_string8(view, offset);
+				offset += 1 + err_len;
+				tracker['last-error'] = err_str;
+			}
+			// field 9: message (uint8_t length + bytes, max 255)
+			if (field_mask & 0x200)
+			{
+				var [msg_str, msg_len] = read_string8(view, offset);
+				offset += 1 + msg_len;
+				tracker['message'] = msg_str;
+			}
+			// field 10: flags (uint8_t)
+			// 0x01=updating, 0x02=complete-sent, 0x04=verified, 0x08=enabled, 0x10=v2
+			if (field_mask & 0x400)
+			{
+				tracker['flags'] = view.getUint8(offset);
+				offset += 1;
+			}
+			// field 11: local-endpoint (uint8_t type + addr bytes + uint16_t port)
+			// type: 0 = IPv4 (4 addr bytes), 1 = IPv6 (16 addr bytes)
+			if (field_mask & 0x800)
+			{
+				var ep_type = view.getUint8(offset++);
+				if (ep_type === 1) // IPv6: 16 addr + 2 port
+				{
+					var parts = [];
+					for (var k = 0; k < 8; ++k)
+						parts.push(view.getUint16(offset + k * 2).toString(16));
+					var ep_port = view.getUint16(offset + 16);
+					offset += 18;
+					tracker['local-endpoint'] = '[' + parts.join(':') + ']:' + ep_port;
+				}
+				else // IPv4: 4 addr + 2 port
+				{
+					var ep_ip = view.getUint8(offset) + '.' + view.getUint8(offset + 1)
+					          + '.' + view.getUint8(offset + 2) + '.' + view.getUint8(offset + 3);
+					var ep_port = view.getUint16(offset + 4);
+					offset += 6;
+					tracker['local-endpoint'] = ep_ip + ':' + ep_port;
+				}
+			}
+
+			updates[tracker_id] = tracker;
+		}
+
+		var removed = [];
+		if (!snapshot)
+		{
+			for (var i = 0; i < num_removed; ++i)
+			{
+				var rid = view.getUint16(offset);
+				offset += 2;
+				removed.push(rid);
+			}
+		}
+
+		if (typeof(callback) !== 'undefined')
+			callback({frame: frame, timestamp: timestamp, snapshot: snapshot,
+			          updates: updates, removed: removed});
+	};
+
+	// 3 header + 20 info-hash + 4 frame = 27 bytes
+	var call = new ArrayBuffer(27);
+	var view = new DataView(call);
+	view.setUint8(0, 24);
+	view.setUint16(1, tid);
+
+	var offset = 3;
+	for (var i = 0; i < 40; i += 2)
+	{
+		view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+		offset += 1;
+	}
+	view.setUint32(offset, last_frame);
+
+	this._socket.send(call);
+};
+
+libtorrent_connection.prototype['close'] = function()
+{
+	this._socket.close();
+};
+
 var fields =
 {
 	'flags': 1 << 0,
@@ -1231,6 +1399,22 @@ var file_fields =
 	'open_mode':  1 << 5  // extra cost: fetches open file status
 };
 
+var tracker_fields =
+{
+	'url':            1 << 0,
+	'tier':           1 << 1,
+	'source':         1 << 2,
+	'complete':       1 << 3,
+	'incomplete':     1 << 4,
+	'downloaded':     1 << 5,
+	'next_announce':  1 << 6,
+	'min_announce':   1 << 7,
+	'last_error':     1 << 8,
+	'message':        1 << 9,
+	'flags':          1 << 10,
+	'local_endpoint': 1 << 11
+};
+
 var peer_fields =
 {
 	'flags':                  1 << 0,
@@ -1260,6 +1444,7 @@ window['libtorrent_connection'] = libtorrent_connection;
 window['fields'] = fields;
 window['file_fields'] = file_fields;
 window['peer_fields'] = peer_fields;
+window['tracker_fields'] = tracker_fields;
 
 })();
 
