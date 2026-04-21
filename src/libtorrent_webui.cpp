@@ -1037,7 +1037,18 @@ namespace {
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
 		std::shared_ptr<const lt::torrent_info> t = h.torrent_file();
-		if (!t) return error(st, f, resource_not_found);
+		if (!t)
+		{
+			// if this is a magnet link that doesn't have metadata yet, send an empty list
+			std::vector<char> response;
+			std::back_insert_iterator<std::vector<char>> ptr(response);
+			write_uint8(f.function_id | 0x80, ptr);
+			write_uint16(f.transaction_id, ptr);
+			write_uint8(no_error, ptr);
+			write_uint32(0, ptr); // frame number
+			write_uint32(0, ptr); // number of files
+			return st->send_packet(response.data(), response.size());
+		}
 
 		lt::file_storage const& fs = t->layout();
 
