@@ -4,6 +4,8 @@
 <script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
 <script language="javascript" type="text/javascript" src="libtorrent-graph.js"></script>
 <script language="javascript" type="text/javascript">
+/* global libtorrent_connection, render_graph */
+'use strict';
 
 var conn = null;
 
@@ -14,7 +16,7 @@ var data = [];
 var all_stats = [];
 var all_names = [];
 
-on_stats = function(updates)
+var on_stats = function(updates)
 {
 	if (typeof(updates) === 'string')
 	{
@@ -31,7 +33,7 @@ on_stats = function(updates)
 		// if there is a previous data point
 		// copy all values from it
 		var last = data[data.length-1];
-		for (i in last)
+		for (var i in last)
 		{
 			data_point[i] = last[i];
 		}
@@ -39,7 +41,7 @@ on_stats = function(updates)
 
 	data_point['time'] = now;
 
-	for (i in updates)
+	for (var i in updates)
 	{
 		data_point[i] = updates[i];
 	}
@@ -53,9 +55,9 @@ on_stats = function(updates)
 		++prune;
 	if (prune > 1) data.splice(0, prune-1);
 
-	for (s in all_names)
+	for (var s in all_names)
 	{
-		defs = [{ name: all_names[s], color: '#e44' }];
+		var defs = [{ name: all_names[s], color: '#e44' }];
 		render_graph(all_names[s], data, defs, start_time, now, '', 'auto');
 	}
 };
@@ -72,9 +74,9 @@ window.onload = function() {
 		conn.list_stats(function(stats)
 		{
 			var graphs = document.getElementById('graph_container');
-			for (s in stats)
+			for (var s in stats)
 			{
-				graph_container.innerHTML += '<div style="display: inline-block; border:1px solid black;">' + s + '<br/><canvas id="' + s + '" width="300" height="200"/></div>'
+				graphs.innerHTML += '<div style="display: inline-block; border:1px solid black;">' + s + '<br/><canvas id="' + s + '" width="300" height="200"/></div>'
 				all_stats.push(stats[s].id);
 				all_names.push(s);
 			}

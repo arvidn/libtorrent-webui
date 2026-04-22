@@ -4,6 +4,8 @@
 <script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
 <script language="javascript" type="text/javascript" src="libtorrent-graph.js"></script>
 <script language="javascript" type="text/javascript">
+/* global libtorrent_connection, render_graph */
+'use strict';
 
 var conn = null;
 
@@ -103,7 +105,7 @@ var graphs = {
 	},
 };
 
-on_stats = function(updates)
+var on_stats = function(updates)
 {
 	if (typeof(updates) === 'string')
 	{
@@ -121,7 +123,7 @@ on_stats = function(updates)
 		// if there is a previous data point
 		// copy all values from it
 		last = data[data.length-1];
-		for (i in last)
+		for (var i in last)
 		{
 			// don't copy the rendered value for counters, just
 			// set them to zero, since the rendered value is the
@@ -139,7 +141,7 @@ on_stats = function(updates)
 
 	data_point['time'] = now;
 
-	for (i in updates)
+	for (var i in updates)
 	{
 		// if this is a counter, plot the diff from the previous sample
 		if (all_types[i] == 0)
@@ -165,7 +167,7 @@ on_stats = function(updates)
 		++prune;
 	if (prune > 1) data.splice(0, prune-1);
 
-	for (g in graphs)
+	for (var g in graphs)
 	{
 		render_graph(g, data, graphs[g].lines, start_time, now, graphs[g].unit, 'auto', graphs[g].multiplier, true);
 	}
@@ -183,12 +185,12 @@ window.onload = function() {
 		conn.list_stats(function(stats)
 		{
 			var container = document.getElementById('graph_container');
-			for (g in graphs)
+			for (var g in graphs)
 			{
 				container.innerHTML += '<div style="display: inline-block; border:1px solid black;">' + g + '<br/><canvas id="' + g + '" width="600" height="350"/></div>'
 			}
 
-			for (s in stats)
+			for (var s in stats)
 			{
 				all_stats.push(stats[s].id);
 				all_types[s] = stats[s].type;

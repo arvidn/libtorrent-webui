@@ -6,6 +6,8 @@
 
 <!-- TODO: factor out this script into a separate file from the HTML -->
 <script language="javascript" type="text/javascript">
+/* global libtorrent_connection, fields, render_graph */
+'use strict';
 
 var conn = null;
 
@@ -32,16 +34,17 @@ var first_time = new Date().getTime();
 
 var state_names = ['checking', 'metadata', 'downloading', 'seeding'];
 
-scale_si = function(value, unit)
+var scale_si = function(value, unit)
 {
+	var negative;
 	if (value < 0)
 	{
-		negative = '-'
+		negative = '-';
 		value = -value;
 	}
 	else
 	{
-		negative = ''
+		negative = '';
 	}
 	if (value >= 1000000000)
 	{
@@ -82,7 +85,7 @@ scale_si = function(value, unit)
 	return negative + value.toFixed(2) + unit;
 }
 
-redraw = function(updates)
+var redraw = function(updates)
 {
 	if (typeof(updates) === 'string')
 	{
@@ -92,13 +95,13 @@ redraw = function(updates)
 
 	var table = document.getElementById('torrents').querySelector("tbody");
 
-	for (ih in updates)
+	for (var ih in updates)
 	{
 		var t = updates[ih];
 		if (ih == 'removed')
 		{
 			var removed_torrents = updates[ih];
-			for (i in removed_torrents)
+			for (var i in removed_torrents)
 			{
 				var row = document.getElementById(removed_torrents[i]);
 				row.parentNode.removeChild(row);
@@ -115,7 +118,7 @@ redraw = function(updates)
 			table.appendChild(template);
 			row = document.getElementById(ih);
 		}
-		for (field in t)
+		for (var field in t)
 		{
 			var cell = row.querySelector('#' + field);
 			if (cell == null) continue;
@@ -151,21 +154,21 @@ redraw = function(updates)
 	setTimeout(get_torrent_updates, 300);
 };
 
-new_data_point = function(data, now, new_values)
+var new_data_point = function(data, now, new_values)
 {
 	var data_point = null;
 	if (data.length > 0)
 	{
 		data_point = Object.assign({}, data[data.length-1]);
 
-		for (k in data_point)
+		for (var k in data_point)
 		{
 			if (k.endsWith('-rate'))
 				data_point[k] = 0;
 		}
 
 		const delta = (now - data_point.time) / 1000.0;
-		for (p in new_values)
+		for (var p in new_values)
 		{
 			data_point[p + '-rate'] = (new_values[p] - data_point[p]) / delta;
 			data_point[p] = new_values[p];
@@ -176,7 +179,7 @@ new_data_point = function(data, now, new_values)
 	else
 	{
 		data_point = Object.assign({}, new_values);
-		for (k in new_values)
+		for (var k in new_values)
 			data_point[k + '-rate'] = 0;
 		data_point.time = now;
 	}
@@ -184,7 +187,7 @@ new_data_point = function(data, now, new_values)
 	data.push(data_point);
 };
 
-prune_data_points = function(data, start_time)
+var prune_data_points = function(data, start_time)
 {
 	var prune = 0;
 	while (prune < data.length && data[prune].time < start_time)
@@ -192,7 +195,7 @@ prune_data_points = function(data, start_time)
 	if (prune > 1) data.splice(0, prune - 1);
 };
 
-redraw_graph = function(counters)
+var redraw_graph = function(counters)
 {
 	if (typeof(counters) === 'string')
 	{
@@ -216,21 +219,21 @@ redraw_graph = function(counters)
 	setTimeout(get_session_stats, 300);
 }
 
-add_torrent = function()
+var add_torrent = function()
 {
 	var link_box = document.getElementById('magnet');
 	conn.add_torrent(link_box.value, function(e) { console.log('added torrent: ' + e); } );
 	link_box.value = '';
 }
 
-get_torrent_updates = function()
+var get_torrent_updates = function()
 {
 	conn.get_updates(fields.name | fields.download_rate | fields.upload_rate
 		| fields.progress | fields.total_uploaded | fields.total_downloaded
 		| fields.state | fields.connected_peers, redraw);
 }
 
-get_session_stats = function()
+var get_session_stats = function()
 {
 	conn.get_stats(g_stats, redraw_graph);
 }
@@ -250,7 +253,7 @@ window.onload = function()
 		conn.list_stats(function(stats) {
 			// save off the stats we're interested in, and will subscribe to
 			g_stats = []
-			for (name in stats)
+			for (var name in stats)
 			{
 				switch (name)
 				{

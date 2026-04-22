@@ -32,6 +32,10 @@
    field is used.
 */
 
+'use strict';
+
+(function() {
+
 function render_graph(canvas, data, graphs, start_time, now, unit, scale, multiplier, use_legend)
 {
 	if (typeof(unit) == 'undefined') unit = '';
@@ -44,9 +48,9 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 	
 	// first find the highest rate, in order to scale
 	var peak = 0;
-	for (dp in data)
+	for (var dp in data)
 	{
-		for (g in graphs)
+		for (var g in graphs)
 		{
 			var n = graphs[g].name;
 			if (!data[dp].hasOwnProperty(n)) continue;
@@ -82,8 +86,6 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 	}
 
 	ctx.save();
-
-	var window_size = now - start_time;
 
 	var view_width = canvas_width - 40;
 	var view_height = canvas_height - 5;
@@ -197,14 +199,14 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 		ctx.setLineDash([]);
 
 	// plot all the graphs
-	for (k in graphs)
+	for (var k in graphs)
 	{
 		var g = graphs[k];
 
 		ctx.strokeStyle = g.color;
 		var first = true;
 		ctx.beginPath();
-		for (i in data)
+		for (var i in data)
 		{
 			var time = data[i].time;
 			var y = data[i][g.name] * multiplier;
@@ -227,7 +229,7 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 	{
 		ctx.font = 'normal 12pt Calibri';
 		var legend_width = 0;
-		for (k in graphs)
+		for (var k in graphs)
 		{
 			g = graphs[k];
 			var label;
@@ -249,7 +251,7 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 		ctx.lineWidth = 2;
 		offset += 0.5;
 
-		for (k in graphs)
+		for (var k in graphs)
 		{
 			g = graphs[k];
 			var label;
@@ -270,4 +272,6 @@ function render_graph(canvas, data, graphs, start_time, now, unit, scale, multip
 }
 
 window['render_graph'] = render_graph;
+
+})();
 

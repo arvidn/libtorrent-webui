@@ -5,10 +5,12 @@
 <title>libtorrent websocket test</title>
 <script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
 <script language="javascript" type="text/javascript">
+/* global libtorrent_connection, fields */
+'use strict';
 
 var conn = null;
 
-update_torrent_list = function(updates)
+var update_torrent_list = function(updates)
 {
 	if (typeof(updates) === 'string')
 	{
@@ -29,13 +31,13 @@ update_torrent_list = function(updates)
 		}
 	}
 
-	for (ih in updates)
+	for (var ih in updates)
 	{
 		var t = updates[ih];
 		if (ih == 'removed')
 		{
 			var removed_torrents = updates[ih];
-			for (i in removed_torrents)
+			for (var i in removed_torrents)
 			{
 				var row = document.getElementById(removed_torrents[i]);
 				row.parentNode.removeChild(row);
@@ -59,12 +61,12 @@ update_torrent_list = function(updates)
 		{
 			row = table.insertRow(-1);
 			row.id = ih;
-			for (j in field_map)
+			for (var j in field_map)
 				row.insertCell(0);
 			row.insertCell(0).innerHTML = '<a href="#" onclick="conn.start([\'' + ih + '\']); return false;">start</a> ' +
 				'<a href="#" onclick="conn.stop([\'' + ih + '\']); return false;\">stop</a>';
 		}
-		for (field in t)
+		for (var field in t)
 		{
 			if (!field_map.hasOwnProperty(field)) continue;
 			var cell = row.cells[field_map[field]];
