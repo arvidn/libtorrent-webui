@@ -345,7 +345,7 @@ namespace {
 		write_uint8(no_error, ptr);
 
 		// frame number (uint32)
-		write_uint32(m_hist.frame(), ptr);
+		write_uint32(r.current_frame, ptr);
 
 		// allocate space for torrent count
 		// this will be filled in later when we know
@@ -1577,4 +1577,3 @@ namespace {
 		return st->send_packet(rpc, sizeof(rpc));
 	}
 }
-
