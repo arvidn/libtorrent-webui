@@ -13,6 +13,7 @@ see LICENSE file.
 #include <string_view>
 #include <vector>
 #include <algorithm>
+#include <iterator>
 
 #include "libtorrent_webui.hpp"
 #include "libtorrent/session.hpp"
@@ -1041,7 +1042,8 @@ namespace {
 		{
 			// if this is a magnet link that doesn't have metadata yet, send an empty list
 			std::vector<char> response;
-			std::back_insert_iterator<std::vector<char>> ptr(response);
+			response.reserve(12);
+			auto ptr = std::back_inserter(response);
 			write_uint8(f.function_id | 0x80, ptr);
 			write_uint16(f.transaction_id, ptr);
 			write_uint8(no_error, ptr);
