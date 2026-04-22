@@ -5,12 +5,14 @@
 <title>libtorrent websocket test</title>
 <script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
 <script language="javascript" type="text/javascript">
+/* global libtorrent_connection */
+'use strict';
 
 var conn = null;
 
 var all_stats = [];
 
-on_stats = function(updates)
+var on_stats = function(updates)
 {
 	if (typeof(updates) === 'string')
 	{
@@ -24,7 +26,7 @@ on_stats = function(updates)
 	table.push(document.getElementById('stats3'));
 	table.push(document.getElementById('stats4'));
 	table.push(document.getElementById('stats5'));
-	for (j in table)
+	for (var j in table)
 	{
 		var rows = table[j].rows;
 		for (var i = 0; i < rows.length; ++i)
@@ -62,7 +64,7 @@ window.onload = function() {
 			table.push(document.getElementById('stats4'));
 			table.push(document.getElementById('stats5'));
 			var i = 0;
-			for (s in stats)
+			for (var s in stats)
 			{
 				var row = table[Math.floor(i/60)].insertRow(-1);
 				row.id = s;

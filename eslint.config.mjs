@@ -19,6 +19,7 @@ const globals = {
   Event:         'readonly',
   WebSocket:     'readonly',
   TextEncoder:   'readonly',
+  TextDecoder:   'readonly',
 };
 
 const commonRules = {

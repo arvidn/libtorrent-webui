@@ -1,4 +1,6 @@
+'use strict';
 
+(function() {
 
 var utf8_decoder = new TextDecoder('utf-8');
 
@@ -57,12 +59,12 @@ function _check_error(e, callback)
 	return true;
 }
 
-libtorrent_connection = function(url, callback)
+var libtorrent_connection = function(url, callback)
 {
 	var self = this;
 
 	this._socket = new WebSocket(url);
-	this._socket.onopen = function(ev) { callback("OK"); };
+	this._socket.onopen = function() { callback("OK"); };
 	this._socket.onerror = function(ev) { callback(ev.data); };
 	this._socket.onmessage = function(ev)
 	{
@@ -267,7 +269,6 @@ libtorrent_connection.prototype['set_settings'] = function(settings, callback)
 	// this is the handler of the response for this call. It first
 	// parses out the return value, the passes it on to the user
 	// supplied callback.
-	var self = this;
 	this._transactions[tid] = function(view, fun, e)
 	{
 		if (_check_error(e, callback)) return;
@@ -278,10 +279,10 @@ libtorrent_connection.prototype['set_settings'] = function(settings, callback)
 	// figure out how big the buffer will need to be for this
 	// RPC first, before allocating the buffer for it.
 	var size = 6; // RPC header + counter
-	for (s in settings)
+	for (var s in settings)
 	{
 		size += 2;
-		type = this._settings[s];
+		var type = this._settings[s];
 		switch (type)
 		{
 			// string
@@ -304,9 +305,8 @@ libtorrent_connection.prototype['set_settings'] = function(settings, callback)
 	view.setUint16(3, Object.keys(settings).length);
 
 	var offset = 5;
-	for (s in  settings)
+	for (var s in settings)
 	{
-		var v = settings[s];
 		view.setUint16(offset, s);
 		offset += 2;
 		var type = this._settings[s];
@@ -363,7 +363,7 @@ libtorrent_connection.prototype['get_updates'] = function(mask, callback)
 		var num_torrents = view.getUint32(8);
 		var num_removed_torrents = view.getUint32(12);
 //		console.log('frame: ' + self._frame + ' num-torrents: ' + num_torrents + ' num-removed-torrents: ' + num_removed_torrents);
-		ret = {};
+		var ret = {};
 		var offset = 16;
 		for (var i = 0; i < num_torrents; ++i)
 		{
@@ -617,7 +617,7 @@ libtorrent_connection.prototype['get_stats'] = function(stats, callback)
 	view.setUint16(7, stats.length);
 
 	var offset = 9;
-	for (i in stats)
+	for (var i in stats)
 	{
 		view.setUint16(offset, stats[i]);
 		offset += 2;
@@ -641,7 +641,6 @@ libtorrent_connection.prototype['get_file_updates'] = function(ih, last_frame, f
 	// this is the handler of the response for this call. It first
 	// parses out the return value, the passes it on to the user
 	// supplied callback.
-	var self = this;
 	this._transactions[tid] = function(view, fun, e)
 	{
 		if (_check_error(e, callback)) return;
@@ -794,7 +793,7 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 	view.setUint16(3, info_hashes.length);
 
 	var offset = 5;
-	for (ih in info_hashes)
+	for (var ih in info_hashes)
 	{
 		for (var i = 0; i < 40; i += 2)
 		{
@@ -1133,7 +1132,7 @@ libtorrent_connection.prototype['add_torrent'] = function(magnet_link, callback)
 	// string length
 	view.setUint16(3, link.length);
 
-	offset = 5;
+	var offset = 5;
 	for (var i = 0; i < link.length; i++)
 	{
 		view.setUint8(offset, link[i]);
@@ -1261,4 +1260,6 @@ window['libtorrent_connection'] = libtorrent_connection;
 window['fields'] = fields;
 window['file_fields'] = file_fields;
 window['peer_fields'] = peer_fields;
+
+})();
 
