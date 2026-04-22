@@ -1047,7 +1047,7 @@ namespace {
 			write_uint8(f.function_id | 0x80, ptr);
 			write_uint16(f.transaction_id, ptr);
 			write_uint8(no_error, ptr);
-			write_uint32(0, ptr); // frame number
+			write_uint32(client_frame, ptr); // frame number
 			write_uint32(0, ptr); // number of files
 			return st->send_packet(response.data(), response.size());
 		}
