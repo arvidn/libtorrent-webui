@@ -113,6 +113,7 @@ namespace ltweb
 	{
 		query_result result;
 		std::unique_lock<std::mutex> l(m_mutex);
+		result.current_frame = current_frame_locked();
 		if (since_frame < m_horizon) since_frame = 0;
 		result.is_snapshot = (since_frame == 0);
 
@@ -156,6 +157,11 @@ namespace ltweb
 	frame_t torrent_history::frame() const
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
+		return current_frame_locked();
+	}
+
+	frame_t torrent_history::current_frame_locked() const
+	{
 		if (m_deferred_frame_count)
 		{
 			m_deferred_frame_count = false;
@@ -325,4 +331,3 @@ namespace {
 		os << "\x1b[0m\n";
 	}
 }
-

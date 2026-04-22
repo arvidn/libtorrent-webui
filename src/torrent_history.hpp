@@ -145,6 +145,8 @@ namespace ltweb
 
 		struct query_result
 		{
+			// Exact frame number captured under the same lock as updated/removed.
+			frame_t current_frame = 0;
 			bool is_snapshot = false;
 			std::vector<torrent_history_entry> updated;
 			std::vector<lt::sha1_hash> removed;
@@ -170,6 +172,11 @@ namespace ltweb
 		virtual void handle_alert(lt::alert const* a);
 
 	private:
+
+		// Returns the current frame while holding m_mutex. If add/remove alerts
+		// are pending in the deferred frame slot, consume that slot first so the
+		// returned frame matches the frames stored on those entries.
+		frame_t current_frame_locked() const;
 
 		// first is the frame this torrent was last
 		// seen modified in, second is the information
@@ -215,4 +222,3 @@ namespace ltweb
 }
 
 #endif
-

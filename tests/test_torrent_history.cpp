@@ -212,6 +212,57 @@ BOOST_AUTO_TEST_CASE(removed_before_client_saw_add)
 	}
 }
 
+// query() must advance any deferred add/remove frame under the same lock as
+// the payload snapshot, so the returned frame can be used as the next poll
+// cursor without duplicating or skipping those events.
+BOOST_AUTO_TEST_CASE(query_current_frame_matches_deferred_snapshot)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih = make_v1(0xaa);
+	p.info_hashes = lt::info_hash_t(ih);
+
+	ltweb::frame_t const f0 = history.frame();
+
+	lt::torrent_handle h = ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	auto const added = history.query(f0);
+	BOOST_TEST(added.current_frame > f0);
+	BOOST_TEST(added.updated.size() == 1u);
+	if (!added.updated.empty())
+		BOOST_TEST((added.updated[0].status.info_hashes == lt::info_hash_t(ih)));
+	BOOST_TEST(history.frame() == added.current_frame);
+
+	{
+		auto const r = history.query(added.current_frame);
+		BOOST_TEST(r.updated.empty());
+		BOOST_TEST(r.removed.empty());
+	}
+
+	ses.remove_torrent(h);
+	wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
+
+	auto const removed = history.query(added.current_frame);
+	BOOST_TEST(removed.current_frame > added.current_frame);
+	BOOST_TEST(removed.updated.empty());
+	BOOST_TEST(removed.removed.size() == 1u);
+	if (!removed.removed.empty())
+		BOOST_TEST((removed.removed[0] == ih));
+	BOOST_TEST(history.frame() == removed.current_frame);
+
+	{
+		auto const r = history.query(removed.current_frame);
+		BOOST_TEST(r.updated.empty());
+		BOOST_TEST(r.removed.empty());
+	}
+}
+
 // When tombstones overflow the limit they are evicted and the horizon advances.
 // Any query with since_frame < horizon() must be treated as a full snapshot
 BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)

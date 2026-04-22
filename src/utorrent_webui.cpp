@@ -1216,7 +1216,7 @@ void utorrent_webui::send_torrent_list(std::vector<char>& response, char const* 
 		appendf(response, "\"%s\"", to_hex(i).c_str());
 	}
 	// TODO: support labels
-	appendf(response, "], \"label\": [], \"torrentc\": \"%" PRIu32 "\"", m_hist.frame());
+	appendf(response, "], \"label\": [], \"torrentc\": \"%" PRIu32 "\"", r.current_frame);
 }
 
 void utorrent_webui::send_rss_list(std::vector<char>& response, char const* args, permissions_interface const* p)
@@ -1246,4 +1246,3 @@ std::vector<lt::torrent_status> utorrent_webui::parse_torrents(char const* args)
 }
 
 }
-
