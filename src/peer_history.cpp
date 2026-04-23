@@ -163,7 +163,6 @@ peer_history::query_result peer_history::query(
 		for (auto const& [id, entry] : m_peers)
 		{
 			(void)id;
-			if (requested_mask == 0) continue;
 			result.updated.push_back({&entry, requested_mask});
 		}
 		return result;
@@ -181,7 +180,6 @@ peer_history::query_result peer_history::query(
 		(void)id;
 		if (entry.added_frame > since_frame)
 		{
-			if (requested_mask == 0) continue;
 			result.updated.push_back({&entry, requested_mask});
 			continue;
 		}

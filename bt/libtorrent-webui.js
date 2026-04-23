@@ -820,6 +820,13 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 
 libtorrent_connection.prototype['get_peers_updates'] = function(ih, last_frame, mask, callback)
 {
+	if (arguments.length === 3 && typeof(mask) === 'function')
+	{
+		callback = mask;
+		mask = last_frame;
+		last_frame = 0;
+	}
+
 	if (this._socket.readyState != WebSocket.OPEN)
 	{
 		window.setTimeout(function() { callback("socket closed"); }, 0);

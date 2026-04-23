@@ -76,6 +76,24 @@ BOOST_AUTO_TEST_CASE(snapshot_returns_all_requested_fields)
 		BOOST_TEST(u.field_mask == full_mask);
 }
 
+BOOST_AUTO_TEST_CASE(snapshot_with_zero_mask_still_lists_peers)
+{
+	ltweb::peer_history ph(lt::sha1_hash{});
+
+	std::vector<lt::peer_info> peers;
+	peers.push_back(make_peer(1));
+	peers.push_back(make_peer(2));
+
+	ph.update(peers);
+	auto const r = ph.query(0, 0);
+
+	BOOST_TEST(r.is_snapshot);
+	BOOST_TEST(r.updated.size() == 2u);
+	BOOST_TEST(r.removed.empty());
+	for (auto const& u : r.updated)
+		BOOST_TEST(u.field_mask == 0u);
+}
+
 BOOST_AUTO_TEST_CASE(delta_returns_only_requested_changed_fields)
 {
 	ltweb::peer_history ph(lt::sha1_hash{});
@@ -136,6 +154,30 @@ BOOST_AUTO_TEST_CASE(new_peer_is_sent_as_full_update)
 	if (!r.updated.empty())
 	{
 		BOOST_TEST(r.updated[0].field_mask == requested_mask);
+		BOOST_TEST(r.updated[0].entry->info.client == "client-2");
+	}
+}
+
+BOOST_AUTO_TEST_CASE(new_peer_is_reported_even_with_zero_mask)
+{
+	ltweb::peer_history ph(lt::sha1_hash{});
+
+	std::vector<lt::peer_info> peers1;
+	peers1.push_back(make_peer(1));
+	auto const f1 = ph.update(peers1);
+
+	std::vector<lt::peer_info> peers2 = peers1;
+	peers2.push_back(make_peer(2));
+	ph.update(peers2);
+
+	auto const r = ph.query(f1, 0);
+
+	BOOST_TEST(!r.is_snapshot);
+	BOOST_TEST(r.updated.size() == 1u);
+	BOOST_TEST(r.removed.empty());
+	if (!r.updated.empty())
+	{
+		BOOST_TEST(r.updated[0].field_mask == 0u);
 		BOOST_TEST(r.updated[0].entry->info.client == "client-2");
 	}
 }
