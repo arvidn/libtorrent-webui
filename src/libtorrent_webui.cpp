@@ -1139,12 +1139,16 @@ namespace {
 		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
+		// Find or create the peer_history for this info-hash in the LRU cache.
+		// Hold the mutex across get_peer_info() and all access to the cache so
+		// concurrent callers cannot race an older snapshot after a newer one.
+		std::vector<char> response;
+		std::unique_lock<std::mutex> l(m_peer_mutex);
 		std::vector<lt::peer_info> peers;
 		// TODO: get_peer_info() is a synchronous call. use the async. call
 		h.get_peer_info(peers);
 
-		// filter connections that haven't been established yet
-		// TODO: use remove_if() when we update to C++20
+		// Filter connections that haven't been established yet.
 		auto new_end = std::remove_if(
 			peers.begin()
 			, peers.end()
@@ -1154,8 +1158,6 @@ namespace {
 				});
 		peers.erase(new_end, peers.end());
 
-		std::vector<char> response;
-		std::unique_lock<std::mutex> l(m_peer_mutex);
 		auto it = std::find_if(m_peer_histories.begin(), m_peer_histories.end(),
 			[&](peer_history const& ph) { return ph.info_hash() == ih; });
 		if (it != m_peer_histories.end())
