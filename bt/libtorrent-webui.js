@@ -818,7 +818,7 @@ libtorrent_connection.prototype._send_simple_call = function(fun_id, info_hashes
 	this._socket.send(call);
 }
 
-libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callback)
+libtorrent_connection.prototype['get_peers_updates'] = function(ih, last_frame, mask, callback)
 {
 	if (this._socket.readyState != WebSocket.OPEN)
 	{
@@ -833,18 +833,19 @@ libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callba
 	{
 		if (_check_error(e, callback)) return;
 
+		var frame = view.getUint32(4);
 		var num_updates = view.getUint32(8);
-		// num-removed at offset 12; 0xffffffff means all non-included peers left
-		var ret = [];
+		var num_removed = view.getUint32(12);
+		var snapshot = (num_removed === 0xffffffff);
 		var offset = 16;
+		var updates = {};
 
 		for (var i = 0; i < num_updates; ++i)
 		{
 			var peer = {};
-			peer['id'] = view.getUint32(offset);
+			var peer_id = view.getUint32(offset);
 			offset += 4;
 
-			// field bitmask: skip high 32 bits, all 20 fields fit in low 32 bits
 			offset += 4;
 			var field_mask = view.getUint32(offset);
 			offset += 4;
@@ -993,10 +994,21 @@ libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callba
 						break;
 				}
 			}
-			ret.push(peer);
+			updates[peer_id] = peer;
 		}
 
-		if (typeof(callback) !== 'undefined') callback(ret);
+		var removed = [];
+		if (!snapshot)
+		{
+			for (var i = 0; i < num_removed; ++i)
+			{
+				removed.push(view.getUint32(offset));
+				offset += 4;
+			}
+		}
+
+		if (typeof(callback) !== 'undefined')
+			callback({frame: frame, snapshot: snapshot, updates: updates, removed: removed});
 	};
 
 	// request: 3 header + 20 info-hash + 4 frame + 8 bitmask = 35 bytes
@@ -1011,8 +1023,7 @@ libtorrent_connection.prototype['get_peers_updates'] = function(ih, mask, callba
 		view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
 		offset += 1;
 	}
-	// frame-number (always 0 - no delta tracking yet)
-	view.setUint32(offset, 0);
+	view.setUint32(offset, last_frame);
 	offset += 4;
 	// field-bitmask: high 32 bits = 0, low 32 bits = mask
 	view.setUint32(offset, 0);
@@ -1447,4 +1458,3 @@ window['peer_fields'] = peer_fields;
 window['tracker_fields'] = tracker_fields;
 
 })();
-
