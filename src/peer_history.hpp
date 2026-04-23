@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2026, Arvid Norberg
+Copyright (c) 2026, Muhammad Hassan Raza
 All rights reserved.
 
 You may use, distribute and modify this code under the terms of the BSD license,
