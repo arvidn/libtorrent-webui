@@ -28,6 +28,7 @@ unit-test test_auto_load : test_auto_load.cpp ;
 unit-test test_load_config : test_load_config.cpp ;
 unit-test test_find_longest_prefix : test_find_longest_prefix.cpp ;
 unit-test test_resolve_served_path : test_resolve_served_path.cpp ;
+unit-test test_file_response : test_file_response.cpp ;
 unit-test test_login : test_login.cpp ;
 unit-test test_login_throttler : test_login_throttler.cpp ;
 unit-test test_sqlite_user_account : test_sqlite_user_account.cpp : <library>sqlite ;
