@@ -45,6 +45,8 @@ SOURCES =
 	file_requests
 	stats_logging
 	serve_files
+	public_file
+	file_response
 	hex
 	utorrent_webui
 	file_history
