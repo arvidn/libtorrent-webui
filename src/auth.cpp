@@ -23,8 +23,7 @@ see LICENSE file.
 
 using boost::algorithm::starts_with;
 
-namespace ltweb
-{
+namespace ltweb {
 
 const static read_only_permissions read_perms;
 const static full_permissions full_perms;
@@ -52,8 +51,7 @@ std::vector<std::string> auth::users() const
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	std::vector<std::string> users;
-	for (auto const& a : m_accounts)
-	{
+	for (auto const& a : m_accounts) {
 		users.push_back(a.first);
 	}
 	return users;
@@ -74,16 +72,14 @@ void auth::add_account(std::string const& user, std::string const& pwd, int grou
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	auto const i = m_accounts.find(user);
-	if (i == m_accounts.end())
-	{
+	if (i == m_accounts.end()) {
 		account_t acct;
-		for (char& c : acct.salt) c = rand();
+		for (char& c : acct.salt)
+			c = rand();
 		acct.group = group;
 		acct.hash = acct.password_hash(pwd);
 		m_accounts.insert(std::make_pair(user, acct));
-	}
-	else
-	{
+	} else {
 		i->second.hash = i->second.password_hash(pwd);
 		i->second.group = group;
 	}
@@ -117,8 +113,7 @@ void auth::set_group(int g, permissions_interface const* perms)
 
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	if (g >= int(m_groups.size()))
-		m_groups.resize(g+1, nullptr);
+	if (g >= int(m_groups.size())) m_groups.resize(g + 1, nullptr);
 	m_groups[g] = perms;
 }
 
@@ -140,8 +135,7 @@ permissions_interface const* auth::find_user(std::string username, std::string p
 	lt::sha1_hash ph = i->second.password_hash(password);
 	if (ph != i->second.hash) return nullptr;
 
-	if (i->second.group < 0 || i->second.group >= int(m_groups.size()))
-		return nullptr;
+	if (i->second.group < 0 || i->second.group >= int(m_groups.size())) return nullptr;
 
 	return m_groups[i->second.group];
 }
@@ -164,8 +158,7 @@ lt::sha1_hash auth::account_t::password_hash(std::string const& pwd) const
 void auth::save_accounts(std::string const& filename, lt::error_code& ec) const
 {
 	FILE* f = fopen(filename.c_str(), "w+");
-	if (f == nullptr)
-	{
+	if (f == nullptr) {
 		ec = lt::error_code(errno, boost::system::system_category());
 		return;
 	}
@@ -173,13 +166,16 @@ void auth::save_accounts(std::string const& filename, lt::error_code& ec) const
 
 	std::unique_lock<std::mutex> l(m_mutex);
 
-	for (auto i = m_accounts.begin(), end(m_accounts.end()); i != end; ++i)
-	{
+	for (auto i = m_accounts.begin(), end(m_accounts.end()); i != end; ++i) {
 		account_t const& a = i->second;
-		fprintf(f, "%s\t%s\t%s\t%d\n", i->first.c_str()
-			, to_hex(a.hash).c_str()
-			, to_hex(a.salt).c_str()
-			, i->second.group);
+		fprintf(
+			f,
+			"%s\t%s\t%s\t%d\n",
+			i->first.c_str(),
+			to_hex(a.hash).c_str(),
+			to_hex(a.salt).c_str(),
+			i->second.group
+		);
 	}
 
 	fclose(f);
@@ -193,8 +189,7 @@ void auth::save_accounts(std::string const& filename, lt::error_code& ec) const
 void auth::load_accounts(std::string const& filename, lt::error_code& ec)
 {
 	FILE* f = fopen(filename.c_str(), "r");
-	if (f == nullptr)
-	{
+	if (f == nullptr) {
 		ec = lt::error_code(errno, boost::system::system_category());
 		return;
 	}
@@ -209,12 +204,10 @@ void auth::load_accounts(std::string const& filename, lt::error_code& ec)
 	std::array<char, 21> salt;
 	int group;
 
-	while (fscanf(f, "%511s\t%40s\t%20s\t%d\n"
-		, username.data()
-		, pwdhash.data()
-		, salt.data()
-		, &group) == 4)
-	{
+	while (
+		fscanf(f, "%511s\t%40s\t%20s\t%d\n", username.data(), pwdhash.data(), salt.data(), &group)
+		== 4
+	) {
 		account_t a;
 		if (!from_hex({pwdhash.data(), 40}, a.hash.data())) continue;
 		if (!from_hex({salt.data(), 20}, a.salt.data())) continue;
@@ -233,17 +226,15 @@ void auth::load_accounts(std::string const& filename, lt::error_code& ec)
 	\param auth the auth_interface object
 	\return the permission object appropriate for the user, or nullptr in case authentication failed.
 */
-permissions_interface const* parse_http_auth(http::request<http::string_body> const& request
-	, auth_interface const* auth)
+permissions_interface const*
+parse_http_auth(http::request<http::string_body> const& request, auth_interface const* auth)
 {
 	std::string user;
 	std::string pwd;
 	auto const it = request.find(http::field::authorization);
-	if (it != request.end())
-	{
+	if (it != request.end()) {
 		auto auth = trim(it->value());
-		if (boost::algorithm::istarts_with(auth, "basic "))
-		{
+		if (boost::algorithm::istarts_with(auth, "basic ")) {
 			// skip "basic "
 			auth = trim(auth.substr(6));
 
@@ -255,5 +246,4 @@ permissions_interface const* parse_http_auth(http::request<http::string_body> co
 	return auth->find_user(user, pwd);
 }
 
-}
-
+} // namespace ltweb

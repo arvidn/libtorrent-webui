@@ -14,33 +14,31 @@ see LICENSE file.
 #include <string>
 #include <map>
 
-namespace ltweb
-{
-	struct pam_auth : auth_interface
+namespace ltweb {
+struct pam_auth : auth_interface {
+	pam_auth(std::string service_name);
+	~pam_auth();
+
+	// these are the permissions the user receives
+	// if successfully authenticated
+	void set_permissions(permissions_interface* perms) { m_perms = perms; }
+
+	void set_user_permissions(std::string username, permissions_interface* p)
 	{
-		pam_auth(std::string service_name);
-		~pam_auth();
+		m_users[username] = p;
+	}
 
-		// these are the permissions the user receives
-		// if successfully authenticated
-		void set_permissions(permissions_interface* perms) { m_perms = perms; }
+	permissions_interface const* find_user(std::string username, std::string password) const;
 
-		void set_user_permissions(std::string username, permissions_interface* p)
-		{ m_users[username] = p; }
-
-		permissions_interface const* find_user(std::string username, std::string password) const;
-
-	private:
-
-		permissions_interface* m_perms;
-		std::string m_service_name;
-		// if some users have different permissions than the default
-		// users, they have an entry in this map. Users not in this
-		// map that successfully authenticate will still get the
-		// default permissions in m_perms (which defaults to full permissions)
-		std::map<std::string, permissions_interface*> m_users;
-	};
-}
+private:
+	permissions_interface* m_perms;
+	std::string m_service_name;
+	// if some users have different permissions than the default
+	// users, they have an entry in this map. Users not in this
+	// map that successfully authenticate will still get the
+	// default permissions in m_perms (which defaults to full permissions)
+	std::map<std::string, permissions_interface*> m_users;
+};
+} // namespace ltweb
 
 #endif
-

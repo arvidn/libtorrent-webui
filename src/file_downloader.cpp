@@ -38,17 +38,17 @@ namespace ltweb {
 
 namespace fs = std::filesystem;
 
-struct file_request_conn : std::enable_shared_from_this<file_request_conn>
-{
+struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
 	file_request_conn(
-		beast::ssl_stream<beast::tcp_stream>& socket
-		, std::function<void(bool)> done
-		, lt::torrent_handle th
-		, lt::piece_index_t next_piece
-		, lt::piece_index_t end_piece
-		, int offset
-		, int piece_size
-		, std::int64_t left_to_send)
+		beast::ssl_stream<beast::tcp_stream>& socket,
+		std::function<void(bool)> done,
+		lt::torrent_handle th,
+		lt::piece_index_t next_piece,
+		lt::piece_index_t end_piece,
+		int offset,
+		int piece_size,
+		std::int64_t left_to_send
+	)
 		: m_next_piece(next_piece)
 		, m_next_priority_piece(next_piece)
 		, m_end_piece(end_piece)
@@ -58,7 +58,8 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 		, m_torrent(std::move(th))
 		, m_piece_size(piece_size)
 		, m_offset(offset)
-	{}
+	{
+	}
 
 	bool stopped() const
 	{
@@ -90,8 +91,7 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 			m_offset = 0;
 
 			set_piece_deadlines_impl();
-		}
-		else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
+		} else if (a.piece >= m_next_piece && a.piece < m_end_piece) {
 			if (a.error) return abort();
 			m_out_of_order[a.piece] = a.buffer;
 		}
@@ -130,7 +130,6 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn>
 	}
 
 private:
-
 	void set_piece_deadlines_impl()
 	{
 		if (m_stopped) return;
@@ -139,11 +138,11 @@ private:
 		lt::piece_index_t::diff_type const prefetch(std::max(1, 4 * 1024 * 1024 / m_piece_size));
 		int deadline = 1;
 		while (m_next_priority_piece - m_next_piece < prefetch
-			&& m_next_priority_piece < m_end_piece)
-		{
+			   && m_next_priority_piece < m_end_piece) {
 			std::cout << "set piece deadline: " << m_next_priority_piece << '\n';
-			m_torrent.set_piece_deadline(m_next_priority_piece, deadline
-				, lt::torrent_handle::alert_when_available);
+			m_torrent.set_piece_deadline(
+				m_next_priority_piece, deadline, lt::torrent_handle::alert_when_available
+			);
 			++deadline;
 			++m_next_priority_piece;
 		}
@@ -172,8 +171,11 @@ private:
 		using boost::asio::buffer;
 		TORRENT_ASSERT(!m_currently_sending);
 		TORRENT_ASSERT(!m_writing);
-		boost::asio::async_write(m_socket, buffer(buf.get() + offset, size)
-			, beast::bind_front_handler(&file_request_conn::on_write, shared_from_this()));
+		boost::asio::async_write(
+			m_socket,
+			buffer(buf.get() + offset, size),
+			beast::bind_front_handler(&file_request_conn::on_write, shared_from_this())
+		);
 		m_writing = true;
 		m_currently_sending = std::move(buf);
 	}
@@ -229,38 +231,37 @@ private:
 };
 
 namespace {
-	struct write_header_op
+struct write_header_op {
+	write_header_op(http::status s, unsigned v)
+		: res(s, v)
 	{
-		write_header_op(http::status s, unsigned v) : res(s, v) {}
-		http::response<http::empty_body> res;
-		http::response_serializer<http::empty_body> sr{res};
-	};
-}
+	}
+	http::response<http::empty_body> res;
+	http::response_serializer<http::empty_body> sr{res};
+};
+} // namespace
 
 std::tuple<std::int64_t, std::int64_t, bool>
 parse_range(http::request<http::string_body> const& req, std::int64_t file_size)
 {
 	auto range_header = req.find(http::field::range);
-	if (range_header == req.end())
-		return {0, file_size - 1, false};
+	if (range_header == req.end()) return {0, file_size - 1, false};
 
 	auto range_str = trim(range_header->value());
-	if (!starts_with(range_str, "bytes="))
-		return {0, file_size - 1, false};
+	if (!starts_with(range_str, "bytes=")) return {0, file_size - 1, false};
 
 	// skip bytes=
 	auto const [first, last] = split(range_str.substr(6), '-');
 
 	std::int64_t first_byte = 0;
-	std::from_chars_result ret = std::from_chars(
-		first.data(), first.data() + first.size(), first_byte);
+	std::from_chars_result ret =
+		std::from_chars(first.data(), first.data() + first.size(), first_byte);
 
 	if (ret.ec != std::errc{} || ret.ptr != first.data() + first.size())
 		return {0, file_size - 1, false};
 
 	std::int64_t last_byte = file_size - 1;
-	if (!last.empty())
-	{
+	if (!last.empty()) {
 		ret = std::from_chars(last.data(), last.data() + last.size(), last_byte);
 		if (ret.ec != std::errc{} || ret.ptr != last.data() + last.size())
 			return {0, file_size - 1, false};
@@ -269,9 +270,7 @@ parse_range(http::request<http::string_body> const& req, std::int64_t file_size)
 	return {first_byte, last_byte, true};
 }
 
-file_downloader::file_downloader(lt::session& s
-	, alert_handler* alert
-	, auth_interface const* auth)
+file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_interface const* auth)
 	: m_ses(s)
 	, m_auth(auth)
 	, m_attachment(true)
@@ -280,15 +279,9 @@ file_downloader::file_downloader(lt::session& s
 	m_alert->subscribe(this, 0, lt::read_piece_alert::alert_type, 0);
 }
 
-file_downloader::~file_downloader()
-{
-	m_alert->unsubscribe(this);
-}
+file_downloader::~file_downloader() { m_alert->unsubscribe(this); }
 
-std::string file_downloader::path_prefix() const
-{
-	return "/download/";
-}
+std::string file_downloader::path_prefix() const { return "/download/"; }
 
 void file_downloader::handle_alert(lt::alert const* a)
 {
@@ -303,9 +296,11 @@ void file_downloader::handle_alert(lt::alert const* a)
 	}
 }
 
-void file_downloader::handle_http(http::request<http::string_body> request
-	, beast::ssl_stream<beast::tcp_stream>& socket
-	, std::function<void(bool)> done)
+void file_downloader::handle_http(
+	http::request<http::string_body> request,
+	beast::ssl_stream<beast::tcp_stream>& socket,
+	std::function<void(bool)> done
+)
 {
 	permissions_interface const* perms = parse_http_auth(request, m_auth);
 	if (!perms || !perms->allow_get_data())
@@ -337,24 +332,23 @@ void file_downloader::handle_http(http::request<http::string_body> request
 
 	std::int64_t const file_size = ti->layout().file_size(file);
 
-	auto const [range_first_byte, range_last_byte, range_request]
-		= parse_range(request, file_size);
+	auto const [range_first_byte, range_last_byte, range_request] = parse_range(request, file_size);
 
-	if (range_request && (range_first_byte > range_last_byte
-		|| range_last_byte >= file_size
-		|| range_first_byte < 0))
-	{
+	if (range_request
+		&& (range_first_byte > range_last_byte || range_last_byte >= file_size
+			|| range_first_byte < 0)) {
 		std::stringstream content_range;
 		content_range << "*/" << file_size;
-		http::response<http::empty_body> response(http::status::range_not_satisfiable, request.version());
+		http::response<http::empty_body> response(
+			http::status::range_not_satisfiable, request.version()
+		);
 		response.keep_alive(request.keep_alive());
 		response.set(http::field::content_range, content_range.str());
 		return send_http(socket, std::move(done), std::move(response));
 	}
 
 	std::cout << info_hash << " / " << file << '\n';
-	if (range_request)
-	{
+	if (range_request) {
 		std::cout << "GET range: " << range_first_byte << " - " << range_last_byte << '\n';
 	}
 
@@ -365,13 +359,11 @@ void file_downloader::handle_http(http::request<http::string_body> request
 
 	// wrap the done callback to also remove the file_downloader_conn from the
 	// map
-	auto wrap_done = [this, h, d = std::move(done)] (bool close)
-	{
+	auto wrap_done = [this, h, d = std::move(done)](bool close) {
 		{
 			std::lock_guard<std::mutex> l(m_mutex);
 			auto conns = m_outstanding_requests.equal_range(h);
-			for (auto it = conns.first; it != conns.second;)
-			{
+			for (auto it = conns.first; it != conns.second;) {
 				if (it->second->stopped())
 					it = m_outstanding_requests.erase(it);
 				else
@@ -381,9 +373,16 @@ void file_downloader::handle_http(http::request<http::string_body> request
 		d(close);
 	};
 
-	auto freq = std::make_shared<file_request_conn>(socket, std::move(wrap_done)
-		, h, first_piece, end_piece, offset, ti->layout().piece_length()
-		, range_last_byte - range_first_byte + 1);
+	auto freq = std::make_shared<file_request_conn>(
+		socket,
+		std::move(wrap_done),
+		h,
+		first_piece,
+		end_piece,
+		offset,
+		ti->layout().piece_length(),
+		range_last_byte - range_first_byte + 1
+	);
 
 	{
 		std::lock_guard<std::mutex> l(m_mutex);
@@ -403,24 +402,24 @@ void file_downloader::handle_http(http::request<http::string_body> request
 	lt::renamed_files const renames = h.get_renamed_files();
 	lt::string_view const fname = renames.file_name(ti->layout(), file);
 	op->res.set(http::field::content_type, mime_type(extension(fname)));
-	if (m_attachment)
-	{
-		op->res.set(http::field::content_disposition
-			, str("attachment; filename=", percent_encode(fname)));
+	if (m_attachment) {
+		op->res.set(
+			http::field::content_disposition, str("attachment; filename=", percent_encode(fname))
+		);
 	}
-	if (range_request)
-	{
+	if (range_request) {
 		std::stringstream range;
 		range << "bytes " << range_first_byte << '-' << range_last_byte << '/' << file_size;
 		op->res.set(http::field::content_range, range.str());
 	}
 
-	async_write_header(socket, op->sr
-		, [send_op = op, freq = std::move(freq)]
-		(beast::error_code const& ec, std::size_t size)
-		{
+	async_write_header(
+		socket,
+		op->sr,
+		[send_op = op, freq = std::move(freq)](beast::error_code const& ec, std::size_t size) {
 			freq->on_write(ec, size);
-		});
+		}
+	);
 }
 
-} // libtorrent namespace
+} // namespace ltweb

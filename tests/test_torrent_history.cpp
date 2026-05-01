@@ -29,8 +29,7 @@ namespace {
 // alerts of the given `type` have been dispatched.
 void wait_for(lt::session& ses, ltweb::alert_handler& handler, int n, int const type)
 {
-	while (n > 0)
-	{
+	while (n > 0) {
 		ses.wait_for_alert(std::chrono::seconds(10));
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
@@ -62,7 +61,9 @@ lt::sha1_hash make_v1(unsigned char fill)
 lt::sha256_hash make_v2(unsigned char fill)
 {
 	lt::sha256_hash h;
-	std::memset(h.data(), static_cast<int>(fill), static_cast<std::size_t>(lt::sha256_hash::size()));
+	std::memset(
+		h.data(), static_cast<int>(fill), static_cast<std::size_t>(lt::sha256_hash::size())
+	);
 	return h;
 }
 
@@ -120,8 +121,7 @@ BOOST_AUTO_TEST_CASE(integration)
 		auto const r = history.query(0);
 		bool found_hybrid = false;
 		for (auto const& e : r.updated)
-			if (e.status.info_hashes == lt::info_hash_t(hy_v1, hy_v2))
-				found_hybrid = true;
+			if (e.status.info_hashes == lt::info_hash_t(hy_v1, hy_v2)) found_hybrid = true;
 		BOOST_TEST(found_hybrid);
 	}
 
@@ -155,8 +155,7 @@ BOOST_AUTO_TEST_CASE(integration)
 
 		auto const r = history.query(f);
 		BOOST_TEST(r.removed.size() == 1);
-		if (!r.removed.empty())
-			BOOST_TEST((r.removed[0] == v1_hash));
+		if (!r.removed.empty()) BOOST_TEST((r.removed[0] == v1_hash));
 	}
 
 	// After removal the torrent no longer shows up in query
@@ -207,8 +206,7 @@ BOOST_AUTO_TEST_CASE(removed_before_client_saw_add)
 	{
 		auto const r = history.query(f1);
 		BOOST_TEST(r.removed.size() == 1);
-		if (!r.removed.empty())
-			BOOST_TEST((r.removed[0] == make_v1(0xbb)));
+		if (!r.removed.empty()) BOOST_TEST((r.removed[0] == make_v1(0xbb)));
 	}
 }
 
@@ -252,8 +250,7 @@ BOOST_AUTO_TEST_CASE(query_current_frame_matches_deferred_snapshot)
 	BOOST_TEST(removed.current_frame > added.current_frame);
 	BOOST_TEST(removed.updated.empty());
 	BOOST_TEST(removed.removed.size() == 1u);
-	if (!removed.removed.empty())
-		BOOST_TEST((removed.removed[0] == ih));
+	if (!removed.removed.empty()) BOOST_TEST((removed.removed[0] == ih));
 	BOOST_TEST(history.frame() == removed.current_frame);
 
 	{

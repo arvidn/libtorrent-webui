@@ -1,0 +1,43 @@
+# pre-commit framework: https://pre-commit.com
+#
+# Install once per clone:   pre-commit install
+# Run on staged changes:    pre-commit run
+# Run across the tree:      pre-commit run --all-files
+#
+# The clang-format hook is pinned to v18.1.8 of the upstream mirror,
+# matching the system clang-format-18 used during local development.
+# pre-commit installs its own copy in an isolated venv, so contributors
+# do not need clang-format installed system-wide.
+
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        # Only format this project's own C++ sources.  The vendored C code
+        # (src/jsmn.*, src/cdecode.*) and the libtorrent submodule are
+        # excluded by the path/extension filter below.
+        files: ^(src|tests)/.*\.(cpp|hpp)$
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        # Format the project's hand-written JavaScript under bt/, plus
+        # the HTML files there (which contain inline <script> blocks
+        # that prettier formats via its embedded-language support).
+        files: ^bt/.*\.(js|html)$
+
+  - repo: local
+    hooks:
+      - id: html-validate
+        # HTML5 content-model validation for files under bt/.
+        # Catches issues prettier's parser does not flag, such as
+        # invalid element nesting (e.g. <form> directly wrapping <tr>).
+        # Pre-commit installs Node and html-validate into an isolated
+        # cache, so contributors do not need npm or Node on their PATH.
+        name: html-validate
+        entry: html-validate
+        language: node
+        files: ^bt/.*\.html$
+        additional_dependencies: ['html-validate@9']

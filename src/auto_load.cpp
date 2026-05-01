@@ -21,34 +21,30 @@ see LICENSE file.
 
 using namespace std::placeholders;
 
-namespace ltweb
-{
+namespace ltweb {
 
 
 namespace {
 
-std::vector<std::string> list_dir(std::string const& path
-	, bool (*filter_fun)(lt::string_view)
-	, lt::error_code& ec)
+std::vector<std::string>
+list_dir(std::string const& path, bool (*filter_fun)(lt::string_view), lt::error_code& ec)
 {
 	std::vector<std::string> ret;
 	std::error_code fec;
-	std::filesystem::directory_iterator it(path
-		, std::filesystem::directory_options::skip_permission_denied, fec);
-	if (fec)
-	{
+	std::filesystem::directory_iterator it(
+		path, std::filesystem::directory_options::skip_permission_denied, fec
+	);
+	if (fec) {
 		ec.assign(fec.value(), boost::system::system_category());
 		return ret;
 	}
-	for (auto const& entry : it)
-	{
+	for (auto const& entry : it) {
 		std::string const name = entry.path().filename().string();
-		if (filter_fun(lt::string_view(name.data(), name.size())))
-			ret.push_back(name);
+		if (filter_fun(lt::string_view(name.data(), name.size()))) ret.push_back(name);
 	}
 	return ret;
 }
-}
+} // namespace
 
 auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 	: m_ses(s)
@@ -60,8 +56,7 @@ auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 	, m_abort(false)
 	, m_thread(std::bind(&auto_load::thread_fun, this))
 {
-	if (m_settings)
-	{
+	if (m_settings) {
 		int const interval = m_settings->get_int("autoload_interval", -1);
 		if (interval != -1) set_scan_interval(std::chrono::seconds(interval));
 		std::string path = m_settings->get_str("autoload_dir", "");
@@ -114,8 +109,7 @@ void auto_load::set_scan_interval(std::chrono::seconds s)
 	l.unlock();
 
 	// interval of 0 means disabled
-	if (m_scan_interval == std::chrono::seconds(0))
-	{
+	if (m_scan_interval == std::chrono::seconds(0)) {
 		m_timer.cancel();
 		return;
 	}
@@ -133,8 +127,7 @@ void auto_load::thread_fun()
 	m_timer.expires_after(lt::seconds(1));
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
 
-	while (!m_abort)
-	{
+	while (!m_abort) {
 		l.unlock();
 		m_ios.restart();
 		m_ios.run();
@@ -156,14 +149,14 @@ void auto_load::on_scan(lt::error_code const& e)
 	l.unlock();
 
 	lt::error_code ec;
-	std::vector<std::string> ents = list_dir(path
-		, [](lt::string_view p) { return p.size() > 8 && p.substr(p.size() - 8) == ".torrent"; }, ec);
-	for (auto const& file : ents)
-	{
-		if (m_already_loaded.count(file))
-		{
-			if (remove_files)
-			{
+	std::vector<std::string> ents = list_dir(
+		path,
+		[](lt::string_view p) { return p.size() > 8 && p.substr(p.size() - 8) == ".torrent"; },
+		ec
+	);
+	for (auto const& file : ents) {
+		if (m_already_loaded.count(file)) {
+			if (remove_files) {
 				std::string file_path = (std::filesystem::path(path) / file).string();
 				std::error_code fec;
 				std::filesystem::remove(file_path, fec);
@@ -188,12 +181,10 @@ void auto_load::on_scan(lt::error_code const& e)
 
 		// TODO: there should be a configuration option to
 		// move the torrent file into a different directory
-		if (remove_files)
-		{
+		if (remove_files) {
 			std::error_code fec;
 			std::filesystem::remove(file_path, fec);
-		}
-		else
+		} else
 			m_already_loaded.insert(file);
 	}
 
@@ -208,5 +199,4 @@ void auto_load::on_scan(lt::error_code const& e)
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
 }
 
-}
-
+} // namespace ltweb

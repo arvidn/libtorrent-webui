@@ -17,8 +17,7 @@ extern "C" {
 #include <cdk/cdk.h>
 }
 
-namespace ltweb
-{
+namespace ltweb {
 
 screen::screen()
 {
@@ -47,20 +46,14 @@ int screen::height() const
 	return h;
 }
 
-void screen::refresh()
-{
-	refreshCDKScreen(m_screen);
-}
+void screen::refresh() { refreshCDKScreen(m_screen); }
 
 log_window::log_window(screen& scr, int x, int y, int w, int h)
 	: m_win(newCDKSwindow(scr.native_handle(), x, y, h, w, "", 100, 1, 0))
 {
 }
 
-log_window::~log_window()
-{
-	destroyCDKSwindow(m_win);
-}
+log_window::~log_window() { destroyCDKSwindow(m_win); }
 
 int log_window::width() const
 {
@@ -82,38 +75,37 @@ void log_window::set_pos(int x, int y, int w, int h)
 	moveCDKSwindow(m_win, x, y, 1, 0);
 }
 
-void log_window::log_line(std::string l)
-{
-	addCDKSwindow(m_win, (char*)l.c_str(), BOTTOM);
-}
+void log_window::log_line(std::string l) { addCDKSwindow(m_win, (char*)l.c_str(), BOTTOM); }
 
-error_log::error_log(screen& scr, int x, int y, int w, int h
-	, alert_handler* alerts)
+error_log::error_log(screen& scr, int x, int y, int w, int h, alert_handler* alerts)
 	: log_window(scr, x, y, w, h)
 	, m_alerts(alerts)
 {
-	m_alerts->subscribe(this, 0
-		, add_torrent_alert::alert_type
-		, rss_alert::alert_type
-		, read_piece_alert::alert_type
-		, mmap_cache_alert::alert_type
-		, dht_error_alert::alert_type
-		, torrent_need_cert_alert::alert_type
-		, file_rename_failed_alert::alert_type
-		, tracker_error_alert::alert_type
-		, scrape_failed_alert::alert_type
-		, storage_moved_failed_alert::alert_type
-		, torrent_delete_failed_alert::alert_type
-		, save_resume_data_failed_alert::alert_type
-		, url_seed_alert::alert_type
-		, file_error_alert::alert_type
-		, metadata_failed_alert::alert_type
-		, udp_error_alert::alert_type
-		, listen_failed_alert::alert_type
-		, portmap_error_alert::alert_type
-		, fastresume_rejected_alert::alert_type
-		, torrent_error_alert::alert_type
-		, 0);
+	m_alerts->subscribe(
+		this,
+		0,
+		add_torrent_alert::alert_type,
+		rss_alert::alert_type,
+		read_piece_alert::alert_type,
+		mmap_cache_alert::alert_type,
+		dht_error_alert::alert_type,
+		torrent_need_cert_alert::alert_type,
+		file_rename_failed_alert::alert_type,
+		tracker_error_alert::alert_type,
+		scrape_failed_alert::alert_type,
+		storage_moved_failed_alert::alert_type,
+		torrent_delete_failed_alert::alert_type,
+		save_resume_data_failed_alert::alert_type,
+		url_seed_alert::alert_type,
+		file_error_alert::alert_type,
+		metadata_failed_alert::alert_type,
+		udp_error_alert::alert_type,
+		listen_failed_alert::alert_type,
+		portmap_error_alert::alert_type,
+		fastresume_rejected_alert::alert_type,
+		torrent_error_alert::alert_type,
+		0
+	);
 }
 
 void error_log::handle_alert(alert const* a)
@@ -131,10 +123,6 @@ void error_log::handle_alert(alert const* a)
 	log_line(a->message());
 }
 
-error_log::~error_log()
-{
-	m_alerts->unsubscribe(this);
-}
+error_log::~error_log() { m_alerts->unsubscribe(this); }
 
-}
-
+} // namespace ltweb

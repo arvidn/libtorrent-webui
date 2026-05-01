@@ -14,13 +14,11 @@ see LICENSE file.
 #include <string>
 #include <stdio.h> // for FILE
 
-namespace ltweb
-{
+namespace ltweb {
 
 struct alert_handler;
 
-struct error_logger : alert_observer
-{
+struct error_logger : alert_observer {
 	error_logger(alert_handler* alerts, std::string const& log_file, bool redirect_stderr);
 	~error_logger();
 
@@ -31,7 +29,6 @@ private:
 	alert_handler* m_alerts;
 };
 
-}
+} // namespace ltweb
 
 #endif
-

@@ -27,7 +27,6 @@ char const* find_string(jsmntok_t* tokens, char* buf, char const* key, bool* fou
 std::int64_t find_int(jsmntok_t* tokens, char* buf, char const* key, bool* found = NULL);
 bool find_bool(jsmntok_t* tokens, char* buf, char const* key);
 
-}
+} // namespace ltweb
 
 #endif
-

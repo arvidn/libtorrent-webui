@@ -42,7 +42,8 @@ http::request<http::string_body> make_multipart(
 	std::string_view content_type_header,
 	std::string_view boundary,
 	std::string_view part_ct,
-	std::string_view part_body)
+	std::string_view part_body
+)
 {
 	std::string body;
 	body += "--";
@@ -70,13 +71,13 @@ http::request<http::string_body> make_multipart(
 // parts     -- sequence of (Content-Type, body) pairs
 http::request<http::string_body> make_multipart_n(
 	std::string_view boundary,
-	std::vector<std::pair<std::string_view, std::string_view>> const& parts)
+	std::vector<std::pair<std::string_view, std::string_view>> const& parts
+)
 {
 	std::string body;
 	body += "--";
 	body += boundary;
-	for (auto const& [ct, part_body] : parts)
-	{
+	for (auto const& [ct, part_body] : parts) {
 		body += "\r\n";
 		body += "Content-Disposition: form-data; name=\"file\"\r\n";
 		body += "Content-Type: ";
@@ -193,7 +194,9 @@ BOOST_AUTO_TEST_CASE(rejection_cases)
 	{
 		http::request<http::string_body> req{http::verb::post, "/", 11};
 		req.set(http::field::content_type, "multipart/form-data; boundary=\"unterminated");
-		req.body() = "--unterminated\r\nContent-Type: application/x-bittorrent\r\n\r\ndata\r\n--unterminated--\r\n";
+		req.body() =
+			"--unterminated\r\nContent-Type: "
+			"application/x-bittorrent\r\n\r\ndata\r\n--unterminated--\r\n";
 		req.prepare_payload();
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
@@ -202,9 +205,7 @@ BOOST_AUTO_TEST_CASE(rejection_cases)
 
 	// No part with an accepted content type
 	{
-		auto req = make_multipart(
-			"multipart/form-data; boundary=X", "X",
-			"text/plain", "hello");
+		auto req = make_multipart("multipart/form-data; boundary=X", "X", "text/plain", "hello");
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(is_parse_error(ec));
@@ -221,7 +222,9 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 		auto req = make_multipart(
 			"multipart/form-data; boundary=simple-boundary",
 			"simple-boundary",
-			"application/x-bittorrent", "not-a-torrent");
+			"application/x-bittorrent",
+			"not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -232,7 +235,9 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 		auto req = make_multipart(
 			"multipart/form-data; boundary=\"----WebKitFormBoundaryABC\"",
 			"----WebKitFormBoundaryABC",
-			"application/x-bittorrent", "not-a-torrent");
+			"application/x-bittorrent",
+			"not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -243,7 +248,9 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 		auto req = make_multipart(
 			"multipart/form-data; boundary=foo; charset=utf-8",
 			"foo",
-			"application/x-bittorrent", "not-a-torrent");
+			"application/x-bittorrent",
+			"not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -252,9 +259,8 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 	// Case-insensitive content type: Multipart/Form-Data
 	{
 		auto req = make_multipart(
-			"Multipart/Form-Data; boundary=X",
-			"X",
-			"application/x-bittorrent", "not-a-torrent");
+			"Multipart/Form-Data; boundary=X", "X", "application/x-bittorrent", "not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -263,9 +269,8 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 	// Case-insensitive boundary parameter name: BOUNDARY=
 	{
 		auto req = make_multipart(
-			"multipart/form-data; BOUNDARY=X",
-			"X",
-			"application/x-bittorrent", "not-a-torrent");
+			"multipart/form-data; BOUNDARY=X", "X", "application/x-bittorrent", "not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -274,9 +279,8 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 	// OWS (space) between boundary= and value: boundary= X
 	{
 		auto req = make_multipart(
-			"multipart/form-data; boundary= X",
-			"X",
-			"application/x-bittorrent", "not-a-torrent");
+			"multipart/form-data; boundary= X", "X", "application/x-bittorrent", "not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -285,9 +289,8 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 	// OWS (tab) between boundary= and value: boundary=\tX
 	{
 		auto req = make_multipart(
-			"multipart/form-data; boundary=\tX",
-			"X",
-			"application/x-bittorrent", "not-a-torrent");
+			"multipart/form-data; boundary=\tX", "X", "application/x-bittorrent", "not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -296,9 +299,8 @@ BOOST_AUTO_TEST_CASE(boundary_parsing)
 	// application/octet-stream is also accepted as part content type
 	{
 		auto req = make_multipart(
-			"multipart/form-data; boundary=X",
-			"X",
-			"application/octet-stream", "not-a-torrent");
+			"multipart/form-data; boundary=X", "X", "application/octet-stream", "not-a-torrent"
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -312,10 +314,11 @@ BOOST_AUTO_TEST_CASE(multi_part)
 	// part was found and load_torrent_buffer returned an error, the error
 	// propagated back is the torrent decode error -- not a parse error.
 	{
-		auto req = make_multipart_n("X", {
-			{"application/x-bittorrent", "not-a-torrent"},
-			{"application/x-bittorrent", "also-not-a-torrent"}
-		});
+		auto req = make_multipart_n(
+			"X",
+			{{"application/x-bittorrent", "not-a-torrent"},
+			 {"application/x-bittorrent", "also-not-a-torrent"}}
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -325,10 +328,10 @@ BOOST_AUTO_TEST_CASE(multi_part)
 	// The text/plain part must be silently skipped; the bittorrent part
 	// is found, attempted, and its decode error propagated.
 	{
-		auto req = make_multipart_n("X", {
-			{"text/plain", "this-is-plain-text"},
-			{"application/x-bittorrent", "not-a-torrent"}
-		});
+		auto req = make_multipart_n(
+			"X",
+			{{"text/plain", "this-is-plain-text"}, {"application/x-bittorrent", "not-a-torrent"}}
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -338,10 +341,10 @@ BOOST_AUTO_TEST_CASE(multi_part)
 	// Non-matching part at the end must be silently skipped; decode error
 	// from the bittorrent part is propagated.
 	{
-		auto req = make_multipart_n("X", {
-			{"application/x-bittorrent", "not-a-torrent"},
-			{"text/plain", "this-is-plain-text"}
-		});
+		auto req = make_multipart_n(
+			"X",
+			{{"application/x-bittorrent", "not-a-torrent"}, {"text/plain", "this-is-plain-text"}}
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec);
 		BOOST_TEST(!is_parse_error(ec));
@@ -357,9 +360,7 @@ BOOST_AUTO_TEST_CASE(limits)
 	{
 		torrent_post_limits lim;
 		lim.max_torrent_count = 0;
-		auto req = make_multipart_n("X", {
-			{"application/x-bittorrent", "not-a-torrent"}
-		});
+		auto req = make_multipart_n("X", {{"application/x-bittorrent", "not-a-torrent"}});
 		lt::error_code ec;
 		parse_torrent_post(req, ec, lim);
 		BOOST_TEST(is_parse_error(ec));
@@ -371,9 +372,12 @@ BOOST_AUTO_TEST_CASE(limits)
 	{
 		torrent_post_limits lim;
 		lim.max_payload_bytes = 5;
-		auto req = make_multipart_n("X", {
-			{"application/x-bittorrent", "10-byte-body"}  // 12 bytes > 5
-		});
+		auto req = make_multipart_n(
+			"X",
+			{
+				{"application/x-bittorrent", "10-byte-body"} // 12 bytes > 5
+			}
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec, lim);
 		BOOST_TEST(is_parse_error(ec));
@@ -386,10 +390,10 @@ BOOST_AUTO_TEST_CASE(limits)
 		torrent_post_limits lim;
 		lim.max_payload_bytes = 10;
 		// first part is 3 bytes (0+3 <= 10), second is 12 bytes (3+12 > 10)
-		auto req = make_multipart_n("X", {
-			{"application/x-bittorrent", "abc"},
-			{"application/x-bittorrent", "12-byte-body!"}
-		});
+		auto req = make_multipart_n(
+			"X",
+			{{"application/x-bittorrent", "abc"}, {"application/x-bittorrent", "12-byte-body!"}}
+		);
 		lt::error_code ec;
 		parse_torrent_post(req, ec, lim);
 		BOOST_TEST(!is_parse_error(ec));

@@ -1,330 +1,344 @@
-<!DOCTYPE html>
+<!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
-<script language="javascript" type="text/javascript" src="libtorrent-graph.js"></script>
+<script src="libtorrent-webui.js"></script>
+<script src="libtorrent-graph.js"></script>
 
 <!-- TODO: factor out this script into a separate file from the HTML -->
-<script language="javascript" type="text/javascript">
-/* global libtorrent_connection, fields, render_graph */
-'use strict';
+<script>
+  /* global libtorrent_connection, fields, render_graph */
+  "use strict";
 
-var conn = null;
+  var conn = null;
 
-var g_stats = [];
-var g_disk_graph_defs = [
-{name: 'disk.queued_write_bytes', color: '#888'},
-];
+  var g_stats = [];
+  var g_disk_graph_defs = [{ name: "disk.queued_write_bytes", color: "#888" }];
 
-var g_disk_graph2_defs = [
-{name: 'disk.disk_blocks_in_use', color: '#444'},
-{name: 'disk.pinned_blocks', color: '#e49'},
-{name: 'disk.queued_disk_jobs', color: '#4ee'},
-];
+  var g_disk_graph2_defs = [
+    { name: "disk.disk_blocks_in_use", color: "#444" },
+    { name: "disk.pinned_blocks", color: "#e49" },
+    { name: "disk.queued_disk_jobs", color: "#4ee" },
+  ];
 
-var g_net_graph_defs = [
-{name: 'net.sent_payload_bytes-rate', color: '#d44'},
-{name: 'net.recv_payload_bytes-rate', color: '#4d4'},
-];
+  var g_net_graph_defs = [
+    { name: "net.sent_payload_bytes-rate", color: "#d44" },
+    { name: "net.recv_payload_bytes-rate", color: "#4d4" },
+  ];
 
-// list of -> [ {time:timestamp, name1:counter1, name2:coutner2, name3:counter3, ...}, ... ]
-var g_stats_counters = []
+  // list of -> [ {time:timestamp, name1:counter1, name2:coutner2, name3:counter3, ...}, ... ]
+  var g_stats_counters = [];
 
-var first_time = new Date().getTime();
+  var first_time = new Date().getTime();
 
-var state_names = ['checking', 'metadata', 'downloading', 'seeding'];
+  var state_names = ["checking", "metadata", "downloading", "seeding"];
 
-var scale_si = function(value, unit)
-{
-	var negative;
-	if (value < 0)
-	{
-		negative = '-';
-		value = -value;
-	}
-	else
-	{
-		negative = '';
-	}
-	if (value >= 1000000000)
-	{
-		unit = 'G' + unit;
-		value /= 1000000000;
-	}
-	else if (value >= 1000000)
-	{
-		unit = 'M' + unit;
-		value /= 1000000;
-	}
-	else if (value >= 1000)
-	{
-		unit = 'k' + unit;
-		value /= 1000;
-	}
-	else if (value >= 0)
-	{
-		// do nothing
-		// return here since we don't want any decimal places in this case
-		return negative + value + unit;
-	}
-	else if (value >= 0.001)
-	{
-		unit = 'm' + unit;
-		value *= 1000;
-	}
-	else if (value >= 0.000001)
-	{
-		unit = 'u' + unit;
-		value *= 1000000;
-	}
-	else if (value >= 0.000000001)
-	{
-		unit = 'n' + unit;
-		value *= 1000000000;
-	}
-	return negative + value.toFixed(2) + unit;
-}
+  var scale_si = function (value, unit) {
+    var negative;
+    if (value < 0) {
+      negative = "-";
+      value = -value;
+    } else {
+      negative = "";
+    }
+    if (value >= 1000000000) {
+      unit = "G" + unit;
+      value /= 1000000000;
+    } else if (value >= 1000000) {
+      unit = "M" + unit;
+      value /= 1000000;
+    } else if (value >= 1000) {
+      unit = "k" + unit;
+      value /= 1000;
+    } else if (value >= 0) {
+      // do nothing
+      // return here since we don't want any decimal places in this case
+      return negative + value + unit;
+    } else if (value >= 0.001) {
+      unit = "m" + unit;
+      value *= 1000;
+    } else if (value >= 0.000001) {
+      unit = "u" + unit;
+      value *= 1000000;
+    } else if (value >= 0.000000001) {
+      unit = "n" + unit;
+      value *= 1000000000;
+    }
+    return negative + value.toFixed(2) + unit;
+  };
 
-var redraw = function(updates)
-{
-	if (typeof(updates) === 'string')
-	{
-		console.log("ERROR: " + updates);
-		return;
-	}
+  var redraw = function (updates) {
+    if (typeof updates === "string") {
+      console.log("ERROR: " + updates);
+      return;
+    }
 
-	var table = document.getElementById('torrents').querySelector("tbody");
+    var table = document.getElementById("torrents").querySelector("tbody");
 
-	for (var ih in updates)
-	{
-		var t = updates[ih];
-		if (ih == 'removed')
-		{
-			var removed_torrents = updates[ih];
-			for (var i in removed_torrents)
-			{
-				var row = document.getElementById(removed_torrents[i]);
-				row.parentNode.removeChild(row);
-			}
-			continue;
-		}
+    for (var ih in updates) {
+      var t = updates[ih];
+      if (ih == "removed") {
+        var removed_torrents = updates[ih];
+        for (var i in removed_torrents) {
+          var row = document.getElementById(removed_torrents[i]);
+          row.parentNode.removeChild(row);
+        }
+        continue;
+      }
 
-		var row = document.getElementById(ih);
+      var row = document.getElementById(ih);
 
-		if (row == null)
-		{
-			var template = document.querySelector('#torrent-row').content.cloneNode(true);
-			template.querySelector("tr").id = ih;
-			table.appendChild(template);
-			row = document.getElementById(ih);
-		}
-		for (var field in t)
-		{
-			var cell = row.querySelector('#' + field);
-			if (cell == null) continue;
+      if (row == null) {
+        var template = document
+          .querySelector("#torrent-row")
+          .content.cloneNode(true);
+        template.querySelector("tr").id = ih;
+        table.appendChild(template);
+        row = document.getElementById(ih);
+      }
+      for (var field in t) {
+        var cell = row.querySelector("#" + field);
+        if (cell == null) continue;
 
-			switch (field)
-			{
-				case 'progress':
-					cell.style.width = (t[field] / 10000) + '%';
-					if (t[field] == 1000000) cell.className = 'seeding-progress';
-					else cell.className = 'downloading-progress';
-					break;
-				case 'name':
-					cell.innerText = t[field];
-					cell.setAttribute('href', 'test_files.html#' + ih);
-					break;
-				case 'state':
-					cell.innerText = state_names[t[field]];
-					break;
-				case 'upload-rate':
-				case 'download-rate':
-					cell.innerText = scale_si(t[field], 'B/s');
-					break;
-				case 'total-uploaded':
-				case 'total-downloaded':
-					cell.innerText = scale_si(t[field], 'B');
-					break;
-				default:
-					cell.innerText = t[field];
-			}
-		}
-	}
+        switch (field) {
+          case "progress":
+            cell.style.width = t[field] / 10000 + "%";
+            if (t[field] == 1000000) cell.className = "seeding-progress";
+            else cell.className = "downloading-progress";
+            break;
+          case "name":
+            cell.innerText = t[field];
+            cell.setAttribute("href", "test_files.html#" + ih);
+            break;
+          case "state":
+            cell.innerText = state_names[t[field]];
+            break;
+          case "upload-rate":
+          case "download-rate":
+            cell.innerText = scale_si(t[field], "B/s");
+            break;
+          case "total-uploaded":
+          case "total-downloaded":
+            cell.innerText = scale_si(t[field], "B");
+            break;
+          default:
+            cell.innerText = t[field];
+        }
+      }
+    }
 
-	setTimeout(get_torrent_updates, 300);
-};
+    setTimeout(get_torrent_updates, 300);
+  };
 
-var new_data_point = function(data, now, new_values)
-{
-	var data_point = null;
-	if (data.length > 0)
-	{
-		data_point = Object.assign({}, data[data.length-1]);
+  var new_data_point = function (data, now, new_values) {
+    var data_point = null;
+    if (data.length > 0) {
+      data_point = Object.assign({}, data[data.length - 1]);
 
-		for (var k in data_point)
-		{
-			if (k.endsWith('-rate'))
-				data_point[k] = 0;
-		}
+      for (var k in data_point) {
+        if (k.endsWith("-rate")) data_point[k] = 0;
+      }
 
-		const delta = (now - data_point.time) / 1000.0;
-		for (var p in new_values)
-		{
-			data_point[p + '-rate'] = (new_values[p] - data_point[p]) / delta;
-			data_point[p] = new_values[p];
-		}
+      const delta = (now - data_point.time) / 1000.0;
+      for (var p in new_values) {
+        data_point[p + "-rate"] = (new_values[p] - data_point[p]) / delta;
+        data_point[p] = new_values[p];
+      }
 
-		data_point.time = now;
-	}
-	else
-	{
-		data_point = Object.assign({}, new_values);
-		for (var k in new_values)
-			data_point[k + '-rate'] = 0;
-		data_point.time = now;
-	}
+      data_point.time = now;
+    } else {
+      data_point = Object.assign({}, new_values);
+      for (var k in new_values) data_point[k + "-rate"] = 0;
+      data_point.time = now;
+    }
 
-	data.push(data_point);
-};
+    data.push(data_point);
+  };
 
-var prune_data_points = function(data, start_time)
-{
-	var prune = 0;
-	while (prune < data.length && data[prune].time < start_time)
-		++prune;
-	if (prune > 1) data.splice(0, prune - 1);
-};
+  var prune_data_points = function (data, start_time) {
+    var prune = 0;
+    while (prune < data.length && data[prune].time < start_time) ++prune;
+    if (prune > 1) data.splice(0, prune - 1);
+  };
 
-var redraw_graph = function(counters)
-{
-	if (typeof(counters) === 'string')
-	{
-		console.log("ERROR: " + counters);
-		return;
-	}
+  var redraw_graph = function (counters) {
+    if (typeof counters === "string") {
+      console.log("ERROR: " + counters);
+      return;
+    }
 
-	var now = new Date().getTime() - first_time;
+    var now = new Date().getTime() - first_time;
 
-	// remove entries that are scrolled out of the graph view
-	// this is the start of the window to be graphed.
-	// 60 seconds
-	var start_time = now - 60 * 1000;
+    // remove entries that are scrolled out of the graph view
+    // this is the start of the window to be graphed.
+    // 60 seconds
+    var start_time = now - 60 * 1000;
 
-	new_data_point(g_stats_counters, now, counters);
-	prune_data_points(g_stats_counters, start_time);
+    new_data_point(g_stats_counters, now, counters);
+    prune_data_points(g_stats_counters, start_time);
 
-	render_graph('disk_graph', g_stats_counters, g_disk_graph_defs, start_time, now, "B", 'auto', 1, true);
-	render_graph('disk_graph2', g_stats_counters, g_disk_graph2_defs, start_time, now, "", 'auto', 1, true);
-	render_graph('net_graph', g_stats_counters, g_net_graph_defs, start_time, now, "B/s", 'auto', 1, true);
-	setTimeout(get_session_stats, 300);
-}
+    render_graph(
+      "disk_graph",
+      g_stats_counters,
+      g_disk_graph_defs,
+      start_time,
+      now,
+      "B",
+      "auto",
+      1,
+      true,
+    );
+    render_graph(
+      "disk_graph2",
+      g_stats_counters,
+      g_disk_graph2_defs,
+      start_time,
+      now,
+      "",
+      "auto",
+      1,
+      true,
+    );
+    render_graph(
+      "net_graph",
+      g_stats_counters,
+      g_net_graph_defs,
+      start_time,
+      now,
+      "B/s",
+      "auto",
+      1,
+      true,
+    );
+    setTimeout(get_session_stats, 300);
+  };
 
-var add_torrent = function()
-{
-	var link_box = document.getElementById('magnet');
-	conn.add_torrent(link_box.value, function(e) { console.log('added torrent: ' + e); } );
-	link_box.value = '';
-}
+  var add_torrent = function () {
+    var link_box = document.getElementById("magnet");
+    conn.add_torrent(link_box.value, function (e) {
+      console.log("added torrent: " + e);
+    });
+    link_box.value = "";
+  };
 
-var get_torrent_updates = function()
-{
-	conn.get_updates(fields.name | fields.download_rate | fields.upload_rate
-		| fields.progress | fields.total_uploaded | fields.total_downloaded
-		| fields.state | fields.connected_peers, redraw);
-}
+  var get_torrent_updates = function () {
+    conn.get_updates(
+      fields.name |
+        fields.download_rate |
+        fields.upload_rate |
+        fields.progress |
+        fields.total_uploaded |
+        fields.total_downloaded |
+        fields.state |
+        fields.connected_peers,
+      redraw,
+    );
+  };
 
-var get_session_stats = function()
-{
-	conn.get_stats(g_stats, redraw_graph);
-}
+  var get_session_stats = function () {
+    conn.get_stats(g_stats, redraw_graph);
+  };
 
-window.onload = function()
-{
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
 
-		get_torrent_updates();
+      get_torrent_updates();
 
-		conn.list_stats(function(stats) {
-			// save off the stats we're interested in, and will subscribe to
-			g_stats = []
-			for (var name in stats)
-			{
-				switch (name)
-				{
-					case 'net.sent_payload_bytes':
-					case 'net.recv_payload_bytes':
-					case 'dht.dht_nodes':
-					case 'dht.dht_node_cache':
-					case 'ses.num_unchoke_slots':
-					case 'disk.num_running_threads':
-					case 'disk.queued_write_bytes':
-					case 'disk.disk_blocks_in_use':
-					case 'disk.pinned_blocks':
-					case 'disk.queued_disk_jobs':
-						var id = stats[name].id;
-						g_stats.push(id);
-				}
-			}
-			get_session_stats();
-		});
-	});
-};
+      conn.list_stats(function (stats) {
+        // save off the stats we're interested in, and will subscribe to
+        g_stats = [];
+        for (var name in stats) {
+          switch (name) {
+            case "net.sent_payload_bytes":
+            case "net.recv_payload_bytes":
+            case "dht.dht_nodes":
+            case "dht.dht_node_cache":
+            case "ses.num_unchoke_slots":
+            case "disk.num_running_threads":
+            case "disk.queued_write_bytes":
+            case "disk.disk_blocks_in_use":
+            case "disk.pinned_blocks":
+            case "disk.queued_disk_jobs":
+              var id = stats[name].id;
+              g_stats.push(id);
+          }
+        }
+        get_session_stats();
+      });
+    });
+  };
 </script>
 
-
 <style>
-.counter { text-align: right; }
-.seeding-progress { background-color: #7f7; }
-.downloading-progress { background-color: #aaf; }
+  .counter {
+    text-align: right;
+  }
+  .seeding-progress {
+    background-color: #7f7;
+  }
+  .downloading-progress {
+    background-color: #aaf;
+  }
 </style>
 
 <a href="dashboard.html">dashboard</a> |
 <a href="test_stats_graphs.html">stats (graph)</a> |
 <a href="test_stats.html">stats (numbers)</a>
-<textarea id="magnet" rows="1"></textarea><a href="javascript:add_torrent()">add torrent</a>
+<textarea id="magnet" rows="1"></textarea
+><a href="javascript:add_torrent()">add torrent</a>
 
 <!-- STYLE TORRENT TABLE -->
-<table id="torrents" border="1" style="border-collapse: collapse; border-color: black;table-layout:fixed;">
-<thead><tr>
-<td>controls</td>
-<td style="min-width:20em">Name</td>
-<td style="width:7em">Progress</td>
-<td style="width:5em">Uploaded</td>
-<td style="width:5em">Downloaded</td>
-<td>Up rate</td>
-<td>Down rate</td>
-<td>Peers</td>
-</tr></thead>
-<tbody></tbody>
+<table
+  id="torrents"
+  border="1"
+  style="border-collapse: collapse; border-color: black; table-layout: fixed"
+>
+  <thead>
+    <tr>
+      <td>controls</td>
+      <td style="min-width: 20em">Name</td>
+      <td style="width: 7em">Progress</td>
+      <td style="width: 5em">Uploaded</td>
+      <td style="width: 5em">Downloaded</td>
+      <td>Up rate</td>
+      <td>Down rate</td>
+      <td>Peers</td>
+    </tr>
+  </thead>
+  <tbody></tbody>
 </table>
 
 <!-- STYLE TORRENT TABLE ROWS -->
 <template id="torrent-row">
-<tr>
-<td id="controls">
-<a href="#" onclick="conn.start([this.parentNode.parentNode.id]); return false;">start</a>
-<a href="#" onclick="conn.stop([this.parentNode.parentNode.id]); return false;">stop</a>
-</td>
-<td><a href="test_files.html#" id="name"></a></td>
-<td>
-<div id="progress" style="height:1em;" align="left"><div>
-<div style="position:absolute;" id="state"></div>
-</td>
-<td id="total-uploaded" class="counter"></td>
-<td id="total-downloaded" class="counter"></td>
-<td id="upload-rate" class="counter"></td>
-<td id="download-rate" class="counter"></td>
-<td id="connected-peers" class="counter"></td>
-</tr>
+  <tr>
+    <td id="controls">
+      <a
+        href="#"
+        onclick="conn.start([this.parentNode.parentNode.id]); return false;"
+        >start</a
+      >
+      <a
+        href="#"
+        onclick="conn.stop([this.parentNode.parentNode.id]); return false;"
+        >stop</a
+      >
+    </td>
+    <td><a href="test_files.html#" id="name"></a></td>
+    <td>
+      <div id="progress" style="height: 1em"></div>
+      <div style="position: absolute" id="state"></div>
+    </td>
+    <td id="total-uploaded" class="counter"></td>
+    <td id="total-downloaded" class="counter"></td>
+    <td id="upload-rate" class="counter"></td>
+    <td id="download-rate" class="counter"></td>
+    <td id="connected-peers" class="counter"></td>
+  </tr>
 </template>
 <canvas id="net_graph" width="800" height="250"></canvas>
 <canvas id="disk_graph" width="800" height="250"></canvas>
 <canvas id="disk_graph2" width="800" height="250"></canvas>
-</html>
-

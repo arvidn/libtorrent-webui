@@ -17,19 +17,20 @@ see LICENSE file.
 
 namespace ltweb {
 
-struct serve_files : http_handler
-{
+struct serve_files : http_handler {
 	serve_files(std::string_view prefix, std::string_view root_directory);
 
 	std::string path_prefix() const override;
 
-	void handle_http(http::request<http::string_body> request
-		, beast::ssl_stream<beast::tcp_stream>& socket
-		, std::function<void(bool)> done) override;
+	void handle_http(
+		http::request<http::string_body> request,
+		beast::ssl_stream<beast::tcp_stream>& socket,
+		std::function<void(bool)> done
+	) override;
 
 private:
 	std::string m_root;
 	std::string m_prefix;
 };
 
-}
+} // namespace ltweb
