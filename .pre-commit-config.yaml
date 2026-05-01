@@ -27,3 +27,17 @@ repos:
         # the HTML files there (which contain inline <script> blocks
         # that prettier formats via its embedded-language support).
         files: ^bt/.*\.(js|html)$
+
+  - repo: local
+    hooks:
+      - id: html-validate
+        # HTML5 content-model validation for files under bt/.
+        # Catches issues prettier's parser does not flag, such as
+        # invalid element nesting (e.g. <form> directly wrapping <tr>).
+        # Pre-commit installs Node and html-validate into an isolated
+        # cache, so contributors do not need npm or Node on their PATH.
+        name: html-validate
+        entry: html-validate
+        language: node
+        files: ^bt/.*\.html$
+        additional_dependencies: ['html-validate@9']
