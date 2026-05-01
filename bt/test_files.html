@@ -1,12 +1,8 @@
 <!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script
-  language="javascript"
-  type="text/javascript"
-  src="libtorrent-webui.js"
-></script>
-<script language="javascript" type="text/javascript">
+<script src="libtorrent-webui.js"></script>
+<script>
   /* global libtorrent_connection, file_fields */
   "use strict";
 
@@ -102,9 +98,9 @@
     background-color: #faa;
   }
 </style>
+<h1 id="headline"></h1>
 <table id="files" border="1" style="border-collapse: collapse">
-  <h1 id="headline"></h1>
-  <form>
+  <thead>
     <tr>
       <th>Name</th>
       <th>Size</th>
@@ -113,5 +109,5 @@
       <th>Priority</th>
       <th>mode</th>
     </tr>
-  </form>
+  </thead>
 </table>
