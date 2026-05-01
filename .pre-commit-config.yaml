@@ -1,0 +1,20 @@
+# pre-commit framework: https://pre-commit.com
+#
+# Install once per clone:   pre-commit install
+# Run on staged changes:    pre-commit run
+# Run across the tree:      pre-commit run --all-files
+#
+# The clang-format hook is pinned to v18.1.8 of the upstream mirror,
+# matching the system clang-format-18 used during local development.
+# pre-commit installs its own copy in an isolated venv, so contributors
+# do not need clang-format installed system-wide.
+
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v18.1.8
+    hooks:
+      - id: clang-format
+        # Only format this project's own C++ sources.  The vendored C code
+        # (src/jsmn.*, src/cdecode.*) and the libtorrent submodule are
+        # excluded by the path/extension filter below.
+        files: ^(src|tests)/.*\.(cpp|hpp)$
