@@ -11,33 +11,37 @@ see LICENSE file.
 #define LTWEB_PAM_AUTH_HPP
 
 #include "auth_interface.hpp"
-#include <string>
+
 #include <map>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace ltweb {
-struct pam_auth : auth_interface {
-	pam_auth(std::string service_name);
+// user_account implementation backed by Linux PAM. verify() invokes
+// the configured PAM service to authenticate (username, password).
+// On a successful PAM authentication the user's group number is
+// looked up in the per-user override map; if no override is set,
+// the default group is returned.
+struct pam_auth : user_account {
+	explicit pam_auth(std::string service_name, int default_group = 0);
 	~pam_auth();
 
-	// these are the permissions the user receives
-	// if successfully authenticated
-	void set_permissions(permissions_interface* perms) { m_perms = perms; }
+	// Group returned for any successfully authenticated user that
+	// does not have a per-user override.
+	void set_default_group(int g) { default_group = g; }
 
-	void set_user_permissions(std::string username, permissions_interface* p)
-	{
-		m_users[username] = p;
-	}
+	// Per-user group override; takes precedence over the default.
+	void set_user_group(std::string username, int g) { users[std::move(username)] = g; }
 
-	permissions_interface const* find_user(std::string username, std::string password) const;
+	std::optional<int> verify(std::string_view username, std::string_view password) const override;
 
 private:
-	permissions_interface* m_perms;
-	std::string m_service_name;
-	// if some users have different permissions than the default
-	// users, they have an entry in this map. Users not in this
-	// map that successfully authenticate will still get the
-	// default permissions in m_perms (which defaults to full permissions)
-	std::map<std::string, permissions_interface*> m_users;
+	int default_group;
+	std::string service_name;
+	// Users not in this map who successfully authenticate get
+	// default_group.
+	std::map<std::string, int> users;
 };
 } // namespace ltweb
 

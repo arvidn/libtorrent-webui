@@ -28,7 +28,7 @@ struct file_request_conn;
 struct file_downloader
 	: http_handler
 	, alert_observer {
-	file_downloader(lt::session& s, alert_handler* alerts, auth_interface const* auth = nullptr);
+	file_downloader(lt::session& s, alert_handler* alerts, auth_interface const& auth);
 	~file_downloader();
 
 	void set_disposition(bool attachment) { m_attachment = attachment; }
@@ -47,7 +47,7 @@ private:
 	void handle_alert(lt::alert const* a) override;
 
 	lt::session& m_ses;
-	auth_interface const* m_auth;
+	auth_interface const& m_auth;
 
 	// controls the content disposition of files. Defaults to true
 	// which asks the browser to save the file rather than to render it.

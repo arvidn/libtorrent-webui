@@ -139,7 +139,18 @@ private:
 				http_error(m_req, http::status::not_found)
 			);
 
-		it->second->handle_http(std::move(m_req), m_stream, done_function{*this, m_req.need_eof()});
+		auto const need_eof = m_req.need_eof();
+		auto const version = m_req.version();
+		auto const keep_alive = m_req.keep_alive();
+
+		try {
+			it->second->handle_http(std::move(m_req), m_stream, done_function{*this, need_eof});
+		} catch (std::exception const& e) {
+			std::cerr << "handler exception: " << e.what() << "\n";
+			http::response<http::empty_body> res{http::status::internal_server_error, version};
+			res.keep_alive(keep_alive);
+			send_http(m_stream, done_function{*this, true}, std::move(res));
+		}
 	}
 
 	void on_write(bool close, beast::error_code ec, std::size_t)

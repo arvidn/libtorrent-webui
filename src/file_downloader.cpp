@@ -9,8 +9,8 @@ see LICENSE file.
 
 #include "webui.hpp"
 #include "file_downloader.hpp"
-#include "no_auth.hpp"
-#include "auth.hpp"
+#include "auth_interface.hpp"
+#include "parse_http_auth.hpp"
 #include "hex.hpp"
 #include "alert_handler.hpp"
 #include "utils.hpp"
@@ -276,7 +276,7 @@ parse_range(http::request<http::string_body> const& req, std::int64_t file_size)
 	return {first_byte, last_byte, true};
 }
 
-file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_interface const* auth)
+file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_interface const& auth)
 	: m_ses(s)
 	, m_auth(auth)
 	, m_attachment(true)
