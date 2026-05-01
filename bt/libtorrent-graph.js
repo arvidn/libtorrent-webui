@@ -32,246 +32,212 @@
    field is used.
 */
 
-'use strict';
+"use strict";
 
-(function() {
+(function () {
+  function render_graph(
+    canvas,
+    data,
+    graphs,
+    start_time,
+    now,
+    unit,
+    scale,
+    multiplier,
+    use_legend,
+  ) {
+    if (typeof unit == "undefined") unit = "";
+    if (typeof scale == "undefined") scale = "auto";
+    if (typeof multiplier == "undefined") multiplier = 1;
+    if (typeof use_legend == "undefined") use_legend = false;
 
-function render_graph(canvas, data, graphs, start_time, now, unit, scale, multiplier, use_legend)
-{
-	if (typeof(unit) == 'undefined') unit = '';
-	if (typeof(scale) == 'undefined') scale = 'auto';
-	if (typeof(multiplier) == 'undefined') multiplier = 1;
-	if (typeof(use_legend) == 'undefined') use_legend = false;
+    var canvas = document.getElementById(canvas);
+    var ctx = canvas.getContext("2d");
 
-	var canvas = document.getElementById(canvas);
-	var ctx = canvas.getContext('2d');
-	
-	// first find the highest rate, in order to scale
-	var peak = 0;
-	for (var dp in data)
-	{
-		for (var g in graphs)
-		{
-			var n = graphs[g].name;
-			if (!data[dp].hasOwnProperty(n)) continue;
-			peak = Math.max(data[dp][n] * multiplier, peak);
-		}
-	}
-	if (peak == 0) peak = 1 * (scale == 'auto' ? 1 : scale);
+    // first find the highest rate, in order to scale
+    var peak = 0;
+    for (var dp in data) {
+      for (var g in graphs) {
+        var n = graphs[g].name;
+        if (!data[dp].hasOwnProperty(n)) continue;
+        peak = Math.max(data[dp][n] * multiplier, peak);
+      }
+    }
+    if (peak == 0) peak = 1 * (scale == "auto" ? 1 : scale);
 
-	ctx.clearRect(0,0,canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-	var canvas_width = canvas.width;
-	var canvas_height = canvas.height;
+    var canvas_width = canvas.width;
+    var canvas_height = canvas.height;
 
-	if (window.devicePixelRatio > 1)
-	{
-		if (!canvas.getAttribute('logical_width'))
-		{
-			canvas_width = canvas.width;
-			canvas_height = canvas.height;
-			canvas.style.width = canvas.width + 'px';
-			canvas.style.height = canvas.height + 'px';
-			canvas.setAttribute('logical_width', canvas.width);
-			canvas.setAttribute('logical_height', canvas.height);
-			canvas.setAttribute('width', canvas_width * window.devicePixelRatio);
-			canvas.setAttribute('height', canvas_height * window.devicePixelRatio);
-			ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-		}
-		else
-		{
-			canvas_width = canvas.getAttribute('logical_width');
-			canvas_height = canvas.getAttribute('logical_height');
-		}
-	}
+    if (window.devicePixelRatio > 1) {
+      if (!canvas.getAttribute("logical_width")) {
+        canvas_width = canvas.width;
+        canvas_height = canvas.height;
+        canvas.style.width = canvas.width + "px";
+        canvas.style.height = canvas.height + "px";
+        canvas.setAttribute("logical_width", canvas.width);
+        canvas.setAttribute("logical_height", canvas.height);
+        canvas.setAttribute("width", canvas_width * window.devicePixelRatio);
+        canvas.setAttribute("height", canvas_height * window.devicePixelRatio);
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      } else {
+        canvas_width = canvas.getAttribute("logical_width");
+        canvas_height = canvas.getAttribute("logical_height");
+      }
+    }
 
-	ctx.save();
+    ctx.save();
 
-	var view_width = canvas_width - 40;
-	var view_height = canvas_height - 5;
+    var view_width = canvas_width - 40;
+    var view_height = canvas_height - 5;
 
-	// the 0.5 is to align lines with pixels
-	ctx.translate(0.5, 4.5);
+    // the 0.5 is to align lines with pixels
+    ctx.translate(0.5, 4.5);
 
-	// used for text
-	ctx.fillStyle = "black";
-	ctx.lineWidth = 1;
+    // used for text
+    ctx.fillStyle = "black";
+    ctx.lineWidth = 1;
 
-	// calculate the number of tics and the peak
-	var num_tics = 10;
-	var new_peak = 1;
-	while (peak > new_peak)
-		new_peak *= 10;
+    // calculate the number of tics and the peak
+    var num_tics = 10;
+    var new_peak = 1;
+    while (peak > new_peak) new_peak *= 10;
 
-	num_tics = Math.ceil(peak / new_peak * 10);
-	peak = new_peak * num_tics / 10;
-	if (num_tics < 5) num_tics *= 2;
+    num_tics = Math.ceil((peak / new_peak) * 10);
+    peak = (new_peak * num_tics) / 10;
+    if (num_tics < 5) num_tics *= 2;
 
-	if (scale == 'auto')
-	{
-		if (peak >= 1000000000)
-		{
-			scale = 1000000000;
-		}
-		else if (peak >= 1000000)
-		{
-			scale = 1000000;
-		}
-		else if (peak >= 1000)
-		{
-			scale = 1000;
-		}
-		else if (peak >= 1)
-		{
-			scale = 1;
-		}
-		else if (peak >= 0.001)
-		{
-			scale = 1 / 1000;
-		}
-		else if (peak >= 0.000001)
-		{
-			scale = 1 / 1000000;
-		}
-		else if (peak >= 0.000000001)
-		{
-			scale = 1 / 1000000000;
-		}
-	}
+    if (scale == "auto") {
+      if (peak >= 1000000000) {
+        scale = 1000000000;
+      } else if (peak >= 1000000) {
+        scale = 1000000;
+      } else if (peak >= 1000) {
+        scale = 1000;
+      } else if (peak >= 1) {
+        scale = 1;
+      } else if (peak >= 0.001) {
+        scale = 1 / 1000;
+      } else if (peak >= 0.000001) {
+        scale = 1 / 1000000;
+      } else if (peak >= 0.000000001) {
+        scale = 1 / 1000000000;
+      }
+    }
 
-	if (scale >= 1000000000)
-	{
-		unit = 'G' + unit;
-	}
-	else if (scale >= 1000000)
-	{
-		unit = 'M' + unit;
-	}
-	else if (scale >= 1000)
-	{
-		unit = 'k' + unit;
-	}
-   else if (scale >= 1)
-   {
+    if (scale >= 1000000000) {
+      unit = "G" + unit;
+    } else if (scale >= 1000000) {
+      unit = "M" + unit;
+    } else if (scale >= 1000) {
+      unit = "k" + unit;
+    } else if (scale >= 1) {
       // do nothing
-   }
-   else if (scale >= 0.001)
-   {
-      unit = 'm' + unit;
-   }
-   else if (scale >= 0.00001)
-   {
-      unit = 'u' + unit;
-   }
-   else if (scale >= 0.000000001)
-   {
-      unit = 'n' + unit;
-   }
+    } else if (scale >= 0.001) {
+      unit = "m" + unit;
+    } else if (scale >= 0.00001) {
+      unit = "u" + unit;
+    } else if (scale >= 0.000000001) {
+      unit = "n" + unit;
+    }
 
-	var scalex = view_width / (now - start_time);
-	var scaley = view_height / peak;
+    var scalex = view_width / (now - start_time);
+    var scaley = view_height / peak;
 
-	// draw y-axis tics
-	for (var i = 0; i < num_tics; ++i)
-	{
-		ctx.strokeStyle = "#000";
-		if ('setLineDash' in ctx)
-			ctx.setLineDash([]);
-		var y = Math.floor(view_height * i / num_tics);
-		ctx.beginPath();
-		ctx.moveTo(view_width - 6, y);
-		ctx.lineTo(view_width, y);
-		ctx.lineTo(view_width, y + view_height / num_tics);
-		ctx.stroke();
-		var rate = peak - peak * i / num_tics;
-		ctx.fillText((rate / scale).toFixed( peak < 5*scale ? 1 : 0) + ' ' + unit, view_width + 2, y + 4);
+    // draw y-axis tics
+    for (var i = 0; i < num_tics; ++i) {
+      ctx.strokeStyle = "#000";
+      if ("setLineDash" in ctx) ctx.setLineDash([]);
+      var y = Math.floor((view_height * i) / num_tics);
+      ctx.beginPath();
+      ctx.moveTo(view_width - 6, y);
+      ctx.lineTo(view_width, y);
+      ctx.lineTo(view_width, y + view_height / num_tics);
+      ctx.stroke();
+      var rate = peak - (peak * i) / num_tics;
+      ctx.fillText(
+        (rate / scale).toFixed(peak < 5 * scale ? 1 : 0) + " " + unit,
+        view_width + 2,
+        y + 4,
+      );
 
-		if ('setLineDash' in ctx)
-			ctx.setLineDash([5]);
-		ctx.strokeStyle = "#ccc";
-		ctx.beginPath();
-		ctx.moveTo(view_width - 6, y);
-		ctx.lineTo(0, y);
-		ctx.stroke();
-	}
+      if ("setLineDash" in ctx) ctx.setLineDash([5]);
+      ctx.strokeStyle = "#ccc";
+      ctx.beginPath();
+      ctx.moveTo(view_width - 6, y);
+      ctx.lineTo(0, y);
+      ctx.stroke();
+    }
 
-	if ('setLineDash' in ctx)
-		ctx.setLineDash([]);
+    if ("setLineDash" in ctx) ctx.setLineDash([]);
 
-	// plot all the graphs
-	for (var k in graphs)
-	{
-		var g = graphs[k];
+    // plot all the graphs
+    for (var k in graphs) {
+      var g = graphs[k];
 
-		ctx.strokeStyle = g.color;
-		var first = true;
-		ctx.beginPath();
-		for (var i in data)
-		{
-			var time = data[i].time;
-			var y = data[i][g.name] * multiplier;
-			if (typeof(y) == 'undefined') continue;
-   
-			if (first)
-			{
-				ctx.moveTo((time - start_time) * scalex, view_height - y * scaley);
-				first = false;
-			}
-			else
-			{
-				ctx.lineTo((time - start_time) * scalex, view_height - y * scaley);
-			}
-		}
-		ctx.stroke();
-	}
+      ctx.strokeStyle = g.color;
+      var first = true;
+      ctx.beginPath();
+      for (var i in data) {
+        var time = data[i].time;
+        var y = data[i][g.name] * multiplier;
+        if (typeof y == "undefined") continue;
 
-	if (use_legend)
-	{
-		ctx.font = 'normal 12pt Calibri';
-		var legend_width = 0;
-		for (var k in graphs)
-		{
-			g = graphs[k];
-			var label;
-			if (g.label) label = g.label;
-			else label = g.name;
-			legend_width = Math.floor(Math.max(legend_width, ctx.measureText(label).width));
-		}
+        if (first) {
+          ctx.moveTo((time - start_time) * scalex, view_height - y * scaley);
+          first = false;
+        } else {
+          ctx.lineTo((time - start_time) * scalex, view_height - y * scaley);
+        }
+      }
+      ctx.stroke();
+    }
 
-		var offset = 15;
-		ctx.fillStyle = 'rgba(255,255,255,0.7)';
-		ctx.strokeStyle = 'black';
-		ctx.fillRect(4, offset - 9, 24 + legend_width, graphs.length * 16 + 2);
-		ctx.strokeRect(4, offset - 9, 24 + legend_width, graphs.length * 16 + 2);
-		ctx.fillStyle = 'black';
+    if (use_legend) {
+      ctx.font = "normal 12pt Calibri";
+      var legend_width = 0;
+      for (var k in graphs) {
+        g = graphs[k];
+        var label;
+        if (g.label) label = g.label;
+        else label = g.name;
+        legend_width = Math.floor(
+          Math.max(legend_width, ctx.measureText(label).width),
+        );
+      }
 
-		// in order to have our lines properly pixel aligned
-		// we need to add 0.5 to the offset when we double the
-		// line width
-		ctx.lineWidth = 2;
-		offset += 0.5;
+      var offset = 15;
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.strokeStyle = "black";
+      ctx.fillRect(4, offset - 9, 24 + legend_width, graphs.length * 16 + 2);
+      ctx.strokeRect(4, offset - 9, 24 + legend_width, graphs.length * 16 + 2);
+      ctx.fillStyle = "black";
 
-		for (var k in graphs)
-		{
-			g = graphs[k];
-			var label;
-			if (g.label) label = g.label;
-			else label = g.name;
+      // in order to have our lines properly pixel aligned
+      // we need to add 0.5 to the offset when we double the
+      // line width
+      ctx.lineWidth = 2;
+      offset += 0.5;
 
-			ctx.strokeStyle = g.color;
-			ctx.beginPath();
-			ctx.moveTo(7.5, offset);
-			ctx.lineTo(20.5, offset);
-			ctx.stroke();
+      for (var k in graphs) {
+        g = graphs[k];
+        var label;
+        if (g.label) label = g.label;
+        else label = g.name;
 
-			ctx.fillText(label, 23, offset + 4);
-			offset += 16;
-		}
-	}
-	ctx.restore();
-}
+        ctx.strokeStyle = g.color;
+        ctx.beginPath();
+        ctx.moveTo(7.5, offset);
+        ctx.lineTo(20.5, offset);
+        ctx.stroke();
 
-window['render_graph'] = render_graph;
+        ctx.fillText(label, 23, offset + 4);
+        offset += 16;
+      }
+    }
+    ctx.restore();
+  }
 
+  window["render_graph"] = render_graph;
 })();
-

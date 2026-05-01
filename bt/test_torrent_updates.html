@@ -1,105 +1,128 @@
-<!DOCTYPE html>
+<!doctype html>
 <meta charset="utf-8" />
 <html>
-<head>
-<title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
-<script language="javascript" type="text/javascript">
-/* global libtorrent_connection, fields */
-'use strict';
+  <head>
+    <title>libtorrent websocket test</title>
+    <script
+      language="javascript"
+      type="text/javascript"
+      src="libtorrent-webui.js"
+    ></script>
+    <script language="javascript" type="text/javascript">
+      /* global libtorrent_connection, fields */
+      "use strict";
 
-var conn = null;
+      var conn = null;
 
-var update_torrent_list = function(updates)
-{
-	if (typeof(updates) === 'string')
-	{
-		console.log("ERROR: " + updates);
-		return;
-	}
+      var update_torrent_list = function (updates) {
+        if (typeof updates === "string") {
+          console.log("ERROR: " + updates);
+          return;
+        }
 
-	// clear classes on all cells
-	var table = document.getElementById('torrents');
-	var rows = table.rows;
-	for (var i = 0; i < rows.length; ++i)
-	{
-		var r = rows[i];
-		var cells = r.cells;
-		for (var j = 0; j < cells.length; ++j)
-		{
-			cells[j].className = "";
-		}
-	}
+        // clear classes on all cells
+        var table = document.getElementById("torrents");
+        var rows = table.rows;
+        for (var i = 0; i < rows.length; ++i) {
+          var r = rows[i];
+          var cells = r.cells;
+          for (var j = 0; j < cells.length; ++j) {
+            cells[j].className = "";
+          }
+        }
 
-	for (var ih in updates)
-	{
-		var t = updates[ih];
-		if (ih == 'removed')
-		{
-			var removed_torrents = updates[ih];
-			for (var i in removed_torrents)
-			{
-				var row = document.getElementById(removed_torrents[i]);
-				row.parentNode.removeChild(row);
-			}
-			continue;
-		}
-		var row = document.getElementById(ih);
+        for (var ih in updates) {
+          var t = updates[ih];
+          if (ih == "removed") {
+            var removed_torrents = updates[ih];
+            for (var i in removed_torrents) {
+              var row = document.getElementById(removed_torrents[i]);
+              row.parentNode.removeChild(row);
+            }
+            continue;
+          }
+          var row = document.getElementById(ih);
 
-		var field_map = {
-			'name': 1,
-			'progress': 2,
-			'download-rate': 3,
-			'upload-rate': 4,
-			'connected-peers': 5,
-			'error': 6,
-			'flags': 7,
-			'state': 8,
-		};
+          var field_map = {
+            name: 1,
+            progress: 2,
+            "download-rate": 3,
+            "upload-rate": 4,
+            "connected-peers": 5,
+            error: 6,
+            flags: 7,
+            state: 8,
+          };
 
-		if (row == null)
-		{
-			row = table.insertRow(-1);
-			row.id = ih;
-			for (var j in field_map)
-				row.insertCell(0);
-			row.insertCell(0).innerHTML = '<a href="#" onclick="conn.start([\'' + ih + '\']); return false;">start</a> ' +
-				'<a href="#" onclick="conn.stop([\'' + ih + '\']); return false;\">stop</a>';
-		}
-		for (var field in t)
-		{
-			if (!field_map.hasOwnProperty(field)) continue;
-			var cell = row.cells[field_map[field]];
-			cell.textContent = t[field];
-			cell.className = "updated";
-		}
-		console.log(t);
-	}
-};
+          if (row == null) {
+            row = table.insertRow(-1);
+            row.id = ih;
+            for (var j in field_map) row.insertCell(0);
+            row.insertCell(0).innerHTML =
+              '<a href="#" onclick="conn.start([\'' +
+              ih +
+              "']); return false;\">start</a> " +
+              '<a href="#" onclick="conn.stop([\'' +
+              ih +
+              "']); return false;\">stop</a>";
+          }
+          for (var field in t) {
+            if (!field_map.hasOwnProperty(field)) continue;
+            var cell = row.cells[field_map[field]];
+            cell.textContent = t[field];
+            cell.className = "updated";
+          }
+          console.log(t);
+        }
+      };
 
-window.onload = function() {
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+      window.onload = function () {
+        var url = "wss://" + window.location.host + "/bt/control";
+        conn = new libtorrent_connection(url, function (state) {
+          if (state != "OK") {
+            console.log(state);
+            return;
+          }
 
-		window.setInterval(function()
-		{
-			conn.get_updates(fields.name | fields.download_rate | fields.upload_rate | fields.connected_peers | fields.error | fields.progress | fields.flags | fields.state, update_torrent_list);
-		}, 1000);
-
-	});
-};
-</script>
-<style>.updated { background-color: #faa; }</style>
-</head>
-<body>
-<table id="torrents" border="1" style="border-collapse: collapse; border-color: black;">
-<tr><th>controls</th><th>Name</th><th>Progress</th><th>Download rate</th><th>Upload rate</th><th>Peers</th><th>Error</th><th>flags</th><th>state</th></tr>
-</table>
-</body>
+          window.setInterval(function () {
+            conn.get_updates(
+              fields.name |
+                fields.download_rate |
+                fields.upload_rate |
+                fields.connected_peers |
+                fields.error |
+                fields.progress |
+                fields.flags |
+                fields.state,
+              update_torrent_list,
+            );
+          }, 1000);
+        });
+      };
+    </script>
+    <style>
+      .updated {
+        background-color: #faa;
+      }
+    </style>
+  </head>
+  <body>
+    <table
+      id="torrents"
+      border="1"
+      style="border-collapse: collapse; border-color: black"
+    >
+      <tr>
+        <th>controls</th>
+        <th>Name</th>
+        <th>Progress</th>
+        <th>Download rate</th>
+        <th>Upload rate</th>
+        <th>Peers</th>
+        <th>Error</th>
+        <th>flags</th>
+        <th>state</th>
+      </tr>
+    </table>
+  </body>
 </html>
-

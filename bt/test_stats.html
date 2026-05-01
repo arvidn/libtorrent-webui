@@ -1,113 +1,134 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<meta charset="utf-8" />
-<head>
-<title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
-<script language="javascript" type="text/javascript">
-/* global libtorrent_connection */
-'use strict';
+  <meta charset="utf-8" />
+  <head>
+    <title>libtorrent websocket test</title>
+    <script
+      language="javascript"
+      type="text/javascript"
+      src="libtorrent-webui.js"
+    ></script>
+    <script language="javascript" type="text/javascript">
+      /* global libtorrent_connection */
+      "use strict";
 
-var conn = null;
+      var conn = null;
 
-var all_stats = [];
+      var all_stats = [];
 
-var on_stats = function(updates)
-{
-	if (typeof(updates) === 'string')
-	{
-		console.log("ERROR: " + updates);
-		return;
-	}
+      var on_stats = function (updates) {
+        if (typeof updates === "string") {
+          console.log("ERROR: " + updates);
+          return;
+        }
 
-	var table = []
-	table.push(document.getElementById('stats1'));
-	table.push(document.getElementById('stats2'));
-	table.push(document.getElementById('stats3'));
-	table.push(document.getElementById('stats4'));
-	table.push(document.getElementById('stats5'));
-	for (var j in table)
-	{
-		var rows = table[j].rows;
-		for (var i = 0; i < rows.length; ++i)
-		{
-			var r = rows[i];
-			var cells = r.cells;
-			cells[0].className = "statValue";
-		}
-	}
+        var table = [];
+        table.push(document.getElementById("stats1"));
+        table.push(document.getElementById("stats2"));
+        table.push(document.getElementById("stats3"));
+        table.push(document.getElementById("stats4"));
+        table.push(document.getElementById("stats5"));
+        for (var j in table) {
+          var rows = table[j].rows;
+          for (var i = 0; i < rows.length; ++i) {
+            var r = rows[i];
+            var cells = r.cells;
+            cells[0].className = "statValue";
+          }
+        }
 
-	for (i in updates)
-	{
-		var row = document.getElementById(i);
-		if (row == null) continue;
-		row.cells[0].textContent = updates[i];
-		row.cells[0].className = "updated";
-	}
-};
+        for (i in updates) {
+          var row = document.getElementById(i);
+          if (row == null) continue;
+          row.cells[0].textContent = updates[i];
+          row.cells[0].className = "updated";
+        }
+      };
 
-window.onload = function() {
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+      window.onload = function () {
+        var url = "wss://" + window.location.host + "/bt/control";
+        conn = new libtorrent_connection(url, function (state) {
+          if (state != "OK") {
+            console.log(state);
+            return;
+          }
 
-		conn.list_stats(function(stats)
-		{
-			var table = []
-			table.push(document.getElementById('stats1'));
-			table.push(document.getElementById('stats2'));
-			table.push(document.getElementById('stats3'));
-			table.push(document.getElementById('stats4'));
-			table.push(document.getElementById('stats5'));
-			var i = 0;
-			for (var s in stats)
-			{
-				var row = table[Math.floor(i/60)].insertRow(-1);
-				row.id = s;
-				// always assume 0 until a get_stats says differently
-				const value_cell = row.insertCell(0);
-				value_cell.textContent = '0';
-				value_cell.className = "statValue";
-				row.insertCell(1).textContent = s + (stats[s].type == 0 ? ' (c)' : ' (g)');
+          conn.list_stats(function (stats) {
+            var table = [];
+            table.push(document.getElementById("stats1"));
+            table.push(document.getElementById("stats2"));
+            table.push(document.getElementById("stats3"));
+            table.push(document.getElementById("stats4"));
+            table.push(document.getElementById("stats5"));
+            var i = 0;
+            for (var s in stats) {
+              var row = table[Math.floor(i / 60)].insertRow(-1);
+              row.id = s;
+              // always assume 0 until a get_stats says differently
+              const value_cell = row.insertCell(0);
+              value_cell.textContent = "0";
+              value_cell.className = "statValue";
+              row.insertCell(1).textContent =
+                s + (stats[s].type == 0 ? " (c)" : " (g)");
 
-				all_stats.push(stats[s].id);
-				++i;
-			}
+              all_stats.push(stats[s].id);
+              ++i;
+            }
 
-			window.setInterval(function()
-			{
-				conn.get_stats(all_stats, on_stats);
-			}, 500);
-		});
-	});
-};
-</script>
-<style>
-.updated { background-color: #faa; text-align: right; }
-.statValue { text-align: right; }
-.statTable { vertical-align: top; border: none; border-collapse: collapse; border-color: black; display: inline-block; }
-</style>
-</head>
-<body>
-<table id="stats1" class="statTable">
-<tr><th>Value</th><th style="text-align: left">Metric</th></tr>
-</table>
-<table id="stats2" class="statTable">
-<tr><th>Value</th><th style="text-align: left">Metric</th></tr>
-</table>
-<table id="stats3" class="statTable">
-<tr><th>Value</th><th style="text-align: left">Metric</th></tr>
-</table>
-<table id="stats4" class="statTable">
-<tr><th>Value</th><th style="text-align: left">Metric</th></tr>
-</table>
-<table id="stats5" class="statTable">
-<tr><th>Value</th><th style="text-align: left">Metric</th></tr>
-</table>
-</body>
+            window.setInterval(function () {
+              conn.get_stats(all_stats, on_stats);
+            }, 500);
+          });
+        });
+      };
+    </script>
+    <style>
+      .updated {
+        background-color: #faa;
+        text-align: right;
+      }
+      .statValue {
+        text-align: right;
+      }
+      .statTable {
+        vertical-align: top;
+        border: none;
+        border-collapse: collapse;
+        border-color: black;
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <table id="stats1" class="statTable">
+      <tr>
+        <th>Value</th>
+        <th style="text-align: left">Metric</th>
+      </tr>
+    </table>
+    <table id="stats2" class="statTable">
+      <tr>
+        <th>Value</th>
+        <th style="text-align: left">Metric</th>
+      </tr>
+    </table>
+    <table id="stats3" class="statTable">
+      <tr>
+        <th>Value</th>
+        <th style="text-align: left">Metric</th>
+      </tr>
+    </table>
+    <table id="stats4" class="statTable">
+      <tr>
+        <th>Value</th>
+        <th style="text-align: left">Metric</th>
+      </tr>
+    </table>
+    <table id="stats5" class="statTable">
+      <tr>
+        <th>Value</th>
+        <th style="text-align: left">Metric</th>
+      </tr>
+    </table>
+  </body>
 </html>
-

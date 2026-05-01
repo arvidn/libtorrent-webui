@@ -1,96 +1,96 @@
-<!DOCTYPE html>
+<!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
-<script language="javascript" type="text/javascript" src="libtorrent-graph.js"></script>
+<script
+  language="javascript"
+  type="text/javascript"
+  src="libtorrent-webui.js"
+></script>
+<script
+  language="javascript"
+  type="text/javascript"
+  src="libtorrent-graph.js"
+></script>
 <script language="javascript" type="text/javascript">
-/* global libtorrent_connection, render_graph */
-'use strict';
+  /* global libtorrent_connection, render_graph */
+  "use strict";
 
-var conn = null;
+  var conn = null;
 
-var first_time = new Date().getTime();
+  var first_time = new Date().getTime();
 
-var data = [];
+  var data = [];
 
-var all_stats = [];
-var all_names = [];
+  var all_stats = [];
+  var all_names = [];
 
-var on_stats = function(updates)
-{
-	if (typeof(updates) === 'string')
-	{
-		console.log("ERROR: " + updates);
-		return;
-	}
+  var on_stats = function (updates) {
+    if (typeof updates === "string") {
+      console.log("ERROR: " + updates);
+      return;
+    }
 
-	var now = new Date().getTime() - first_time;
-	var start_time = now - 500 * 1000;
+    var now = new Date().getTime() - first_time;
+    var start_time = now - 500 * 1000;
 
-	var data_point = {};
-	if (data.length > 0)
-	{
-		// if there is a previous data point
-		// copy all values from it
-		var last = data[data.length-1];
-		for (var i in last)
-		{
-			data_point[i] = last[i];
-		}
-	}
+    var data_point = {};
+    if (data.length > 0) {
+      // if there is a previous data point
+      // copy all values from it
+      var last = data[data.length - 1];
+      for (var i in last) {
+        data_point[i] = last[i];
+      }
+    }
 
-	data_point['time'] = now;
+    data_point["time"] = now;
 
-	for (var i in updates)
-	{
-		data_point[i] = updates[i];
-	}
-	data.push(data_point);
+    for (var i in updates) {
+      data_point[i] = updates[i];
+    }
+    data.push(data_point);
 
-	// remove data points that are too old, except
-	// keep one so that we can draw a line from there to
-	// the next point within the window
-	var prune = 0;
-	while (prune < data.length && data[prune].time < start_time)
-		++prune;
-	if (prune > 1) data.splice(0, prune-1);
+    // remove data points that are too old, except
+    // keep one so that we can draw a line from there to
+    // the next point within the window
+    var prune = 0;
+    while (prune < data.length && data[prune].time < start_time) ++prune;
+    if (prune > 1) data.splice(0, prune - 1);
 
-	for (var s in all_names)
-	{
-		var defs = [{ name: all_names[s], color: '#e44' }];
-		render_graph(all_names[s], data, defs, start_time, now, '', 'auto');
-	}
-};
+    for (var s in all_names) {
+      var defs = [{ name: all_names[s], color: "#e44" }];
+      render_graph(all_names[s], data, defs, start_time, now, "", "auto");
+    }
+  };
 
-window.onload = function() {
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
 
-		conn.list_stats(function(stats)
-		{
-			var graphs = document.getElementById('graph_container');
-			for (var s in stats)
-			{
-				graphs.innerHTML += '<div style="display: inline-block; border:1px solid black;">' + s + '<br/><canvas id="' + s + '" width="300" height="200"/></div>'
-				all_stats.push(stats[s].id);
-				all_names.push(s);
-			}
+      conn.list_stats(function (stats) {
+        var graphs = document.getElementById("graph_container");
+        for (var s in stats) {
+          graphs.innerHTML +=
+            '<div style="display: inline-block; border:1px solid black;">' +
+            s +
+            '<br/><canvas id="' +
+            s +
+            '" width="300" height="200"/></div>';
+          all_stats.push(stats[s].id);
+          all_names.push(s);
+        }
 
-			window.setInterval(function()
-			{
-				conn.get_stats(all_stats, on_stats);
-			}, 2000);
-		});
-	});
-};
+        window.setInterval(function () {
+          conn.get_stats(all_stats, on_stats);
+        }, 2000);
+      });
+    });
+  };
 </script>
 <body>
-<div id='graph_container'></div>
+  <div id="graph_container"></div>
 </body>
-</html>
-
