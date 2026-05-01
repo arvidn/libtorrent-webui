@@ -10,14 +10,20 @@ see LICENSE file.
 #ifndef LTWEB_PERM_INTERFACE_HPP
 #define LTWEB_PERM_INTERFACE_HPP
 
+#include <cctype>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
+
+#include "base64.hpp"
 
 namespace ltweb {
 
 /**
-		This is the interface an object need to implement in order
-		to specify custom access permissions.
-	*/
+	This is the interface an object need to implement in order
+	to specify custom access permissions.
+*/
 struct permissions_interface {
 	/// If returning true, the user may start torrents
 	virtual bool allow_start() const = 0;
@@ -49,13 +55,13 @@ struct permissions_interface {
 	virtual bool allow_queue_change() const = 0;
 
 	/// If returning true, the user may GET the specified setting
-	/// \param name is the constant used in lt::settings_pack
-	/// or -1 for settings that don't fit a libtorrent setting
+	/// name is the constant used in lt::settings_pack or -1 for
+	/// settings that don't fit a libtorrent setting
 	virtual bool allow_get_settings(int name) const = 0;
 
 	/// If returning true, the user may SET the specified setting
-	/// \param name is the constant used in lt::settings_pack
-	/// or -1 for settings that don't fit a libtorrent setting
+	/// name is the constant used in lt::settings_pack or -1 for
+	/// settings that don't fit a libtorrent setting
 	virtual bool allow_set_settings(int name) const = 0;
 
 	/// If returning true, the user may download the content of torrents
@@ -68,17 +74,68 @@ struct permissions_interface {
 };
 
 /**
-		The interface to an authentication module. This plugs into web interfaces
-		to authenticate users and determine their access permissions. The two main
-		implementations are auth and pam_auth.
-	*/
+  The interface to an authentication module. This plugs into web
+  interfaces to authenticate requests and determine their access
+  permissions. Implementations decide which schemes are honored
+  (session cookies, HTTP Basic, etc) by inspecting the two header
+  values passed in.
+
+  The header strings are passed in already extracted, so this
+  interface stays transport-agnostic and avoids depending on Beast.
+
+	session_cookie: value of the session cookie, or empty if absent.
+	authorization:  value of the Authorization header, or empty.
+
+	Returns the permissions for the authenticated request, or nullptr
+	if authentication failed.
+*/
 struct auth_interface {
-	/// finds an appropriate permissions objects for the given account.
-	/// \return the persmissions object for the specified
-	/// account, or NULL in case authentication fails.
 	virtual permissions_interface const*
-	find_user(std::string username, std::string password) const = 0;
+	authenticate(std::string_view session_cookie, std::string_view authorization) const = 0;
 };
+
+// A directory of user accounts. Implementations look up the username,
+// verify the password (typically against a salted hash), and return
+// the user's group number on success. std::nullopt means the account
+// does not exist or the password is wrong - callers should not
+// distinguish between the two, to avoid leaking whether a username
+// exists.
+struct user_account {
+	virtual std::optional<int>
+	verify(std::string_view username, std::string_view password) const = 0;
+};
+
+// Helper for implementations of auth_interface that support HTTP
+// Basic Auth. Parses "Basic <base64(user:pass)>" from an
+// Authorization header value and returns the decoded (user, pwd)
+// pair. Returns ("", "") when the header is empty or uses any
+// other scheme - implementations typically treat that as anonymous
+// and dispatch on whether such access is allowed.
+inline std::pair<std::string, std::string> parse_basic_auth(std::string_view authorization)
+{
+	// Strip leading whitespace; HTTP parsers usually do this but we
+	// cannot assume it for an arbitrary string_view.
+	while (!authorization.empty() && (authorization.front() == ' ' || authorization.front() == '\t')
+	)
+		authorization.remove_prefix(1);
+
+	// Case-insensitive check for "basic" followed by whitespace.
+	if (authorization.size() < 6) return {};
+	static constexpr char tag[] = "basic";
+	for (int i = 0; i < 5; ++i)
+		if (std::tolower(static_cast<unsigned char>(authorization[i])) != tag[i]) return {};
+	if (authorization[5] != ' ' && authorization[5] != '\t') return {};
+
+	authorization.remove_prefix(5);
+	while (!authorization.empty() && (authorization.front() == ' ' || authorization.front() == '\t')
+	)
+		authorization.remove_prefix(1);
+
+	std::string cred = base64decode(std::string(authorization));
+	auto const colon = cred.find(':');
+	if (colon == std::string::npos) return {std::move(cred), {}};
+	return {cred.substr(0, colon), cred.substr(colon + 1)};
+}
 
 /// an implementation of permissions_interface that reject all access
 struct no_permissions : permissions_interface {

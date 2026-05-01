@@ -25,7 +25,7 @@ see LICENSE file.
 #include "libtorrent/hasher.hpp"
 #include "libtorrent/announce_entry.hpp"
 
-#include "auth.hpp"
+#include "parse_http_auth.hpp"
 #include "save_settings.hpp"
 #include "torrent_history.hpp"
 #include "websocket_conn.hpp"
@@ -266,11 +266,13 @@ libtorrent_webui::libtorrent_webui(
 	torrent_history const& hist,
 	auth_interface const& auth,
 	alert_handler& alert,
-	save_settings_interface& sett
+	save_settings_interface& sett,
+	std::string login_url
 )
 	: m_ses(ses)
 	, m_hist(hist)
 	, m_auth(auth)
+	, m_login_url(std::move(login_url))
 	, m_alert(alert)
 	, m_settings(sett)
 {
@@ -294,9 +296,18 @@ void libtorrent_webui::handle_http(
 )
 {
 	// authenticate
-	permissions_interface const* perms = parse_http_auth(request, &m_auth);
-	if (!perms)
-		return send_http(socket, std::move(done), http_error(request, http::status::unauthorized));
+	permissions_interface const* perms = parse_http_auth(request, m_auth);
+	if (!perms) {
+		// Unauthenticated: redirect to the login page rather than
+		// returning an HTTP error. For browser navigation this lands
+		// the user on the login form; for WebSocket upgrade attempts
+		// the redirect terminates the upgrade and the JS client can
+		// follow up by navigating to the login page.
+		http::response<http::empty_body> res{http::status::see_other, request.version()};
+		res.set(http::field::location, m_login_url);
+		res.keep_alive(request.keep_alive());
+		return send_http(socket, std::move(done), std::move(res));
+	}
 
 	// we only provide access to /bt/control
 	if (request.target() != "/bt/control"_sv)

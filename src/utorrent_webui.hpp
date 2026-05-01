@@ -31,6 +31,7 @@ struct utorrent_webui : http_handler {
 		save_settings_interface& sett,
 		torrent_history& hist,
 		auth_interface const& auth,
+		std::string login_url,
 		auto_load* al = nullptr
 	);
 	~utorrent_webui();
@@ -87,6 +88,7 @@ private:
 	std::string m_webui_cookie;
 
 	auth_interface const& m_auth;
+	std::string m_login_url;
 
 	save_settings_interface& m_settings;
 

@@ -32,8 +32,12 @@ SOURCES =
 	save_resume
 	torrent_history
 	piece_history
-	auth
 	no_auth
+	session_authenticator
+	sqlite_user_account
+	parse_http_auth
+	login
+	login_throttler
 	load_config
 	error_logger
 	websocket_conn
@@ -78,6 +82,6 @@ lib dynamic-linker : : <name>dl <link>shared ;
 exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>20 ;
 install stage_webui_test : webui_test : <location>. ;
 
-exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>20 ;
+exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <library>sqlite <cxxstd>20 ;
 install stage_add_user : add_user : <location>. ;
 

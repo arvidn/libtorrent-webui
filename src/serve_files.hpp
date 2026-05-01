@@ -19,6 +19,7 @@ see LICENSE file.
 #include <boost/beast/http.hpp>
 
 #include "webui.hpp" // for http_handler
+#include "auth_interface.hpp"
 
 namespace ltweb {
 
@@ -39,8 +40,17 @@ resolve_served_path(std::filesystem::path const& root, std::filesystem::path con
 
 } // namespace aux
 
+// HTTP handler that serves static files from root_directory under the
+// given path prefix. Every request is authenticated via the supplied
+// auth_interface; on failure the response is 303 See Other to
+// login_url.
 struct serve_files : http_handler {
-	serve_files(std::string_view prefix, std::string_view root_directory);
+	serve_files(
+		std::string_view prefix,
+		std::string_view root_directory,
+		auth_interface const& auth,
+		std::string login_url
+	);
 
 	std::string path_prefix() const override;
 
@@ -53,6 +63,8 @@ struct serve_files : http_handler {
 private:
 	std::filesystem::path m_root;
 	std::string m_prefix;
+	auth_interface const& m_auth;
+	std::string m_login_url;
 };
 
 } // namespace ltweb

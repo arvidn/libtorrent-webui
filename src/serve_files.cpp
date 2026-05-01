@@ -17,6 +17,7 @@ see LICENSE file.
 
 #include "serve_files.hpp"
 #include "mime_type.hpp"
+#include "parse_http_auth.hpp"
 
 using boost::algorithm::contains;
 namespace fs = std::filesystem;
@@ -52,11 +53,18 @@ std::optional<fs::path> resolve_served_path(fs::path const& root, fs::path const
 
 } // namespace aux
 
-serve_files::serve_files(std::string_view prefix, std::string_view root_directory)
+serve_files::serve_files(
+	std::string_view prefix,
+	std::string_view root_directory,
+	auth_interface const& auth,
+	std::string login_url
+)
 	: m_root(fs::weakly_canonical(
 		  fs::path(root_directory.empty() ? std::string_view(".") : root_directory)
 	  ))
 	, m_prefix(prefix)
+	, m_auth(auth)
+	, m_login_url(std::move(login_url))
 {
 	if (m_prefix.empty() || m_prefix.back() != '/') m_prefix += '/';
 
@@ -79,6 +87,14 @@ void serve_files::handle_http(
 		return send_http(
 			socket, std::move(done), http_error(request, http::status::method_not_allowed)
 		);
+	}
+
+	permissions_interface const* perms = parse_http_auth(request, m_auth);
+	if (!perms) {
+		http::response<http::empty_body> res{http::status::see_other, request.version()};
+		res.set(http::field::location, m_login_url);
+		res.keep_alive(request.keep_alive());
+		return send_http(socket, std::move(done), std::move(res));
 	}
 
 	if (request.target().size() < m_prefix.size())

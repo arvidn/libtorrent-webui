@@ -10,8 +10,8 @@ see LICENSE file.
 #include "utorrent_webui.hpp"
 #include "disk_space.hpp"
 #include "base64.hpp"
-#include "auth.hpp"
-#include "no_auth.hpp"
+#include "auth_interface.hpp"
+#include "parse_http_auth.hpp"
 #include "hex.hpp"
 #include "utils.hpp" // for str()
 
@@ -48,10 +48,12 @@ utorrent_webui::utorrent_webui(
 	save_settings_interface& sett,
 	torrent_history& hist,
 	auth_interface const& auth,
+	std::string login_url,
 	auto_load* al
 )
 	: m_ses(s)
 	, m_auth(auth)
+	, m_login_url(std::move(login_url))
 	, m_settings(sett)
 	//	, m_rss_filter(rss_filter)
 	, m_hist(hist)
@@ -180,10 +182,12 @@ void utorrent_webui::handle_http(
 		return;
 	}
 
-	permissions_interface const* perms = parse_http_auth(request, &m_auth);
+	permissions_interface const* perms = parse_http_auth(request, m_auth);
 	if (!perms) {
-		http::response<http::empty_body> res{http::status::unauthorized, request.version()};
-		res.set(http::field::www_authenticate, "Basic realm=\"BitTorrent\"");
+		// Unauthenticated: redirect to the login page rather than
+		// returning an HTTP error.
+		http::response<http::empty_body> res{http::status::see_other, request.version()};
+		res.set(http::field::location, m_login_url);
 		res.keep_alive(request.keep_alive());
 		send_http(socket, done, std::move(res));
 		return;
