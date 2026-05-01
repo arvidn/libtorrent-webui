@@ -67,6 +67,12 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
 		return m_stopped;
 	}
 
+	void cancel()
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		abort();
+	}
+
 	void set_piece_deadlines()
 	{
 		std::lock_guard<std::mutex> l(m_mutex);
@@ -280,6 +286,18 @@ file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_inte
 }
 
 file_downloader::~file_downloader() { m_alert->unsubscribe(this); }
+
+void file_downloader::shutdown()
+{
+	std::vector<std::shared_ptr<file_request_conn>> conns;
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		for (auto& [_, conn] : m_outstanding_requests)
+			conns.push_back(conn);
+	}
+	for (auto& conn : conns)
+		conn->cancel();
+}
 
 std::string file_downloader::path_prefix() const { return "/download/"; }
 

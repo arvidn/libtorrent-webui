@@ -42,6 +42,8 @@ private:
 		std::function<void(bool)> done
 	) override;
 
+	void shutdown() override;
+
 	void handle_alert(lt::alert const* a) override;
 
 	lt::session& m_ses;
