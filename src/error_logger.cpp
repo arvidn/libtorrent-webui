@@ -160,6 +160,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					rs->error.value(),
 					rs->message().c_str()
 				);
+			break;
 		}
 		case lt::torrent_delete_failed_alert::alert_type: {
 			lt::torrent_delete_failed_alert const* td =
@@ -173,6 +174,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					td->error.value(),
 					td->message().c_str()
 				);
+			break;
 		}
 		case lt::storage_moved_failed_alert::alert_type: {
 			lt::storage_moved_failed_alert const* sm =
@@ -186,6 +188,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					sm->error.value(),
 					sm->message().c_str()
 				);
+			break;
 		}
 		case lt::file_rename_failed_alert::alert_type: {
 			lt::file_rename_failed_alert const* rn =
@@ -199,6 +202,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					rn->error.value(),
 					rn->message().c_str()
 				);
+			break;
 		}
 		case lt::torrent_error_alert::alert_type: {
 			lt::torrent_error_alert const* te = lt::alert_cast<lt::torrent_error_alert>(a);
@@ -211,11 +215,13 @@ void error_logger::handle_alert(lt::alert const* a)
 					te->error.value(),
 					te->message().c_str()
 				);
+			break;
 		}
 		case lt::hash_failed_alert::alert_type: {
 			lt::hash_failed_alert const* hf = lt::alert_cast<lt::hash_failed_alert>(a);
 			if (hf)
 				fprintf(m_file, "%s\thash-failed %s\n", timestamp.data(), hf->message().c_str());
+			break;
 		}
 		case lt::file_error_alert::alert_type: {
 			lt::file_error_alert const* fe = lt::alert_cast<lt::file_error_alert>(a);
@@ -228,6 +234,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					fe->error.value(),
 					fe->message().c_str()
 				);
+			break;
 		}
 		case lt::metadata_failed_alert::alert_type: {
 			lt::metadata_failed_alert const* mf = lt::alert_cast<lt::metadata_failed_alert>(a);
@@ -240,6 +247,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					mf->error.value(),
 					mf->message().c_str()
 				);
+			break;
 		}
 		case lt::udp_error_alert::alert_type: {
 			lt::udp_error_alert const* ue = lt::alert_cast<lt::udp_error_alert>(a);
@@ -253,6 +261,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					endpoint_str(ue->endpoint).c_str(),
 					ue->error.message().c_str()
 				);
+			break;
 		}
 		case lt::listen_failed_alert::alert_type: {
 			lt::listen_failed_alert const* lf = lt::alert_cast<lt::listen_failed_alert>(a);
@@ -265,6 +274,7 @@ void error_logger::handle_alert(lt::alert const* a)
 					lf->error.value(),
 					lf->message().c_str()
 				);
+			break;
 		}
 		case lt::invalid_request_alert::alert_type: {
 			lt::invalid_request_alert const* ira = lt::alert_cast<lt::invalid_request_alert>(a);
@@ -272,6 +282,7 @@ void error_logger::handle_alert(lt::alert const* a)
 				fprintf(
 					m_file, "%s\tinvalid-request %s\n", timestamp.data(), ira->message().c_str()
 				);
+			break;
 		}
 	}
 }
