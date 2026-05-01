@@ -10,8 +10,7 @@ see LICENSE file.
 #include "auth_interface.hpp"
 #include "no_auth.hpp"
 
-namespace ltweb
-{
+namespace ltweb {
 
 permissions_interface const* no_auth::find_user(std::string username, std::string password) const
 {
@@ -19,5 +18,4 @@ permissions_interface const* no_auth::find_user(std::string username, std::strin
 	return &full_perms;
 }
 
-}
-
+} // namespace ltweb

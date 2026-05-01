@@ -14,10 +14,8 @@ see LICENSE file.
 #include "libtorrent/fwd.hpp"
 #include "libtorrent/string_view.hpp"
 
-namespace ltweb
-{
-	std::string escape_json(lt::string_view in);
+namespace ltweb {
+std::string escape_json(lt::string_view in);
 }
 
 #endif
-

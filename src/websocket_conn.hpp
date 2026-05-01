@@ -29,11 +29,13 @@ struct permissions_interface;
 // TODO: make this an interface
 struct libtorrent_webui;
 
-struct websocket_conn : std::enable_shared_from_this<websocket_conn>
-{
-	websocket_conn(libtorrent_webui* parent, permissions_interface const* perms
-		, ws::stream<beast::ssl_stream<beast::tcp_stream>>&& conn
-		, std::function<void(bool)>&& done);
+struct websocket_conn : std::enable_shared_from_this<websocket_conn> {
+	websocket_conn(
+		libtorrent_webui* parent,
+		permissions_interface const* perms,
+		ws::stream<beast::ssl_stream<beast::tcp_stream>>&& conn,
+		std::function<void(bool)>&& done
+	);
 	~websocket_conn();
 
 	// TODO: this should take a span
@@ -44,7 +46,6 @@ struct websocket_conn : std::enable_shared_from_this<websocket_conn>
 	permissions_interface const* perms() const { return m_perms; }
 
 private:
-
 	void on_accept(beast::error_code const& ec);
 	void do_send();
 	void on_send(beast::error_code const& ec, std::size_t);
@@ -64,5 +65,5 @@ private:
 	bool m_stopping = false;
 };
 
-}
+} // namespace ltweb
 #endif

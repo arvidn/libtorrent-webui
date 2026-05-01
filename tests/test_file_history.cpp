@@ -26,8 +26,7 @@ namespace {
 lt::sha1_hash make_hash(unsigned char fill)
 {
 	lt::sha1_hash h;
-	std::memset(h.data(), static_cast<int>(fill),
-		static_cast<std::size_t>(lt::sha1_hash::size()));
+	std::memset(h.data(), static_cast<int>(fill), static_cast<std::size_t>(lt::sha1_hash::size()));
 	return h;
 }
 
@@ -35,8 +34,7 @@ lt::file_storage make_fs(int n)
 {
 	lt::file_storage fs;
 	for (int i = 0; i < n; ++i)
-		fs.add_file("file" + std::to_string(i) + ".bin",
-			static_cast<std::int64_t>(i + 1) * 1024);
+		fs.add_file("file" + std::to_string(i) + ".bin", static_cast<std::int64_t>(i + 1) * 1024);
 	return fs;
 }
 
@@ -160,11 +158,13 @@ BOOST_AUTO_TEST_CASE(priority_change_reported)
 	ltweb::file_history fh(make_hash(0x11), fs);
 
 	std::vector<lt::download_priority_t> p1 = {
-		lt::default_priority, lt::default_priority, lt::default_priority};
+		lt::default_priority, lt::default_priority, lt::default_priority
+	};
 	ltweb::frame_t f1 = fh.update(nullptr, &p1, nullptr);
 
 	std::vector<lt::download_priority_t> p2 = {
-		lt::default_priority, lt::download_priority_t(7), lt::default_priority};
+		lt::default_priority, lt::download_priority_t(7), lt::default_priority
+	};
 	fh.update(nullptr, &p2, nullptr);
 
 	auto const masks = fh.query(f1, 0x10u);
@@ -234,7 +234,8 @@ BOOST_AUTO_TEST_CASE(accessors_return_updated_values)
 
 	std::vector<std::int64_t> fp = {1000, 2000};
 	std::vector<lt::download_priority_t> prio = {
-		lt::download_priority_t(3), lt::download_priority_t(6)};
+		lt::download_priority_t(3), lt::download_priority_t(6)
+	};
 	std::vector<lt::open_file_state> om = {make_open(0, 0x04)};
 	fh.update(&fp, &prio, &om);
 

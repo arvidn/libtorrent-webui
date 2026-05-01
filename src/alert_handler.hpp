@@ -18,14 +18,12 @@ see LICENSE file.
 #include "libtorrent/fwd.hpp"
 #include "libtorrent/alert_types.hpp" // for num_alert_types
 
-namespace ltweb
-{
+namespace ltweb {
 
 struct alert_observer;
 
 // TODO: rename to alert_dispatcher
-struct TORRENT_EXPORT alert_handler
-{
+struct TORRENT_EXPORT alert_handler {
 	alert_handler(lt::session& ses);
 
 	// TODO 2: move the responsibility of picking which
@@ -41,7 +39,6 @@ struct TORRENT_EXPORT alert_handler
 	void abort();
 
 private:
-
 	void subscribe_impl(int const* type_list, int num_types, alert_observer* o, int flags);
 
 	std::array<std::vector<alert_observer*>, lt::num_alert_types> m_observers;
@@ -54,7 +51,6 @@ private:
 	lt::session& m_ses;
 };
 
-}
+} // namespace ltweb
 
 #endif // LTWEB_ALERT_HANDLER_HPP_INCLUDED
-

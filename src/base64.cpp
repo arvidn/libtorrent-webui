@@ -14,8 +14,7 @@ extern "C" {
 #include "cdecode.h"
 }
 
-namespace ltweb
-{
+namespace ltweb {
 
 std::string base64decode(std::string const& in)
 {
@@ -32,5 +31,4 @@ std::string base64decode(std::string const& in)
 	return ret;
 }
 
-}
-
+} // namespace ltweb

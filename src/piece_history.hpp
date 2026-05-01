@@ -10,9 +10,9 @@ see LICENSE file.
 #ifndef LTWEB_PIECE_HISTORY_HPP
 #define LTWEB_PIECE_HISTORY_HPP
 
-#include "torrent_history.hpp"       // frame_t
+#include "torrent_history.hpp" // frame_t
 #include "libtorrent/sha1_hash.hpp"
-#include "libtorrent/units.hpp"      // piece_index_t
+#include "libtorrent/units.hpp" // piece_index_t
 #include "libtorrent/torrent_handle.hpp" // partial_piece_info
 
 #include <vector>
@@ -22,24 +22,21 @@ see LICENSE file.
 
 namespace ltweb {
 
-struct block_history_entry
-{
+struct block_history_entry {
 	std::uint8_t state; // current block state (0-3)
-	frame_t      frame; // frame this block last changed
+	frame_t frame; // frame this block last changed
 };
 
-struct piece_history_entry
-{
-	lt::piece_index_t                piece_index;
-	std::vector<block_history_entry> blocks;      // one per block in piece
-	frame_t                          added_frame; // frame when this piece was added
+struct piece_history_entry {
+	lt::piece_index_t piece_index;
+	std::vector<block_history_entry> blocks; // one per block in piece
+	frame_t added_frame; // frame when this piece was added
 };
 
 // Tracks per-block state history for the pieces of a single downloading torrent.
 // Each instance is permanently associated with one info-hash; create a new
 // instance for a different torrent.
-struct piece_history
-{
+struct piece_history {
 	explicit piece_history(lt::sha1_hash const& ih, std::size_t max_tombstones = 1000);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
@@ -53,15 +50,13 @@ struct piece_history
 	// Increments the internal frame counter and returns the new frame.
 	frame_t update(std::vector<lt::partial_piece_info> const& pieces);
 
-	struct block_update
-	{
+	struct block_update {
 		lt::piece_index_t piece_index;
-		int               block_index;
-		std::uint8_t      state;
+		int block_index;
+		std::uint8_t state;
 	};
 
-	struct query_result
-	{
+	struct query_result {
 		// true when since_frame was 0 or was clamped to 0 due to horizon eviction.
 		bool is_snapshot = false;
 
@@ -101,10 +96,9 @@ private:
 	// ordered by piece_index for deterministic iteration
 	std::map<lt::piece_index_t, piece_history_entry> m_pieces;
 
-	struct removed_entry
-	{
-		frame_t           removed_frame;
-		frame_t           added_frame;
+	struct removed_entry {
+		frame_t removed_frame;
+		frame_t added_frame;
 		lt::piece_index_t piece_index;
 	};
 

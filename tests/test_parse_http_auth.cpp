@@ -22,8 +22,7 @@ namespace {
 
 // Mock auth_interface that records the last find_user() call and
 // returns a pre-configured permissions pointer.
-struct mock_auth : auth_interface
-{
+struct mock_auth : auth_interface {
 	// set before each call to control the return value
 	permissions_interface const* result = nullptr;
 
@@ -45,8 +44,7 @@ struct mock_auth : auth_interface
 http::request<http::string_body> make_request(char const* auth_value = nullptr)
 {
 	http::request<http::string_body> req{http::verb::get, "/", 11};
-	if (auth_value)
-		req.set(http::field::authorization, auth_value);
+	if (auth_value) req.set(http::field::authorization, auth_value);
 	return req;
 }
 

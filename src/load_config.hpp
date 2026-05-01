@@ -15,10 +15,8 @@ see LICENSE file.
 
 #include "libtorrent/fwd.hpp"
 
-namespace ltweb
-{
-	void load_config(std::string const& config_file, lt::settings_pack& pack, std::error_code& ec);
+namespace ltweb {
+void load_config(std::string const& config_file, lt::settings_pack& pack, std::error_code& ec);
 }
 
 #endif
-

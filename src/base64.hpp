@@ -12,10 +12,8 @@ see LICENSE file.
 
 #include <string>
 
-namespace ltweb
-{
-	std::string base64decode(std::string const& in);
+namespace ltweb {
+std::string base64decode(std::string const& in);
 }
 
 #endif
-

@@ -18,31 +18,31 @@ see LICENSE file.
 #include "escape_json.hpp"
 #include "libtorrent/assert.hpp"
 
-namespace ltweb
-{
+namespace ltweb {
 
 std::string escape_json(lt::string_view input)
 {
 	if (input.empty()) return "";
 	std::string ret;
-	for (auto const s : input)
-	{
+	for (auto const s : input) {
 		// char may be signed or unsigned, we don't know. So cast it before the
 		// comparison to make sure it's always correct
-		if (static_cast<unsigned char>(s) > 0x1f && static_cast<unsigned char>(s) < 0x80 && s != '"' && s != '\\')
-		{
+		if (static_cast<unsigned char>(s) > 0x1f && static_cast<unsigned char>(s) < 0x80 && s != '"'
+			&& s != '\\') {
 			ret += s;
-		}
-		else
-		{
+		} else {
 			ret += '\\';
-			switch(s)
-			{
-				case '"': ret += '"'; break;
-				case '\\': ret += '\\'; break;
-				case '\n': ret += '\n'; break;
-				default:
-				{
+			switch (s) {
+				case '"':
+					ret += '"';
+					break;
+				case '\\':
+					ret += '\\';
+					break;
+				case '\n':
+					ret += '\n';
+					break;
+				default: {
 					char buf[20];
 					snprintf(buf, sizeof(buf), "u%04x", std::uint16_t(s));
 					ret += buf;
@@ -53,5 +53,4 @@ std::string escape_json(lt::string_view input)
 	return ret;
 }
 
-}
-
+} // namespace ltweb

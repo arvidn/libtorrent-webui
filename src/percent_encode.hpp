@@ -28,12 +28,10 @@ inline std::string percent_encode(std::string_view s)
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"sv;
 	std::string out;
 	out.reserve(s.size());
-	for (unsigned char c : s)
-	{
+	for (unsigned char c : s) {
 		if (safe.find(c) != std::string_view::npos)
 			out += static_cast<char>(c);
-		else
-		{
+		else {
 			char buf[4];
 			std::snprintf(buf, sizeof(buf), "%%%02X", c);
 			out += buf;
