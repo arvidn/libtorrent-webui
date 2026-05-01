@@ -1194,10 +1194,10 @@ namespace {
 		for (std::uint32_t i = 0; i < n_updates; ++i)
 		{
 			auto const& u = r.updated[i];
-			lt::peer_info const& pi = u.entry->info;
+			lt::peer_info const& pi = u.info;
 			std::uint64_t const bitmask = u.field_mask;
 
-			write_uint32(u.entry->id, ptr);
+			write_uint32(u.id, ptr);
 			write_uint64(bitmask, ptr);
 
 			// field 0: flags - peer_flags_t

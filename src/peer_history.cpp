@@ -79,6 +79,17 @@ namespace {
 		}
 		return ret;
 	}
+
+	bool entry_less(peer_history_entry const& lhs, std::uint32_t const rhs)
+	{
+		return lhs.id < rhs;
+	}
+
+	peer_history::peer_update make_update(peer_history_entry const& entry
+		, std::uint64_t const field_mask)
+	{
+		return {entry.id, entry.info, field_mask};
+	}
 }
 
 peer_history::peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones)
@@ -104,9 +115,9 @@ frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
 
 	for (auto it = m_peers.begin(); it != m_peers.end(); )
 	{
-		if (incoming.count(it->first) == 0)
+		if (incoming.count(it->id) == 0)
 		{
-			m_removed.push_front({frame, it->second.added_frame, it->first});
+			m_removed.push_front({frame, it->added_frame, it->id});
 			it = m_peers.erase(it);
 		}
 		else
@@ -119,8 +130,11 @@ frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
 	{
 		std::uint32_t const id = s.first;
 		lt::peer_info const& pi = *s.second;
-		auto [it, inserted] = m_peers.emplace(id, peer_history_entry{});
-		peer_history_entry& entry = it->second;
+		auto it = std::lower_bound(m_peers.begin(), m_peers.end(), id, entry_less);
+		bool const inserted = it == m_peers.end() || it->id != id;
+		if (inserted)
+			it = m_peers.insert(it, peer_history_entry{});
+		peer_history_entry& entry = *it;
 
 		if (inserted)
 		{
@@ -160,11 +174,8 @@ peer_history::query_result peer_history::query(
 
 	if (result.is_snapshot)
 	{
-		for (auto const& [id, entry] : m_peers)
-		{
-			(void)id;
-			result.updated.push_back({&entry, requested_mask});
-		}
+		for (auto const& entry : m_peers)
+			result.updated.push_back(make_update(entry, requested_mask));
 		return result;
 	}
 
@@ -175,18 +186,17 @@ peer_history::query_result peer_history::query(
 			result.removed.push_back(e.id);
 	}
 
-	for (auto const& [id, entry] : m_peers)
+	for (auto const& entry : m_peers)
 	{
-		(void)id;
 		if (entry.added_frame > since_frame)
 		{
-			result.updated.push_back({&entry, requested_mask});
+			result.updated.push_back(make_update(entry, requested_mask));
 			continue;
 		}
 
 		std::uint64_t const field_mask = changed_fields(entry, since_frame, requested_mask);
 		if (field_mask != 0)
-			result.updated.push_back({&entry, field_mask});
+			result.updated.push_back(make_update(entry, field_mask));
 	}
 
 	return result;

@@ -17,7 +17,6 @@ see LICENSE file.
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <vector>
 
 namespace ltweb {
@@ -76,7 +75,8 @@ struct peer_history
 
 	struct peer_update
 	{
-		peer_history_entry const* entry;
+		std::uint32_t id;
+		lt::peer_info info;
 		std::uint64_t field_mask;
 	};
 
@@ -108,7 +108,7 @@ private:
 	std::size_t m_max_tombstones;
 
 	// ordered by peer identifier for deterministic iteration
-	std::map<std::uint32_t, peer_history_entry> m_peers;
+	std::vector<peer_history_entry> m_peers;
 
 	struct removed_entry
 	{

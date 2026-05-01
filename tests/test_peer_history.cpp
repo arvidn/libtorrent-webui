@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE(delta_returns_only_requested_changed_fields)
 			| (std::uint64_t(1) << ltweb::peer_history_entry::down_rate)
 			| (std::uint64_t(1) << ltweb::peer_history_entry::num_pieces);
 		BOOST_TEST(r.updated[0].field_mask == expected);
-		BOOST_TEST(r.updated[0].entry->info.client == "different-client");
+		BOOST_TEST(r.updated[0].info.client == "different-client");
 	}
 }
 
@@ -154,7 +154,7 @@ BOOST_AUTO_TEST_CASE(new_peer_is_sent_as_full_update)
 	if (!r.updated.empty())
 	{
 		BOOST_TEST(r.updated[0].field_mask == requested_mask);
-		BOOST_TEST(r.updated[0].entry->info.client == "client-2");
+		BOOST_TEST(r.updated[0].info.client == "client-2");
 	}
 }
 
@@ -178,7 +178,7 @@ BOOST_AUTO_TEST_CASE(new_peer_is_reported_even_with_zero_mask)
 	if (!r.updated.empty())
 	{
 		BOOST_TEST(r.updated[0].field_mask == 0u);
-		BOOST_TEST(r.updated[0].entry->info.client == "client-2");
+		BOOST_TEST(r.updated[0].info.client == "client-2");
 	}
 }
 
@@ -226,7 +226,7 @@ BOOST_AUTO_TEST_CASE(peer_reappears_after_removal)
 	if (!r.updated.empty())
 	{
 		BOOST_TEST(r.updated[0].field_mask == full_mask);
-		BOOST_TEST(r.updated[0].entry->info.client == "client-4-reconnected");
+		BOOST_TEST(r.updated[0].info.client == "client-4-reconnected");
 	}
 }
 
@@ -254,5 +254,5 @@ BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)
 	BOOST_TEST(r.removed.empty());
 	BOOST_TEST(r.updated.size() == 1u);
 	if (!r.updated.empty())
-		BOOST_TEST(r.updated[0].entry->info.client == "client-9");
+		BOOST_TEST(r.updated[0].info.client == "client-9");
 }
