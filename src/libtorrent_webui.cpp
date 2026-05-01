@@ -1093,8 +1093,11 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	std::shared_ptr<peer_history> history;
 	{
 		std::unique_lock<std::mutex> l(m_peer_mutex);
-		auto it = std::find_if(m_peer_histories.begin(), m_peer_histories.end(),
-			[&](std::shared_ptr<peer_history> const& ph) { return ph->info_hash() == ih; });
+		auto it = std::find_if(
+			m_peer_histories.begin(),
+			m_peer_histories.end(),
+			[&](std::shared_ptr<peer_history> const& ph) { return ph->info_hash() == ih; }
+		);
 		if (it != m_peer_histories.end()) {
 			history = *it;
 			m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);

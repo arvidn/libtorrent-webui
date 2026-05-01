@@ -10,7 +10,7 @@ see LICENSE file.
 #ifndef LTWEB_PEER_HISTORY_HPP
 #define LTWEB_PEER_HISTORY_HPP
 
-#include "torrent_history.hpp"       // frame_t
+#include "torrent_history.hpp" // frame_t
 #include "libtorrent/sha1_hash.hpp"
 #include "libtorrent/peer_info.hpp"
 
@@ -22,10 +22,8 @@ see LICENSE file.
 
 namespace ltweb {
 
-struct peer_history_entry
-{
-	enum
-	{
+struct peer_history_entry {
+	enum {
 		flags,
 		source,
 		read_state,
@@ -59,8 +57,7 @@ struct peer_history_entry
 
 // Tracks per-peer delta state for a single torrent.
 // Each instance is permanently associated with one info-hash.
-struct peer_history
-{
+struct peer_history {
 	explicit peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones = 1000);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
@@ -75,15 +72,13 @@ struct peer_history
 	// Always increments the internal frame counter and returns the new frame.
 	frame_t update(std::vector<lt::peer_info> const& peers);
 
-	struct peer_update
-	{
+	struct peer_update {
 		std::uint32_t id;
 		lt::peer_info info;
 		std::uint64_t field_mask;
 	};
 
-	struct query_result
-	{
+	struct query_result {
 		// true when since_frame was 0 or was clamped to 0 due to horizon eviction.
 		bool is_snapshot = false;
 
@@ -113,8 +108,7 @@ private:
 	// ordered by peer identifier for deterministic iteration
 	std::vector<peer_history_entry> m_peers;
 
-	struct removed_entry
-	{
+	struct removed_entry {
 		frame_t removed_frame;
 		frame_t added_frame;
 		std::uint32_t id;

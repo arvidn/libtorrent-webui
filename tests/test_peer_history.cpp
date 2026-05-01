@@ -50,8 +50,9 @@ lt::peer_info make_peer(int const tag)
 	pi.pieces.set_bit(lt::piece_index_t((tag % 8) + 8));
 
 	pi.set_endpoints(
-		lt::tcp::endpoint(lt::make_address_v4("192.0.2." + std::to_string(tag + 1)), 5000 + tag)
-		, lt::tcp::endpoint(lt::make_address_v4("198.51.100." + std::to_string(tag + 1)), 6000 + tag));
+		lt::tcp::endpoint(lt::make_address_v4("192.0.2." + std::to_string(tag + 1)), 5000 + tag),
+		lt::tcp::endpoint(lt::make_address_v4("198.51.100." + std::to_string(tag + 1)), 6000 + tag)
+	);
 
 	return pi;
 }
@@ -108,8 +109,7 @@ BOOST_AUTO_TEST_CASE(delta_returns_only_requested_changed_fields)
 	peers2[0].num_pieces += 1;
 	ph.update(peers2);
 
-	std::uint64_t const requested_mask =
-		(std::uint64_t(1) << ltweb::peer_history_entry::client)
+	std::uint64_t const requested_mask = (std::uint64_t(1) << ltweb::peer_history_entry::client)
 		| (std::uint64_t(1) << ltweb::peer_history_entry::down_rate)
 		| (std::uint64_t(1) << ltweb::peer_history_entry::num_pieces)
 		| (std::uint64_t(1) << ltweb::peer_history_entry::source);
@@ -119,10 +119,8 @@ BOOST_AUTO_TEST_CASE(delta_returns_only_requested_changed_fields)
 	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.updated.size() == 1u);
 	BOOST_TEST(r.removed.empty());
-	if (!r.updated.empty())
-	{
-		std::uint64_t const expected =
-			(std::uint64_t(1) << ltweb::peer_history_entry::client)
+	if (!r.updated.empty()) {
+		std::uint64_t const expected = (std::uint64_t(1) << ltweb::peer_history_entry::client)
 			| (std::uint64_t(1) << ltweb::peer_history_entry::down_rate)
 			| (std::uint64_t(1) << ltweb::peer_history_entry::num_pieces);
 		BOOST_TEST(r.updated[0].field_mask == expected);
@@ -141,8 +139,7 @@ BOOST_AUTO_TEST_CASE(new_peer_is_sent_as_full_update)
 	std::vector<lt::peer_info> peers2 = peers1;
 	peers2.push_back(make_peer(2));
 
-	std::uint64_t const requested_mask =
-		(std::uint64_t(1) << ltweb::peer_history_entry::flags)
+	std::uint64_t const requested_mask = (std::uint64_t(1) << ltweb::peer_history_entry::flags)
 		| (std::uint64_t(1) << ltweb::peer_history_entry::client);
 
 	ph.update(peers2);
@@ -151,8 +148,7 @@ BOOST_AUTO_TEST_CASE(new_peer_is_sent_as_full_update)
 	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.updated.size() == 1u);
 	BOOST_TEST(r.removed.empty());
-	if (!r.updated.empty())
-	{
+	if (!r.updated.empty()) {
 		BOOST_TEST(r.updated[0].field_mask == requested_mask);
 		BOOST_TEST(r.updated[0].info.client == "client-2");
 	}
@@ -175,8 +171,7 @@ BOOST_AUTO_TEST_CASE(new_peer_is_reported_even_with_zero_mask)
 	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.updated.size() == 1u);
 	BOOST_TEST(r.removed.empty());
-	if (!r.updated.empty())
-	{
+	if (!r.updated.empty()) {
 		BOOST_TEST(r.updated[0].field_mask == 0u);
 		BOOST_TEST(r.updated[0].info.client == "client-2");
 	}
@@ -223,8 +218,7 @@ BOOST_AUTO_TEST_CASE(peer_reappears_after_removal)
 	BOOST_TEST(!r.is_snapshot);
 	BOOST_TEST(r.removed.empty());
 	BOOST_TEST(r.updated.size() == 1u);
-	if (!r.updated.empty())
-	{
+	if (!r.updated.empty()) {
 		BOOST_TEST(r.updated[0].field_mask == full_mask);
 		BOOST_TEST(r.updated[0].info.client == "client-4-reconnected");
 	}
@@ -253,6 +247,5 @@ BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)
 	BOOST_TEST(r.is_snapshot);
 	BOOST_TEST(r.removed.empty());
 	BOOST_TEST(r.updated.size() == 1u);
-	if (!r.updated.empty())
-		BOOST_TEST(r.updated[0].info.client == "client-9");
+	if (!r.updated.empty()) BOOST_TEST(r.updated[0].info.client == "client-9");
 }

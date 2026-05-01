@@ -17,85 +17,74 @@ see LICENSE file.
 namespace ltweb {
 namespace {
 
-	std::uint32_t peer_identifier(lt::peer_info const& pi)
-	{
-		lt::hasher h;
-		h.update(pi.pid);
+std::uint32_t peer_identifier(lt::peer_info const& pi)
+{
+	lt::hasher h;
+	h.update(pi.pid);
 #if TORRENT_USE_I2P
-		if (pi.flags & lt::peer_info::i2p_socket)
-		{
-			lt::sha256_hash const dest = pi.i2p_destination();
-			h.update(dest);
-		}
-		else
+	if (pi.flags & lt::peer_info::i2p_socket) {
+		lt::sha256_hash const dest = pi.i2p_destination();
+		h.update(dest);
+	} else
 #endif
-		{
-			auto const ep = pi.remote_endpoint();
-			if (ep.address().is_v6())
-			{
-				auto const b = ep.address().to_v6().to_bytes();
-				h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
-			}
-			else
-			{
-				auto const b = ep.address().to_v4().to_bytes();
-				h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
-			}
-			std::uint8_t const port_bytes[2] = {
-				std::uint8_t(ep.port() >> 8), std::uint8_t(ep.port())};
-			h.update({reinterpret_cast<char const*>(port_bytes), 2});
+	{
+		auto const ep = pi.remote_endpoint();
+		if (ep.address().is_v6()) {
+			auto const b = ep.address().to_v6().to_bytes();
+			h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
+		} else {
+			auto const b = ep.address().to_v4().to_bytes();
+			h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
 		}
-		lt::sha1_hash const digest = h.final();
-		std::uint32_t ret;
-		std::memcpy(&ret, digest.data(), sizeof(ret));
-		return ret;
+		std::uint8_t const port_bytes[2] = {std::uint8_t(ep.port() >> 8), std::uint8_t(ep.port())};
+		h.update({reinterpret_cast<char const*>(port_bytes), 2});
 	}
-
-	bool same_endpoints(lt::peer_info const& lhs, lt::peer_info const& rhs)
-	{
-#if TORRENT_USE_I2P
-		bool const lhs_i2p = bool(lhs.flags & lt::peer_info::i2p_socket);
-		bool const rhs_i2p = bool(rhs.flags & lt::peer_info::i2p_socket);
-		if (lhs_i2p || rhs_i2p)
-		{
-			if (lhs_i2p != rhs_i2p) return false;
-			return lhs.i2p_destination() == rhs.i2p_destination();
-		}
-#endif
-		return lhs.local_endpoint() == rhs.local_endpoint()
-			&& lhs.remote_endpoint() == rhs.remote_endpoint();
-	}
-
-	std::uint64_t changed_fields(peer_history_entry const& entry
-		, frame_t const since_frame
-		, std::uint64_t requested_mask)
-	{
-		std::uint64_t ret = 0;
-		for (int i = 0; i < peer_history_entry::num_fields; ++i)
-		{
-			std::uint64_t const bit = std::uint64_t(1) << i;
-			if ((requested_mask & bit) && entry.frame[std::size_t(i)] > since_frame)
-				ret |= bit;
-		}
-		return ret;
-	}
-
-	bool entry_less(peer_history_entry const& lhs, std::uint32_t const rhs)
-	{
-		return lhs.id < rhs;
-	}
-
-	peer_history::peer_update make_update(peer_history_entry const& entry
-		, std::uint64_t const field_mask)
-	{
-		return {entry.id, entry.info, field_mask};
-	}
+	lt::sha1_hash const digest = h.final();
+	std::uint32_t ret;
+	std::memcpy(&ret, digest.data(), sizeof(ret));
+	return ret;
 }
+
+bool same_endpoints(lt::peer_info const& lhs, lt::peer_info const& rhs)
+{
+#if TORRENT_USE_I2P
+	bool const lhs_i2p = bool(lhs.flags & lt::peer_info::i2p_socket);
+	bool const rhs_i2p = bool(rhs.flags & lt::peer_info::i2p_socket);
+	if (lhs_i2p || rhs_i2p) {
+		if (lhs_i2p != rhs_i2p) return false;
+		return lhs.i2p_destination() == rhs.i2p_destination();
+	}
+#endif
+	return lhs.local_endpoint() == rhs.local_endpoint()
+		&& lhs.remote_endpoint() == rhs.remote_endpoint();
+}
+
+std::uint64_t changed_fields(
+	peer_history_entry const& entry, frame_t const since_frame, std::uint64_t requested_mask
+)
+{
+	std::uint64_t ret = 0;
+	for (int i = 0; i < peer_history_entry::num_fields; ++i) {
+		std::uint64_t const bit = std::uint64_t(1) << i;
+		if ((requested_mask & bit) && entry.frame[std::size_t(i)] > since_frame) ret |= bit;
+	}
+	return ret;
+}
+
+bool entry_less(peer_history_entry const& lhs, std::uint32_t const rhs) { return lhs.id < rhs; }
+
+peer_history::peer_update
+make_update(peer_history_entry const& entry, std::uint64_t const field_mask)
+{
+	return {entry.id, entry.info, field_mask};
+}
+} // namespace
 
 peer_history::peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones)
 	: m_ih(ih)
 	, m_max_tombstones(max_tombstones)
-{}
+{
+}
 
 frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
 {
@@ -106,55 +95,46 @@ frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
 	snapshot.reserve(peers.size());
 	std::set<std::uint32_t> incoming;
 
-	for (auto const& pi : peers)
-	{
+	for (auto const& pi : peers) {
 		std::uint32_t const id = peer_identifier(pi);
 		incoming.insert(id);
 		snapshot.emplace_back(id, &pi);
 	}
 
-	for (auto it = m_peers.begin(); it != m_peers.end(); )
-	{
-		if (incoming.count(it->id) == 0)
-		{
+	for (auto it = m_peers.begin(); it != m_peers.end();) {
+		if (incoming.count(it->id) == 0) {
 			m_removed.push_front({frame, it->added_frame, it->id});
 			it = m_peers.erase(it);
-		}
-		else
-		{
+		} else {
 			++it;
 		}
 	}
 
-	for (auto const& s : snapshot)
-	{
+	for (auto const& s : snapshot) {
 		std::uint32_t const id = s.first;
 		lt::peer_info const& pi = *s.second;
 		auto it = std::lower_bound(m_peers.begin(), m_peers.end(), id, entry_less);
 		bool const inserted = it == m_peers.end() || it->id != id;
-		if (inserted)
-			it = m_peers.insert(it, peer_history_entry{});
+		if (inserted) it = m_peers.insert(it, peer_history_entry{});
 		peer_history_entry& entry = *it;
 
-		if (inserted)
-		{
+		if (inserted) {
 			entry.id = id;
 			entry.info = pi;
 			entry.added_frame = frame;
 			entry.frame.fill(frame);
 
-			auto const rem_end = std::remove_if(m_removed.begin(), m_removed.end()
-				, [&](removed_entry const& r) { return r.id == id; });
+			auto const rem_end =
+				std::remove_if(m_removed.begin(), m_removed.end(), [&](removed_entry const& r) {
+					return r.id == id;
+				});
 			m_removed.erase(rem_end, m_removed.end());
-		}
-		else
-		{
+		} else {
 			entry.update_info(pi, frame);
 		}
 	}
 
-	while (m_removed.size() > m_max_tombstones)
-	{
+	while (m_removed.size() > m_max_tombstones) {
 		m_horizon = std::max(m_horizon, m_removed.back().removed_frame + 1);
 		m_removed.pop_back();
 	}
@@ -162,9 +142,8 @@ frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
 	return frame;
 }
 
-peer_history::query_result peer_history::query(
-	frame_t since_frame
-	, std::uint64_t requested_mask) const
+peer_history::query_result
+peer_history::query(frame_t since_frame, std::uint64_t requested_mask) const
 {
 	query_result result;
 
@@ -172,31 +151,25 @@ peer_history::query_result peer_history::query(
 	if (since_frame < m_horizon) since_frame = 0;
 	result.is_snapshot = (since_frame == 0);
 
-	if (result.is_snapshot)
-	{
+	if (result.is_snapshot) {
 		for (auto const& entry : m_peers)
 			result.updated.push_back(make_update(entry, requested_mask));
 		return result;
 	}
 
-	for (auto const& e : m_removed)
-	{
+	for (auto const& e : m_removed) {
 		if (e.removed_frame <= since_frame) break;
-		if (e.added_frame <= since_frame)
-			result.removed.push_back(e.id);
+		if (e.added_frame <= since_frame) result.removed.push_back(e.id);
 	}
 
-	for (auto const& entry : m_peers)
-	{
-		if (entry.added_frame > since_frame)
-		{
+	for (auto const& entry : m_peers) {
+		if (entry.added_frame > since_frame) {
 			result.updated.push_back(make_update(entry, requested_mask));
 			continue;
 		}
 
 		std::uint64_t const field_mask = changed_fields(entry, since_frame, requested_mask);
-		if (field_mask != 0)
-			result.updated.push_back(make_update(entry, field_mask));
+		if (field_mask != 0) result.updated.push_back(make_update(entry, field_mask));
 	}
 
 	return result;
@@ -211,7 +184,8 @@ void peer_history_entry::update_info(lt::peer_info const& pi, frame_t const f)
 	if (pi.client != info.client) frame[client] = f;
 	if (pi.num_pieces != info.num_pieces) frame[num_pieces] = f;
 	if (pi.pending_disk_bytes != info.pending_disk_bytes) frame[pending_disk_bytes] = f;
-	if (pi.pending_disk_read_bytes != info.pending_disk_read_bytes) frame[pending_disk_read_bytes] = f;
+	if (pi.pending_disk_read_bytes != info.pending_disk_read_bytes)
+		frame[pending_disk_read_bytes] = f;
 	if (pi.num_hashfails != info.num_hashfails) frame[hashfails] = f;
 	if (pi.payload_down_speed != info.payload_down_speed) frame[down_rate] = f;
 	if (pi.payload_up_speed != info.payload_up_speed) frame[up_rate] = f;

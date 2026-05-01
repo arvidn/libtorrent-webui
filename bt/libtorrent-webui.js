@@ -857,21 +857,21 @@
     this._socket.send(call);
   };
 
-	  libtorrent_connection.prototype["get_peers_updates"] = function (
-	    ih,
-	    last_frame,
-	    mask,
-	    callback,
-	  ) {
-	    if (arguments.length === 3 && typeof mask === "function") {
-	      callback = mask;
-	      mask = last_frame;
-	      last_frame = 0;
-	    }
+  libtorrent_connection.prototype["get_peers_updates"] = function (
+    ih,
+    last_frame,
+    mask,
+    callback,
+  ) {
+    if (arguments.length === 3 && typeof mask === "function") {
+      callback = mask;
+      mask = last_frame;
+      last_frame = 0;
+    }
 
-	    if (this._socket.readyState != WebSocket.OPEN) {
-	      window.setTimeout(function () {
-	        callback("socket closed");
+    if (this._socket.readyState != WebSocket.OPEN) {
+      window.setTimeout(function () {
+        callback("socket closed");
       }, 0);
       return;
     }
@@ -879,20 +879,20 @@
     var tid = this._tid++;
     if (this._tid > 65535) this._tid = 0;
 
-	    this._transactions[tid] = function (view, fun, e) {
-	      if (_check_error(e, callback)) return;
+    this._transactions[tid] = function (view, fun, e) {
+      if (_check_error(e, callback)) return;
 
-	      var frame = view.getUint32(4);
-	      var num_updates = view.getUint32(8);
-	      var num_removed = view.getUint32(12);
-	      var snapshot = num_removed === 0xffffffff;
-	      var offset = 16;
-	      var updates = {};
+      var frame = view.getUint32(4);
+      var num_updates = view.getUint32(8);
+      var num_removed = view.getUint32(12);
+      var snapshot = num_removed === 0xffffffff;
+      var offset = 16;
+      var updates = {};
 
-	      for (var i = 0; i < num_updates; ++i) {
-	        var peer = {};
-	        var peer_id = view.getUint32(offset);
-	        offset += 4;
+      for (var i = 0; i < num_updates; ++i) {
+        var peer = {};
+        var peer_id = view.getUint32(offset);
+        offset += 4;
 
         // field bitmask: skip high 32 bits, all 20 fields fit in low 32 bits
         offset += 4;
@@ -1051,19 +1051,24 @@
               break;
           }
         }
-	        updates[peer_id] = peer;
-	      }
+        updates[peer_id] = peer;
+      }
 
-	      var removed = [];
-	      if (!snapshot) {
-	        for (var i = 0; i < num_removed; ++i) {
-	          removed.push(view.getUint32(offset));
-	          offset += 4;
-	        }
-	      }
+      var removed = [];
+      if (!snapshot) {
+        for (var i = 0; i < num_removed; ++i) {
+          removed.push(view.getUint32(offset));
+          offset += 4;
+        }
+      }
 
-	      if (typeof callback !== "undefined")
-	        callback({ frame: frame, snapshot: snapshot, updates: updates, removed: removed });
+      if (typeof callback !== "undefined")
+        callback({
+          frame: frame,
+          snapshot: snapshot,
+          updates: updates,
+          removed: removed,
+        });
     };
 
     // request: 3 header + 20 info-hash + 4 frame + 8 bitmask = 35 bytes
@@ -1077,8 +1082,8 @@
       view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
       offset += 1;
     }
-	    // frame-number
-	    view.setUint32(offset, last_frame);
+    // frame-number
+    view.setUint32(offset, last_frame);
     offset += 4;
     // field-bitmask: high 32 bits = 0, low 32 bits = mask
     view.setUint32(offset, 0);
