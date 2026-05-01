@@ -37,8 +37,8 @@ session_authenticator::session_authenticator(std::chrono::seconds idle_timeout)
 {
 }
 
-permissions_interface const* session_authenticator::
-	authenticate(std::string_view session_cookie, std::string_view /*authorization*/) const
+permissions_interface const* session_authenticator::authenticate(std::string_view session_cookie
+) const
 {
 	if (session_cookie.empty()) return nullptr;
 

@@ -41,10 +41,8 @@ struct session_authenticator : auth_interface {
 	explicit session_authenticator(std::chrono::seconds idle_timeout = std::chrono::hours(1));
 
 	// auth_interface: returns the session's permissions, or nullptr if
-	// the cookie is unknown or expired. The authorization parameter
-	// is part of the auth_interface signature but is not used here.
-	permissions_interface const*
-	authenticate(std::string_view session_cookie, std::string_view authorization) const override;
+	// the cookie is unknown or expired.
+	permissions_interface const* authenticate(std::string_view session_cookie) const override;
 
 	// Mint a new session bound to perms. Returns the cookie value to
 	// place in a Set-Cookie header (typically:
