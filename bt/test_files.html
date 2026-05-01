@@ -1,102 +1,117 @@
-<!DOCTYPE html>
+<!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
+<script
+  language="javascript"
+  type="text/javascript"
+  src="libtorrent-webui.js"
+></script>
 <script language="javascript" type="text/javascript">
-/* global libtorrent_connection, file_fields */
-'use strict';
+  /* global libtorrent_connection, file_fields */
+  "use strict";
 
-var conn = null;
+  var conn = null;
 
-var update_file_list = function(data)
-{
-	if (typeof(data) === 'string')
-	{
-		console.log("ERROR: " + data);
-		return;
-	}
+  var update_file_list = function (data) {
+    if (typeof data === "string") {
+      console.log("ERROR: " + data);
+      return;
+    }
 
-	var files = data['files'];
-	var table = document.getElementById("files");
+    var files = data["files"];
+    var table = document.getElementById("files");
 
-	for (var i = 0; i < files.length; i++)
-	{
-		var f = files[i];
-		var row = null;
-		if (table.rows.length <= i + 1) {
-			row = table.insertRow(-1);
-			row.insertCell(0);
-			row.insertCell(1);
-			row.insertCell(2);
-			row.insertCell(3);
-			row.insertCell(4);
-			row.insertCell(5);
-		} else {
-			row = table.rows[i + 1];
-		}
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      var row = null;
+      if (table.rows.length <= i + 1) {
+        row = table.insertRow(-1);
+        row.insertCell(0);
+        row.insertCell(1);
+        row.insertCell(2);
+        row.insertCell(3);
+        row.insertCell(4);
+        row.insertCell(5);
+      } else {
+        row = table.rows[i + 1];
+      }
 
-		if ('name' in f)
-		{
-			if (row.cells[0].childNodes.length == 0)
-			{
-				var a = document.createElement('a');
-				a.appendChild(document.createTextNode(f['name']));
-				a.href = "/download/" + window.location.hash.substring(1) + "/" + i;
-				row.cells[0].appendChild(a);
-			}
-		}
-		if ('size' in f) row.cells[1].textContent = f['size'];
-		if ('downloaded' in f)
-		{
-			row.cells[2].innerHTML
-				= '<hr style="color:#c00;background-color:#c00;height:15px; '
-					+ 'border:none; margin:0;" align="left" width='
-					+ (f['downloaded']*100/f['size']) + '% />';
-			row.cells[3].textContent = f['downloaded'];
-		}
-		if ('prio' in f)
-		{
-			row.cells[4].textContent = f['prio'];
-		}
-		if ('open-mode' in f)
-		{
-			let mode = [];
-			const bits = f['open-mode'];
-			if (bits & 0x01) mode.push('write-only');
-			if (bits & 0x02) mode.push('read-write');
-			if (bits & 0x04) mode.push('sparse');
-			if (bits & 0x08) mode.push('no-atime');
-			if (bits & 0x10) mode.push('random-access');
-			if (bits & 0x40) mode.push('memory-mapped');
-			row.cells[5].textContent = mode.join(' ');
-		}
-	}
-};
+      if ("name" in f) {
+        if (row.cells[0].childNodes.length == 0) {
+          var a = document.createElement("a");
+          a.appendChild(document.createTextNode(f["name"]));
+          a.href = "/download/" + window.location.hash.substring(1) + "/" + i;
+          row.cells[0].appendChild(a);
+        }
+      }
+      if ("size" in f) row.cells[1].textContent = f["size"];
+      if ("downloaded" in f) {
+        row.cells[2].innerHTML =
+          '<hr style="color:#c00;background-color:#c00;height:15px; ' +
+          'border:none; margin:0;" align="left" width=' +
+          (f["downloaded"] * 100) / f["size"] +
+          "% />";
+        row.cells[3].textContent = f["downloaded"];
+      }
+      if ("prio" in f) {
+        row.cells[4].textContent = f["prio"];
+      }
+      if ("open-mode" in f) {
+        let mode = [];
+        const bits = f["open-mode"];
+        if (bits & 0x01) mode.push("write-only");
+        if (bits & 0x02) mode.push("read-write");
+        if (bits & 0x04) mode.push("sparse");
+        if (bits & 0x08) mode.push("no-atime");
+        if (bits & 0x10) mode.push("random-access");
+        if (bits & 0x40) mode.push("memory-mapped");
+        row.cells[5].textContent = mode.join(" ");
+      }
+    }
+  };
 
-window.onload = function() {
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
 
-		document.getElementById('headline').innerText = 'Files for ' + window.location.hash.substring(1);
+      document.getElementById("headline").innerText =
+        "Files for " + window.location.hash.substring(1);
 
-
-		window.setInterval(function() {
-				conn.get_file_updates(window.location.hash.substring(1), 0, file_fields.flags | file_fields.name | file_fields.size | file_fields.downloaded | file_fields.priority | file_fields.open_mode, update_file_list);
-			}, 1000);
-	});
-};
+      window.setInterval(function () {
+        conn.get_file_updates(
+          window.location.hash.substring(1),
+          0,
+          file_fields.flags |
+            file_fields.name |
+            file_fields.size |
+            file_fields.downloaded |
+            file_fields.priority |
+            file_fields.open_mode,
+          update_file_list,
+        );
+      }, 1000);
+    });
+  };
 </script>
-<style>.updated { background-color: #faa; }</style>
-<table id="files" border="1" style="border-collapse: collapse;">
-<h1 id="headline"></h1>
-<form>
-<tr><th>Name</th><th>Size</th><th>Progress</th><th>Downloaded</th><th>Priority</th><th>mode</th></tr>
+<style>
+  .updated {
+    background-color: #faa;
+  }
+</style>
+<table id="files" border="1" style="border-collapse: collapse">
+  <h1 id="headline"></h1>
+  <form>
+    <tr>
+      <th>Name</th>
+      <th>Size</th>
+      <th>Progress</th>
+      <th>Downloaded</th>
+      <th>Priority</th>
+      <th>mode</th>
+    </tr>
+  </form>
 </table>
-</form>
-</html>
-

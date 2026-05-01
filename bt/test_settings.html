@@ -1,117 +1,142 @@
-<!DOCTYPE html>
+<!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script language="javascript" type="text/javascript" src="libtorrent-webui.js"></script>
+<script
+  language="javascript"
+  type="text/javascript"
+  src="libtorrent-webui.js"
+></script>
 <script language="javascript" type="text/javascript">
-/* global libtorrent_connection */
-'use strict';
+  /* global libtorrent_connection */
+  "use strict";
 
-var conn = null;
+  var conn = null;
 
-var update_settings_list = function(settings)
-{
-	if (typeof(settings) === 'string')
-	{
-		console.log("ERROR: " + settings);
-		return;
-	}
+  var update_settings_list = function (settings) {
+    if (typeof settings === "string") {
+      console.log("ERROR: " + settings);
+      return;
+    }
 
-	var table = document.getElementById("settings");
+    var table = document.getElementById("settings");
 
-	var req = [];
-	for (var i in settings)
-	{
-		var s = settings[i];
-		var row = table.insertRow(-1);
-		row.id = s.id;
-		row.insertCell(0).textContent = s.id;
-		row.insertCell(1).textContent = s.name;
-		row.insertCell(2).textContent = s.type;
-		req.push(s.id);
-	}
+    var req = [];
+    for (var i in settings) {
+      var s = settings[i];
+      var row = table.insertRow(-1);
+      row.id = s.id;
+      row.insertCell(0).textContent = s.id;
+      row.insertCell(1).textContent = s.name;
+      row.insertCell(2).textContent = s.type;
+      req.push(s.id);
+    }
 
-	conn.get_settings(req, function(values)
-	{
-		if (typeof(values) === 'string')
-		{
-			console.log("ERROR: " + settings);
-			return;
-		}
+    conn.get_settings(req, function (values) {
+      if (typeof values === "string") {
+        console.log("ERROR: " + settings);
+        return;
+      }
 
-		for (var i = 0; i < req.length; ++i)
-		{
-			// find the row with this settings ID
-			var row = document.getElementById(req[i]);
+      for (var i = 0; i < req.length; ++i) {
+        // find the row with this settings ID
+        var row = document.getElementById(req[i]);
 
-			// type
-			var type = row.cells[2].textContent;
-			switch (type)
-			{
-				case 'string':
-					row.insertCell(3).innerHTML = '<input type="text" name="' + req[i] + '" value="' + values[i] + '" onkeypress="submit_on_enter(event, \'' + req[i]+ '\');"/>';
-				break;
-				case 'int':
-					row.insertCell(3).innerHTML = '<input type="number" name="' + req[i] + '" value="' + values[i] + '" onkeypress="submit_on_enter(event, \'' + req[i]+ '\');"/>';
-					break;
-				case 'bool':
-					row.insertCell(3).innerHTML = '<select id="dd-' + req[i] + '" onchange="submit(\'' + req[i]+ '\');"><option>false</option><option>true</option></select>';
-					document.getElementById('dd-' + req[i]).selectedIndex = values[i] ? 1 : 0;
-					break;
-			};
-		}
-	});
-};
+        // type
+        var type = row.cells[2].textContent;
+        switch (type) {
+          case "string":
+            row.insertCell(3).innerHTML =
+              '<input type="text" name="' +
+              req[i] +
+              '" value="' +
+              values[i] +
+              '" onkeypress="submit_on_enter(event, \'' +
+              req[i] +
+              "');\"/>";
+            break;
+          case "int":
+            row.insertCell(3).innerHTML =
+              '<input type="number" name="' +
+              req[i] +
+              '" value="' +
+              values[i] +
+              '" onkeypress="submit_on_enter(event, \'' +
+              req[i] +
+              "');\"/>";
+            break;
+          case "bool":
+            row.insertCell(3).innerHTML =
+              '<select id="dd-' +
+              req[i] +
+              '" onchange="submit(\'' +
+              req[i] +
+              "');\"><option>false</option><option>true</option></select>";
+            document.getElementById("dd-" + req[i]).selectedIndex = values[i]
+              ? 1
+              : 0;
+            break;
+        }
+      }
+    });
+  };
 
-// eslint-disable-next-line no-unused-vars -- called from inline onkeypress HTML attributes
-function submit_on_enter(e, settings_id)
-{
-	if (e.keyCode === 13) {
-		submit(settings_id);
-	}
-	return false;
-}
+  // eslint-disable-next-line no-unused-vars -- called from inline onkeypress HTML attributes
+  function submit_on_enter(e, settings_id) {
+    if (e.keyCode === 13) {
+      submit(settings_id);
+    }
+    return false;
+  }
 
-function submit(settings_id)
-{
-	var id = parseInt(settings_id);
-	var cells = document.getElementById(settings_id).cells;
-	var type = cells[2].textContent;
-	var value = cells[3].childNodes[0];
-	switch (type)
-	{
-		case 'string':
-			value = value.value;
-			break;
-		case 'int':
-			value = parseInt(value.value);
-			break;
-		case 'bool':
-			value = value.selectedIndex == 1;
-			break;
-	};
-	var sett = {};
-	sett[id] = value;
-	conn.set_settings(sett, function() {});
-}
+  function submit(settings_id) {
+    var id = parseInt(settings_id);
+    var cells = document.getElementById(settings_id).cells;
+    var type = cells[2].textContent;
+    var value = cells[3].childNodes[0];
+    switch (type) {
+      case "string":
+        value = value.value;
+        break;
+      case "int":
+        value = parseInt(value.value);
+        break;
+      case "bool":
+        value = value.selectedIndex == 1;
+        break;
+    }
+    var sett = {};
+    sett[id] = value;
+    conn.set_settings(sett, function () {});
+  }
 
-window.onload = function() {
-	var url = 'wss://' + window.location.host + '/bt/control';
-	conn = new libtorrent_connection(url, function(state)
-	{
-		if (state != "OK") {
-			console.log(state);
-			return;
-		}
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
 
-		conn.list_settings(update_settings_list);
-	});
-};
+      conn.list_settings(update_settings_list);
+    });
+  };
 </script>
-<style>.updated { background-color: #faa; }</style>
-<table id="settings" border="1" style="border-collapse: collapse; border-color: black;">
-<form>
-<tr><th>ID</th><th>Name</th><th>Type</th><th>Value</th></tr>
+<style>
+  .updated {
+    background-color: #faa;
+  }
+</style>
+<table
+  id="settings"
+  border="1"
+  style="border-collapse: collapse; border-color: black"
+>
+  <form>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Type</th>
+      <th>Value</th>
+    </tr>
+  </form>
 </table>
-</form>
-</html>
-
