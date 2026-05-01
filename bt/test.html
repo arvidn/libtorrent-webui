@@ -1,19 +1,11 @@
 <!doctype html>
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
-<script
-  language="javascript"
-  type="text/javascript"
-  src="libtorrent-webui.js"
-></script>
-<script
-  language="javascript"
-  type="text/javascript"
-  src="libtorrent-graph.js"
-></script>
+<script src="libtorrent-webui.js"></script>
+<script src="libtorrent-graph.js"></script>
 
 <!-- TODO: factor out this script into a separate file from the HTML -->
-<script language="javascript" type="text/javascript">
+<script>
   /* global libtorrent_connection, fields, render_graph */
   "use strict";
 
@@ -337,7 +329,7 @@
     </td>
     <td><a href="test_files.html#" id="name"></a></td>
     <td>
-      <div id="progress" style="height: 1em" align="left"></div>
+      <div id="progress" style="height: 1em"></div>
       <div style="position: absolute" id="state"></div>
     </td>
     <td id="total-uploaded" class="counter"></td>
