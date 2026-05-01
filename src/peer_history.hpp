@@ -17,6 +17,7 @@ see LICENSE file.
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <mutex>
 #include <vector>
 
 namespace ltweb {
@@ -63,6 +64,7 @@ struct peer_history
 	explicit peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones = 1000);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
+	std::mutex& mutex() const { return m_mutex; }
 	frame_t frame() const { return m_frame; }
 
 	// The oldest frame for which delta queries are reliable.
@@ -103,6 +105,7 @@ struct peer_history
 
 private:
 	lt::sha1_hash const m_ih;
+	mutable std::mutex m_mutex;
 	frame_t m_frame = 0;
 	frame_t m_horizon = 0;
 	std::size_t m_max_tombstones;

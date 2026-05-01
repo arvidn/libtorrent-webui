@@ -1139,11 +1139,26 @@ namespace {
 		lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 		if (!h.is_valid()) return error(st, f, invalid_argument);
 
-		// Find or create the peer_history for this info-hash in the LRU cache.
-		// Hold the mutex across get_peer_info() and all access to the cache so
-		// concurrent callers cannot race an older snapshot after a newer one.
-		std::vector<char> response;
-		std::unique_lock<std::mutex> l(m_peer_mutex);
+		std::shared_ptr<peer_history> history;
+		{
+			std::unique_lock<std::mutex> l(m_peer_mutex);
+			auto it = std::find_if(m_peer_histories.begin(), m_peer_histories.end(),
+				[&](std::shared_ptr<peer_history> const& ph) { return ph->info_hash() == ih; });
+			if (it != m_peer_histories.end())
+			{
+				history = *it;
+				m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);
+			}
+			else
+			{
+				history = std::make_shared<peer_history>(ih);
+				m_peer_histories.push_front(history);
+				if (m_peer_histories.size() > 10)
+					m_peer_histories.pop_back();
+			}
+		}
+
+		std::unique_lock<std::mutex> history_lock(history->mutex());
 		std::vector<lt::peer_info> peers;
 		// TODO: get_peer_info() is a synchronous call. use the async. call
 		h.get_peer_info(peers);
@@ -1158,25 +1173,16 @@ namespace {
 				});
 		peers.erase(new_end, peers.end());
 
-		auto it = std::find_if(m_peer_histories.begin(), m_peer_histories.end(),
-			[&](peer_history const& ph) { return ph.info_hash() == ih; });
-		if (it != m_peer_histories.end())
-			m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);
-		else
-		{
-			m_peer_histories.emplace_front(ih);
-			if (m_peer_histories.size() > 10)
-				m_peer_histories.pop_back();
-		}
-		frame_t const new_frame = m_peer_histories.front().update(peers);
-		auto r = m_peer_histories.front().query(client_frame, field_mask);
-		l.unlock();
+		frame_t const new_frame = history->update(peers);
+		auto r = history->query(client_frame, field_mask);
+		history_lock.unlock();
 
 		if (r.updated.size() > std::size_t(0xffffffffu))
 			r.updated.resize(std::size_t(0xffffffffu));
 		if (r.removed.size() > std::size_t(0xfffffffeu))
 			r.removed.resize(std::size_t(0xfffffffeu));
 
+		std::vector<char> response;
 		std::back_insert_iterator<std::vector<char>> ptr(response);
 
 		write_uint8(f.function_id | 0x80, ptr);

@@ -115,9 +115,9 @@ namespace ltweb
 		std::list<piece_history> m_piece_histories;
 
 		// LRU cache of peer histories, same eviction policy.
-		// m_peer_mutex protects both the list structure and the entries in it.
+		// m_peer_mutex protects the list structure.
 		std::mutex m_peer_mutex;
-		std::list<peer_history> m_peer_histories;
+		std::list<std::shared_ptr<peer_history>> m_peer_histories;
 
 		// LRU cache of file histories, same eviction policy.
 		// m_file_mutex protects both the list structure and the entries in it.
@@ -138,4 +138,3 @@ namespace ltweb
 }
 
 #endif
-
