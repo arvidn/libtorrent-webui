@@ -1169,12 +1169,13 @@ namespace {
 				m_peer_histories.pop_back();
 		}
 		frame_t const new_frame = m_peer_histories.front().update(peers);
-		auto const r = m_peer_histories.front().query(client_frame, field_mask);
+		auto r = m_peer_histories.front().query(client_frame, field_mask);
+		l.unlock();
 
-		std::uint32_t const n_updates = static_cast<std::uint32_t>(
-			std::min(r.updated.size(), std::size_t(0xffffffffu)));
-		std::uint32_t const n_removed = static_cast<std::uint32_t>(
-			std::min(r.removed.size(), std::size_t(0xffffffffu)));
+		if (r.updated.size() > std::size_t(0xffffffffu))
+			r.updated.resize(std::size_t(0xffffffffu));
+		if (r.removed.size() > std::size_t(0xfffffffeu))
+			r.removed.resize(std::size_t(0xfffffffeu));
 
 		std::back_insert_iterator<std::vector<char>> ptr(response);
 
@@ -1186,14 +1187,13 @@ namespace {
 		write_uint32(new_frame, ptr);
 
 		// num-updates
-		write_uint32(n_updates, ptr);
+		write_uint32(static_cast<std::uint32_t>(r.updated.size()), ptr);
 
 		// num-removed: 0xffffffff means "all peers not in this update disconnected"
-		write_uint32(r.is_snapshot ? 0xffffffffu : n_removed, ptr);
+		write_uint32(r.is_snapshot ? 0xffffffffu : static_cast<std::uint32_t>(r.removed.size()), ptr);
 
-		for (std::uint32_t i = 0; i < n_updates; ++i)
+		for (auto const& u : r.updated)
 		{
-			auto const& u = r.updated[i];
 			lt::peer_info const& pi = u.info;
 			std::uint64_t const bitmask = u.field_mask;
 
@@ -1332,10 +1332,9 @@ namespace {
 
 		if (!r.is_snapshot)
 		{
-			for (std::uint32_t i = 0; i < n_removed; ++i)
-				write_uint32(r.removed[i], ptr);
+			for (auto const id : r.removed)
+				write_uint32(id, ptr);
 		}
-		l.unlock();
 
 		return st->send_packet(response.data(), response.size());
 	}
