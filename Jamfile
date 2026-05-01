@@ -33,6 +33,7 @@ SOURCES =
 	torrent_history
 	piece_history
 	no_auth
+	perms
 	session_authenticator
 	sqlite_user_account
 	parse_http_auth
