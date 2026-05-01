@@ -34,7 +34,7 @@ std::unordered_map<std::string_view, std::string_view> const g_mime_types{
 	{".pdf"sv, "application/pdf"sv},
 	{".swf"sv, "application/x-shockwave-flash"sv},
 
-// text
+	// text
 	{".html"sv, "text/html"sv},
 	{".htm"sv, "text/html"sv},
 	{".shtm"sv, "text/html"sv},
@@ -44,7 +44,7 @@ std::unordered_map<std::string_view, std::string_view> const g_mime_types{
 	{".txt"sv, "text/plain"sv},
 	{".xml"sv, "text/xml"sv},
 
-// audio
+	// audio
 	{".mp3"sv, "audio/mpeg"sv},
 	{".mid"sv, "audio/mid"sv},
 	{".m3u"sv, "audio/x-mpegurl"sv},
@@ -53,7 +53,7 @@ std::unordered_map<std::string_view, std::string_view> const g_mime_types{
 	{".ogg"sv, "audio/ogg"sv},
 	{".wav"sv, "audio/wav"sv},
 
-// video
+	// video
 	{".mpg"sv, "video/mpeg"sv},
 	{".mpeg"sv, "video/mpeg"sv},
 	{".webm"sv, "video/webm"sv},
@@ -63,7 +63,7 @@ std::unordered_map<std::string_view, std::string_view> const g_mime_types{
 	{".asf"sv, "video/x-ms-asf"sv},
 	{".avi"sv, "video/x-msvideo"sv},
 
-// image
+	// image
 	{".webp"sv, "image/webp"sv},
 	{".bmp"sv, "image/bmp"sv},
 	{".ico"sv, "image/vnd.microsoft.icon"sv},
@@ -76,7 +76,7 @@ std::unordered_map<std::string_view, std::string_view> const g_mime_types{
 	{".tiff"sv, "image/tiff"sv},
 	{".tif"sv, "image/tiff"sv},
 
-// fonts
+	// fonts
 	{".ttf"sv, "application/x-font-ttf"sv},
 	{".woff"sv, "font/woff"sv},
 	{".woff2"sv, "font/woff2"sv},
@@ -92,4 +92,4 @@ std::string_view mime_type(std::string_view ext)
 	return it->second;
 }
 
-}
+} // namespace ltweb

@@ -10,7 +10,7 @@ see LICENSE file.
 #ifndef LTWEB_FILE_HISTORY_HPP
 #define LTWEB_FILE_HISTORY_HPP
 
-#include "torrent_history.hpp"       // frame_t
+#include "torrent_history.hpp" // frame_t
 #include "libtorrent/sha1_hash.hpp"
 #include "libtorrent/file_storage.hpp"
 #include "libtorrent/download_priority.hpp"
@@ -21,8 +21,7 @@ see LICENSE file.
 
 namespace ltweb {
 
-struct file_history_entry
-{
+struct file_history_entry {
 	std::int64_t progress = 0;
 	lt::download_priority_t priority = lt::default_priority;
 	std::uint8_t open_mode = 0;
@@ -41,8 +40,7 @@ struct file_history_entry
 //     never change. Conceptually updated at frame 1; sent iff since_frame==0.
 //   Dynamic fields (progress=0x08, priority=0x10, open_mode=0x20): tracked
 //     per-file; sent when their stored frame > since_frame.
-struct file_history
-{
+struct file_history {
 	// fs is used only at construction time (for num_files()).
 	file_history(lt::sha1_hash const& ih, lt::file_storage const& fs);
 
@@ -56,7 +54,8 @@ struct file_history
 	frame_t update(
 		std::vector<std::int64_t> const* progress,
 		std::vector<lt::download_priority_t> const* priorities,
-		std::vector<lt::open_file_state> const* open_modes);
+		std::vector<lt::open_file_state> const* open_modes
+	);
 
 	// For each file index in [0, num_files), return the subset of
 	// requested_mask that should be sent to a client whose last known frame
@@ -66,12 +65,11 @@ struct file_history
 	//   since_frame  > 0 => only dynamic fields whose frame > since_frame.
 	//
 	// A zero entry means "no update for this file".
-	std::vector<std::uint16_t> query(frame_t since_frame,
-		std::uint16_t requested_mask) const;
+	std::vector<std::uint16_t> query(frame_t since_frame, std::uint16_t requested_mask) const;
 
 	// Value accessors — call after update(), before the next update().
-	std::int64_t progress (int fi) const { return m_files[fi].progress; }
-	lt::download_priority_t priority (int fi) const { return m_files[fi].priority; }
+	std::int64_t progress(int fi) const { return m_files[fi].progress; }
+	lt::download_priority_t priority(int fi) const { return m_files[fi].priority; }
 	std::uint8_t open_mode(int fi) const { return m_files[fi].open_mode; }
 
 private:

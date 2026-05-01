@@ -16,8 +16,7 @@ see LICENSE file.
 
 #include "disk_space.hpp"
 
-namespace ltweb
-{
+namespace ltweb {
 
 std::int64_t free_disk_space(std::string const& path)
 {
@@ -30,5 +29,4 @@ std::int64_t free_disk_space(std::string const& path)
 	return std::int64_t(fs.f_bavail) * fs.f_bsize;
 }
 
-}
-
+} // namespace ltweb

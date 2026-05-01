@@ -28,8 +28,8 @@ see LICENSE file.
 #include "webui.hpp"
 
 using namespace std::literals::chrono_literals;
-using ltweb::send_http;
 using ltweb::http_error;
+using ltweb::send_http;
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -60,37 +60,42 @@ void fail(beast::error_code ec, char const* what)
 	// Therefore, if we see a short read here, it has occurred
 	// after the message has been completed, so it is safe to ignore it.
 
-	if (ec == ssl::error::stream_truncated)
-		return;
+	if (ec == ssl::error::stream_truncated) return;
 
 	std::cerr << what << ": " << ec.message() << "\n";
 }
 
-struct http_connection : std::enable_shared_from_this<http_connection>
-{
-	explicit http_connection(tcp::socket&& socket, ssl::context& ctx
-		, std::vector<std::pair<std::string, http_handler*>>& handlers)
+struct http_connection : std::enable_shared_from_this<http_connection> {
+	explicit http_connection(
+		tcp::socket&& socket,
+		ssl::context& ctx,
+		std::vector<std::pair<std::string, http_handler*>>& handlers
+	)
 		: m_stream(std::move(socket), ctx)
 		, m_handlers(handlers)
-	{}
+	{
+	}
 
 	// Start the asynchronous operation
 	void run()
 	{
-		boost::asio::dispatch(m_stream.get_executor(),
-			beast::bind_front_handler(&http_connection::on_run, shared_from_this()));
+		boost::asio::dispatch(
+			m_stream.get_executor(),
+			beast::bind_front_handler(&http_connection::on_run, shared_from_this())
+		);
 	}
 
 private:
-
 	void on_run()
 	{
 		// Set the timeout.
 		beast::get_lowest_layer(m_stream).expires_after(30s);
 
 		// Perform the SSL handshake
-		m_stream.async_handshake(ssl::stream_base::server
-			, beast::bind_front_handler(&http_connection::on_handshake, shared_from_this()));
+		m_stream.async_handshake(
+			ssl::stream_base::server,
+			beast::bind_front_handler(&http_connection::on_handshake, shared_from_this())
+		);
 	}
 
 	void on_handshake(beast::error_code ec)
@@ -109,15 +114,18 @@ private:
 		beast::get_lowest_layer(m_stream).expires_after(30s);
 
 		// Read a request
-		http::async_read(m_stream, m_buffer, m_req,
-			beast::bind_front_handler(&http_connection::on_read, shared_from_this()));
+		http::async_read(
+			m_stream,
+			m_buffer,
+			m_req,
+			beast::bind_front_handler(&http_connection::on_read, shared_from_this())
+		);
 	}
 
 	void on_read(beast::error_code ec, std::size_t)
 	{
 		// This means they closed the connection
-		if (ec == http::error::end_of_stream)
-			return do_close();
+		if (ec == http::error::end_of_stream) return do_close();
 
 		if (ec) return fail(ec, "read");
 
@@ -125,19 +133,20 @@ private:
 
 		auto it = ltweb::aux::find_longest_prefix(m_handlers, req_path);
 		if (it == m_handlers.end())
-			return send_http(m_stream, done_function{*this, m_req.need_eof()}
-				, http_error(m_req, http::status::not_found));
+			return send_http(
+				m_stream,
+				done_function{*this, m_req.need_eof()},
+				http_error(m_req, http::status::not_found)
+			);
 
-		it->second->handle_http(std::move(m_req), m_stream
-			, done_function{*this, m_req.need_eof()});
+		it->second->handle_http(std::move(m_req), m_stream, done_function{*this, m_req.need_eof()});
 	}
 
 	void on_write(bool close, beast::error_code ec, std::size_t)
 	{
 		if (ec) return fail(ec, "write");
 
-		if (close)
-		{
+		if (close) {
 			// This means we should close the connection, usually because
 			// the response indicated the "Connection: close" semantic.
 			return do_close();
@@ -151,7 +160,8 @@ private:
 
 		// Perform the SSL shutdown
 		m_stream.async_shutdown(
-			beast::bind_front_handler(&http_connection::on_shutdown, shared_from_this()));
+			beast::bind_front_handler(&http_connection::on_shutdown, shared_from_this())
+		);
 	}
 
 	void on_shutdown(beast::error_code ec)
@@ -159,16 +169,20 @@ private:
 		if (ec) return fail(ec, "shutdown");
 	}
 
-	struct done_function
-	{
+	struct done_function {
 		std::shared_ptr<http_connection> m_self;
 		bool m_need_close;
 		explicit done_function(http_connection& self, bool close)
-			: m_self(self.shared_from_this()), m_need_close(close) {}
+			: m_self(self.shared_from_this())
+			, m_need_close(close)
+		{
+		}
 		void operator()(bool close) const
 		{
-			if (close || m_need_close) m_self->do_close();
-			else m_self->do_read();
+			if (close || m_need_close)
+				m_self->do_close();
+			else
+				m_self->do_read();
 		}
 	};
 
@@ -178,12 +192,13 @@ private:
 	std::vector<std::pair<std::string, http_handler*>>& m_handlers;
 };
 
-struct listener : std::enable_shared_from_this<listener>
-{
-	listener(boost::asio::io_context& ioc
-		, ssl::context& ctx
-		, tcp::endpoint endpoint
-		, std::vector<std::pair<std::string, http_handler*>>& handlers)
+struct listener : std::enable_shared_from_this<listener> {
+	listener(
+		boost::asio::io_context& ioc,
+		ssl::context& ctx,
+		tcp::endpoint endpoint,
+		std::vector<std::pair<std::string, http_handler*>>& handlers
+	)
 		: m_ioc(ioc)
 		, m_ctx(ctx)
 		, m_acceptor(ioc)
@@ -209,18 +224,16 @@ private:
 
 		// The new connection gets its own strand
 		m_acceptor.async_accept(
-			boost::asio::make_strand(m_ioc)
-			, beast::bind_front_handler(&listener::on_accept, shared_from_this()));
+			boost::asio::make_strand(m_ioc),
+			beast::bind_front_handler(&listener::on_accept, shared_from_this())
+		);
 	}
 
 	void on_accept(beast::error_code ec, tcp::socket socket)
 	{
-		if (ec)
-		{
+		if (ec) {
 			fail(ec, "accept");
-		}
-		else
-		{
+		} else {
 			std::make_shared<http_connection>(std::move(socket), m_ctx, m_handlers)->run();
 		}
 
@@ -248,9 +261,11 @@ ltweb::webui_base::~webui_base()
 
 void ltweb::webui_base::remove_handler(http_handler* h)
 {
-	auto const i = std::find_if(m_handlers.begin(), m_handlers.end()
-		, [h](std::pair<std::string, http_handler*> v)
-		{ return v.second == h; });
+	auto const i = std::find_if(
+		m_handlers.begin(),
+		m_handlers.end(),
+		[h](std::pair<std::string, http_handler*> v) { return v.second == h; }
+	);
 	if (i != m_handlers.end()) m_handlers.erase(i);
 }
 
@@ -267,22 +282,19 @@ ltweb::webui_base::webui_base(int const port, char const* cert_path, int const n
 	m_ctx.use_certificate_file(cert_path, ssl::context::pem);
 
 	// do something better here
-	m_ctx.set_password_callback([] (std::size_t max_length, ssl::context::password_purpose p)
-		{ return "test"; });
+	m_ctx.set_password_callback([](std::size_t max_length, ssl::context::password_purpose p) {
+		return "test";
+	});
 	m_ctx.use_private_key_file("key.pem", ssl::context::pem);
 
 	// Create and launch a listening port
-	m_listener = std::make_shared<listener>(m_ioc, m_ctx
-		, tcp::endpoint{boost::asio::ip::address{}, std::uint16_t(port)}, m_handlers);
+	m_listener = std::make_shared<listener>(
+		m_ioc, m_ctx, tcp::endpoint{boost::asio::ip::address{}, std::uint16_t(port)}, m_handlers
+	);
 	m_listener->run();
 
 	m_threads.reserve(num_threads);
-	for(auto i = num_threads; i > 0; --i)
-	{
-		m_threads.emplace_back([this] {
-			m_ioc.run();
-		});
+	for (auto i = num_threads; i > 0; --i) {
+		m_threads.emplace_back([this] { m_ioc.run(); });
 	}
-
 }
-

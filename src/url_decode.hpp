@@ -24,28 +24,20 @@ inline std::string url_decode(std::string const& s, boost::system::error_code& e
 {
 	std::string out;
 	out.reserve(s.size());
-	for (std::size_t i = 0; i < s.size(); ++i)
-	{
-		if (s[i] == '+')
-		{
+	for (std::size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == '+') {
 			out += ' ';
-		}
-		else if (s[i] == '%' && i + 2 < s.size())
-		{
-			char buf[3] = { s[i + 1], s[i + 2], '\0' };
+		} else if (s[i] == '%' && i + 2 < s.size()) {
+			char buf[3] = {s[i + 1], s[i + 2], '\0'};
 			char* end = nullptr;
 			long const val = std::strtol(buf, &end, 16);
-			if (end != buf + 2)
-			{
-				ec = boost::system::errc::make_error_code(
-					boost::system::errc::invalid_argument);
+			if (end != buf + 2) {
+				ec = boost::system::errc::make_error_code(boost::system::errc::invalid_argument);
 				return {};
 			}
 			out += static_cast<char>(val);
 			i += 2;
-		}
-		else
-		{
+		} else {
 			out += s[i];
 		}
 	}

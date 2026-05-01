@@ -35,8 +35,7 @@ jsmntok_t* find_key(jsmntok_t* tokens, char* buf, char const* key, int type)
 	// half of them are keys, the other half
 	int num_keys = tokens[0].size / 2;
 	// we skip two items at a time, first the key then the value
-	for (jsmntok_t* i = &tokens[1]; num_keys > 0; i = skip_item(skip_item(i)), --num_keys)
-	{
+	for (jsmntok_t* i = &tokens[1]; num_keys > 0; i = skip_item(skip_item(i)), --num_keys) {
 		if (i->type != JSMN_STRING) continue;
 		buf[i->end] = 0;
 		if (strcmp(key, buf + i->start)) continue;
@@ -49,8 +48,7 @@ jsmntok_t* find_key(jsmntok_t* tokens, char* buf, char const* key, int type)
 char const* find_string(jsmntok_t* tokens, char* buf, char const* key, bool* found)
 {
 	jsmntok_t* k = find_key(tokens, buf, key, JSMN_STRING);
-	if (k == NULL)
-	{
+	if (k == NULL) {
 		if (found) *found = false;
 		return "";
 	}
@@ -62,8 +60,7 @@ char const* find_string(jsmntok_t* tokens, char* buf, char const* key, bool* fou
 std::int64_t find_int(jsmntok_t* tokens, char* buf, char const* key, bool* found)
 {
 	jsmntok_t* k = find_key(tokens, buf, key, JSMN_PRIMITIVE);
-	if (k == NULL)
-	{
+	if (k == NULL) {
 		if (found) *found = false;
 		return 0;
 	}
@@ -80,5 +77,4 @@ bool find_bool(jsmntok_t* tokens, char* buf, char const* key)
 	return strcmp(buf + k->start, "true") == 0;
 }
 
-}
-
+} // namespace ltweb

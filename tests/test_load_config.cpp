@@ -38,8 +38,7 @@ std::string make_temp_config(char const* name, char const* contents)
 	// Assign a unique mtime far enough in the past that no two test files
 	// collide. A simple counter gives each file a distinct second.
 	static int seq = 0;
-	auto unique_time = fs::file_time_type::clock::now()
-		- std::chrono::seconds(++seq * 10);
+	auto unique_time = fs::file_time_type::clock::now() - std::chrono::seconds(++seq * 10);
 	fs::last_write_time(path, unique_time);
 	return path.string();
 }
@@ -105,10 +104,12 @@ BOOST_AUTO_TEST_CASE(unknown_key_ignored)
 
 BOOST_AUTO_TEST_CASE(multiple_settings)
 {
-	auto path = make_temp_config("multi",
+	auto path = make_temp_config(
+		"multi",
 		"user_agent testclient\n"
 		"connections_limit 100\n"
-		"enable_upnp 0\n");
+		"enable_upnp 0\n"
+	);
 	lt::settings_pack p;
 	std::error_code ec;
 	ltweb::load_config(path, p, ec);

@@ -20,8 +20,7 @@ see LICENSE file.
 #include "libtorrent/bencode.hpp"
 #include <filesystem>
 
-namespace ltweb
-{
+namespace ltweb {
 
 
 std::vector<char> load_file(char const* filename)
@@ -38,29 +37,27 @@ int save_file(std::string const& filename, std::vector<char> const& v)
 	return !f.fail();
 }
 
-save_settings::save_settings(lt::session& s, lt::settings_pack const& sett
-	, std::string const& settings_file)
+save_settings::save_settings(
+	lt::session& s, lt::settings_pack const& sett, std::string const& settings_file
+)
 	: m_ses(s)
 	, m_settings_file(settings_file)
 {
 	for (int i = lt::settings_pack::string_type_base;
-		i < lt::settings_pack::string_type_base
-		+ lt::settings_pack::num_string_settings; ++i)
-	{
+		 i < lt::settings_pack::string_type_base + lt::settings_pack::num_string_settings;
+		 ++i) {
 		if (!sett.has_val(i)) continue;
 		m_strings[lt::name_for_setting(i)] = sett.get_str(i);
 	}
 	for (int i = lt::settings_pack::bool_type_base;
-		i < lt::settings_pack::bool_type_base
-		+ lt::settings_pack::num_bool_settings; ++i)
-	{
+		 i < lt::settings_pack::bool_type_base + lt::settings_pack::num_bool_settings;
+		 ++i) {
 		if (!sett.has_val(i)) continue;
 		m_ints[lt::name_for_setting(i)] = sett.get_bool(i);
 	}
 	for (int i = lt::settings_pack::int_type_base;
-		i < lt::settings_pack::int_type_base
-		+ lt::settings_pack::num_int_settings; ++i)
-	{
+		 i < lt::settings_pack::int_type_base + lt::settings_pack::num_int_settings;
+		 ++i) {
 		if (!sett.has_val(i)) continue;
 		m_ints[lt::name_for_setting(i)] = sett.get_int(i);
 	}
@@ -85,11 +82,9 @@ void save_settings::save(lt::error_code& ec) const
 	bool const has_settings = std::filesystem::exists(m_settings_file, fec);
 	bool const has_backup = std::filesystem::exists(backup, fec);
 
-	if (has_settings && has_backup)
-		std::filesystem::remove(backup, fec);
+	if (has_settings && has_backup) std::filesystem::remove(backup, fec);
 
-	if (has_settings)
-		std::filesystem::rename(m_settings_file, backup, fec);
+	if (has_settings) std::filesystem::rename(m_settings_file, backup, fec);
 
 	ec.clear();
 
@@ -107,8 +102,7 @@ void save_settings::save(lt::error_code& ec) const
 }
 
 namespace {
-void load_settings_impl(lt::session_params& params, std::string const& filename
-	, lt::error_code& ec)
+void load_settings_impl(lt::session_params& params, std::string const& filename, lt::error_code& ec)
 {
 	ec.clear();
 	std::vector<char> buf = load_file(filename.c_str());
@@ -125,36 +119,28 @@ void load_settings_impl(lt::session_params& params, std::string const& filename
 	}
 
 	int num_items = sett.dict_size();
-	for (int i = 0; i < num_items; ++i)
-	{
+	for (int i = 0; i < num_items; ++i) {
 		lt::bdecode_node item;
 		lt::string_view key;
 		boost::tie(key, item) = sett.dict_at(i);
 
 		int const n = lt::setting_by_name(std::string(key));
 		if (n < 0) continue;
-		if ((n & lt::settings_pack::type_mask) == lt::settings_pack::int_type_base)
-		{
+		if ((n & lt::settings_pack::type_mask) == lt::settings_pack::int_type_base) {
 			if (item.type() != lt::bdecode_node::int_t) continue;
 			params.settings.set_int(n, item.int_value());
-		}
-		else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::bool_type_base)
-		{
+		} else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::bool_type_base) {
 			if (item.type() != lt::bdecode_node::int_t) continue;
 			params.settings.set_bool(n, item.int_value() != 0);
-		}
-		else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::string_type_base)
-		{
+		} else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::string_type_base) {
 			if (item.type() != lt::bdecode_node::string_t) continue;
 			params.settings.set_str(n, std::string(item.string_value()));
 		}
 	}
 }
-}
+} // namespace
 
-void load_settings(lt::session_params& params
-	, std::string const& filename
-	, lt::error_code& ec)
+void load_settings(lt::session_params& params, std::string const& filename, lt::error_code& ec)
 {
 	ec.clear();
 	load_settings_impl(params, filename, ec);
@@ -191,5 +177,4 @@ std::string save_settings::get_str(char const* key, char const* def) const
 	return i->second;
 }
 
-}
-
+} // namespace ltweb

@@ -54,24 +54,22 @@ void write_minimal_torrent(std::filesystem::path const& path)
 bool wait_for_add(lt::session& ses, std::chrono::seconds const timeout)
 {
 	auto const deadline = std::chrono::steady_clock::now() + timeout;
-	while (std::chrono::steady_clock::now() < deadline)
-	{
+	while (std::chrono::steady_clock::now() < deadline) {
 		auto const remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-			deadline - std::chrono::steady_clock::now());
+			deadline - std::chrono::steady_clock::now()
+		);
 		if (remaining.count() <= 0) break;
 		ses.wait_for_alert(remaining);
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
 		for (auto const* a : alerts)
-			if (a->type() == lt::add_torrent_alert::alert_type)
-				return true;
+			if (a->type() == lt::add_torrent_alert::alert_type) return true;
 	}
 	return false;
 }
 
 // RAII temporary directory, cleaned up on destruction.
-struct temp_dir
-{
+struct temp_dir {
 	std::filesystem::path const path;
 	explicit temp_dir(char const* name)
 		: path(std::filesystem::temp_directory_path() / name)
@@ -138,7 +136,10 @@ BOOST_AUTO_TEST_CASE(non_torrent_ignored)
 	lt::session ses = make_session();
 	temp_dir dir("ltweb_auto_load_4");
 	write_minimal_torrent(dir.path / "real.torrent");
-	{ std::ofstream f(dir.path / "ignored.txt"); f << "not a torrent\n"; }
+	{
+		std::ofstream f(dir.path / "ignored.txt");
+		f << "not a torrent\n";
+	}
 
 	ltweb::auto_load al(ses);
 	al.set_remove_files(false);

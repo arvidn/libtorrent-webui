@@ -13,10 +13,8 @@ see LICENSE file.
 #include <cstdint>
 #include <string>
 
-namespace ltweb
-{
-	std::int64_t free_disk_space(std::string const& path);
+namespace ltweb {
+std::int64_t free_disk_space(std::string const& path);
 }
 
 #endif // LTWEB_DISK_SPACE_HPP
-

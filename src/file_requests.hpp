@@ -27,8 +27,7 @@ using std::mutex;
 
 namespace ltweb {
 
-struct piece_entry
-{
+struct piece_entry {
 	boost::shared_array<char> buffer;
 	int size;
 	lt::piece_index_t piece;
@@ -36,29 +35,33 @@ struct piece_entry
 
 // this is a session plugin which wraps the concept of reading pieces
 // from torrents, returning futures for when those pieces are complete
-struct file_requests : lt::plugin
-{
+struct file_requests : lt::plugin {
 	file_requests();
 	void on_alert(lt::alert const* a) override;
 	void on_tick() override;
-	std::shared_future<piece_entry> read_piece(lt::torrent_handle const& h
-		, lt::piece_index_t piece, lt::clock_type::duration timeout_ms);
+	std::shared_future<piece_entry> read_piece(
+		lt::torrent_handle const& h, lt::piece_index_t piece, lt::clock_type::duration timeout_ms
+	);
 
 	lt::feature_flags_t implemented_features() override
-	{ return lt::plugin::alert_feature | lt::plugin::tick_feature; }
+	{
+		return lt::plugin::alert_feature | lt::plugin::tick_feature;
+	}
 
 private:
-
-	struct piece_request
-	{
+	struct piece_request {
 		lt::info_hash_t info_hash;
 		lt::piece_index_t piece;
-		std::shared_ptr<std::promise<piece_entry> > promise;
+		std::shared_ptr<std::promise<piece_entry>> promise;
 		lt::clock_type::time_point timeout;
 		bool operator==(piece_request const& rq) const
-		{ return rq.info_hash == info_hash && rq.piece == piece; }
+		{
+			return rq.info_hash == info_hash && rq.piece == piece;
+		}
 		bool operator<(piece_request const& rq) const
-		{ return info_hash == rq.info_hash ? piece < rq.piece : info_hash < rq.info_hash; }
+		{
+			return info_hash == rq.info_hash ? piece < rq.piece : info_hash < rq.info_hash;
+		}
 	};
 
 	std::size_t hash_value(piece_request const& r) const;
@@ -69,10 +72,9 @@ private:
 	requests_t::iterator m_next_timeout;
 
 	// TOOD: figure out a way to clear out info-hashes
-	std::map<lt::info_hash_t, std::set<lt::piece_index_t> > m_have_pieces;
+	std::map<lt::info_hash_t, std::set<lt::piece_index_t>> m_have_pieces;
 };
 
-}
+} // namespace ltweb
 
 #endif // FILE_REQUESTS_HPP_
-

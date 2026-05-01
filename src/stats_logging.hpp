@@ -15,19 +15,16 @@ see LICENSE file.
 #include "libtorrent/fwd.hpp"
 #include <fstream>
 
-namespace ltweb
-{
-	struct alert_handler;
+namespace ltweb {
+struct alert_handler;
 
 /// writes logs to directory 'session_stats' in current working directory.
 /// logs are rotated each hour. Use parse_session_stats.py to parse logs.
-struct stats_logging : alert_observer
-{
+struct stats_logging : alert_observer {
 	stats_logging(alert_handler* h);
 	~stats_logging();
 
 private:
-
 	void rotate_stats_log();
 	void handle_alert(lt::alert const* a);
 
@@ -43,7 +40,6 @@ private:
 	int m_log_seq;
 };
 
-}
+} // namespace ltweb
 
 #endif
-

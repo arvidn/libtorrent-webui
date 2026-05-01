@@ -38,25 +38,13 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(trim)
 
-BOOST_AUTO_TEST_CASE(no_whitespace)
-{
-	BOOST_TEST(ltweb::trim("hello"sv) == "hello");
-}
+BOOST_AUTO_TEST_CASE(no_whitespace) { BOOST_TEST(ltweb::trim("hello"sv) == "hello"); }
 
-BOOST_AUTO_TEST_CASE(leading)
-{
-	BOOST_TEST(ltweb::trim("   hello"sv) == "hello");
-}
+BOOST_AUTO_TEST_CASE(leading) { BOOST_TEST(ltweb::trim("   hello"sv) == "hello"); }
 
-BOOST_AUTO_TEST_CASE(trailing)
-{
-	BOOST_TEST(ltweb::trim("hello   "sv) == "hello");
-}
+BOOST_AUTO_TEST_CASE(trailing) { BOOST_TEST(ltweb::trim("hello   "sv) == "hello"); }
 
-BOOST_AUTO_TEST_CASE(both_sides)
-{
-	BOOST_TEST(ltweb::trim("  hello world  "sv) == "hello world");
-}
+BOOST_AUTO_TEST_CASE(both_sides) { BOOST_TEST(ltweb::trim("  hello world  "sv) == "hello world"); }
 
 BOOST_AUTO_TEST_CASE(tabs)
 {
@@ -64,15 +52,9 @@ BOOST_AUTO_TEST_CASE(tabs)
 	BOOST_TEST(ltweb::trim(" \t hello \t "sv) == "hello");
 }
 
-BOOST_AUTO_TEST_CASE(all_whitespace)
-{
-	BOOST_TEST(ltweb::trim("   "sv) == "");
-}
+BOOST_AUTO_TEST_CASE(all_whitespace) { BOOST_TEST(ltweb::trim("   "sv) == ""); }
 
-BOOST_AUTO_TEST_CASE(empty)
-{
-	BOOST_TEST(ltweb::trim(""sv) == "");
-}
+BOOST_AUTO_TEST_CASE(empty) { BOOST_TEST(ltweb::trim(""sv) == ""); }
 
 BOOST_AUTO_TEST_CASE(internal_whitespace_preserved)
 {
@@ -83,40 +65,19 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(extension)
 
-BOOST_AUTO_TEST_CASE(normal)
-{
-	BOOST_TEST(ltweb::extension("file.txt"sv) == ".txt");
-}
+BOOST_AUTO_TEST_CASE(normal) { BOOST_TEST(ltweb::extension("file.txt"sv) == ".txt"); }
 
-BOOST_AUTO_TEST_CASE(multiple_dots)
-{
-	BOOST_TEST(ltweb::extension("archive.tar.gz"sv) == ".gz");
-}
+BOOST_AUTO_TEST_CASE(multiple_dots) { BOOST_TEST(ltweb::extension("archive.tar.gz"sv) == ".gz"); }
 
-BOOST_AUTO_TEST_CASE(no_extension)
-{
-	BOOST_TEST(ltweb::extension("README"sv) == "");
-}
+BOOST_AUTO_TEST_CASE(no_extension) { BOOST_TEST(ltweb::extension("README"sv) == ""); }
 
-BOOST_AUTO_TEST_CASE(dot_at_end)
-{
-	BOOST_TEST(ltweb::extension("file."sv) == ".");
-}
+BOOST_AUTO_TEST_CASE(dot_at_end) { BOOST_TEST(ltweb::extension("file."sv) == "."); }
 
-BOOST_AUTO_TEST_CASE(dot_file)
-{
-	BOOST_TEST(ltweb::extension(".hidden"sv) == ".hidden");
-}
+BOOST_AUTO_TEST_CASE(dot_file) { BOOST_TEST(ltweb::extension(".hidden"sv) == ".hidden"); }
 
-BOOST_AUTO_TEST_CASE(with_path)
-{
-	BOOST_TEST(ltweb::extension("path/to/file.cpp"sv) == ".cpp");
-}
+BOOST_AUTO_TEST_CASE(with_path) { BOOST_TEST(ltweb::extension("path/to/file.cpp"sv) == ".cpp"); }
 
-BOOST_AUTO_TEST_CASE(empty)
-{
-	BOOST_TEST(ltweb::extension(""sv) == "");
-}
+BOOST_AUTO_TEST_CASE(empty) { BOOST_TEST(ltweb::extension(""sv) == ""); }
 
 BOOST_AUTO_TEST_SUITE_END()
 
@@ -272,10 +233,7 @@ BOOST_AUTO_TEST_CASE(empty_haystack)
 	BOOST_TEST(ltweb::ci_find(""sv, "x"sv) == std::string_view::npos);
 }
 
-BOOST_AUTO_TEST_CASE(empty_needle)
-{
-	BOOST_TEST(ltweb::ci_find("hello"sv, ""sv) == 0);
-}
+BOOST_AUTO_TEST_CASE(empty_needle) { BOOST_TEST(ltweb::ci_find("hello"sv, ""sv) == 0); }
 
 BOOST_AUTO_TEST_CASE(both_empty)
 {
@@ -287,29 +245,14 @@ BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE(str)
 
-BOOST_AUTO_TEST_CASE(single_string)
-{
-	BOOST_TEST(ltweb::str("hello") == "hello");
-}
+BOOST_AUTO_TEST_CASE(single_string) { BOOST_TEST(ltweb::str("hello") == "hello"); }
 
-BOOST_AUTO_TEST_CASE(integer_concat)
-{
-	BOOST_TEST(ltweb::str("port=", 8080) == "port=8080");
-}
+BOOST_AUTO_TEST_CASE(integer_concat) { BOOST_TEST(ltweb::str("port=", 8080) == "port=8080"); }
 
-BOOST_AUTO_TEST_CASE(multiple_mixed)
-{
-	BOOST_TEST(ltweb::str("x=", 1, " y=", 2) == "x=1 y=2");
-}
+BOOST_AUTO_TEST_CASE(multiple_mixed) { BOOST_TEST(ltweb::str("x=", 1, " y=", 2) == "x=1 y=2"); }
 
-BOOST_AUTO_TEST_CASE(no_arguments)
-{
-	BOOST_TEST(ltweb::str() == "");
-}
+BOOST_AUTO_TEST_CASE(no_arguments) { BOOST_TEST(ltweb::str() == ""); }
 
-BOOST_AUTO_TEST_CASE(float_point)
-{
-	BOOST_TEST(ltweb::str("v=", 3.14) == "v=3.14");
-}
+BOOST_AUTO_TEST_CASE(float_point) { BOOST_TEST(ltweb::str("v=", 3.14) == "v=3.14"); }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -28,25 +28,23 @@ inline std::string_view parse_mime_part(std::string_view part, std::string& cont
 	if (sep == std::string_view::npos) return {};
 
 	std::string_view const headers = part.substr(0, sep);
-	std::string_view const body    = part.substr(sep + 4);
+	std::string_view const body = part.substr(sep + 4);
 
 	// scan header lines for Content-Type (case-insensitive)
 	static constexpr std::string_view ct_name = "content-type:";
 	std::string_view remaining = headers;
-	while (!remaining.empty())
-	{
+	while (!remaining.empty()) {
 		auto const eol = remaining.find('\r');
 		std::string_view const line = remaining.substr(0, eol);
 
-		if (line.size() > ct_name.size())
-		{
+		if (line.size() > ct_name.size()) {
 			bool match = true;
 			for (std::size_t i = 0; i < ct_name.size() && match; ++i)
 				match = std::tolower(static_cast<unsigned char>(line[i])) == ct_name[i];
-			if (match)
-			{
+			if (match) {
 				std::string_view value = line.substr(ct_name.size());
-				while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+				while (!value.empty() && value.front() == ' ')
+					value.remove_prefix(1);
 				content_type.assign(value);
 			}
 		}
