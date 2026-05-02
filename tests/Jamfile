@@ -25,3 +25,4 @@ unit-test test_torrent_post : test_torrent_post.cpp ;
 unit-test test_auto_load : test_auto_load.cpp ;
 unit-test test_load_config : test_load_config.cpp ;
 unit-test test_find_longest_prefix : test_find_longest_prefix.cpp ;
+unit-test test_resolve_served_path : test_resolve_served_path.cpp ;
