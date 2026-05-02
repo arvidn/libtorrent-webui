@@ -60,6 +60,7 @@
       for (var g in graphs) {
         var n = graphs[g].name;
         if (!data[dp].hasOwnProperty(n)) continue;
+        if (!Number.isFinite(data[dp][n])) continue;
         peak = Math.max(data[dp][n] * multiplier, peak);
       }
     }
@@ -182,7 +183,7 @@
       for (var i in data) {
         var time = data[i].time;
         var y = data[i][g.name] * multiplier;
-        if (typeof y == "undefined") continue;
+        if (!Number.isFinite(y)) continue;
 
         if (first) {
           ctx.moveTo((time - start_time) * scalex, view_height - y * scaley);
