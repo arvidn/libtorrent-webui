@@ -30,6 +30,21 @@ repos:
 
   - repo: local
     hooks:
+      - id: eslint
+        # Lint the project's JavaScript under bt/, including inline
+        # <script> blocks in the HTML files (eslint-plugin-html parses
+        # those out).  Runs the project's own eslint from node_modules
+        # rather than a pre-commit-managed copy: eslint.config.mjs is
+        # an ESM module that imports eslint-plugin-html, and Node's
+        # ESM resolver only finds plugins in a node_modules directory
+        # on the path from the config file up to the filesystem root.
+        # That means the project must `npm ci` (or `npm install`)
+        # before pre-commit runs eslint.
+        name: eslint
+        entry: npx --no-install eslint
+        language: system
+        files: ^bt/.*\.(js|html)$
+
       - id: html-validate
         # HTML5 content-model validation for files under bt/.
         # Catches issues prettier's parser does not flag, such as

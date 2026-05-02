@@ -1,0 +1,39 @@
+name: pre-commit
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # The eslint hook runs the project's own eslint via `npx`, so its
+      # node_modules must exist before pre-commit runs.  See the eslint
+      # entry in .pre-commit-config.yaml for why it cannot use
+      # additional_dependencies the way html-validate does.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      # Runs every hook defined in .pre-commit-config.yaml against every
+      # tracked file.  Hooks that rewrite files (clang-format, prettier)
+      # exit non-zero and print a diff if any file would change; lint-only
+      # hooks (eslint, html-validate) exit non-zero on rule violations.
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
