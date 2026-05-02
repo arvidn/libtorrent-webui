@@ -17,7 +17,7 @@ repos:
         # Only format this project's own C++ sources.  The vendored C code
         # (src/jsmn.*, src/cdecode.*) and the libtorrent submodule are
         # excluded by the path/extension filter below.
-        files: ^(src|tests)/.*\.(cpp|hpp)$
+        files: ^(src|tests|tools)/.*\.(cpp|hpp)$
 
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.1.0
