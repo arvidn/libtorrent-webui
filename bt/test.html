@@ -76,6 +76,9 @@
           .querySelector("#torrent-row")
           .content.cloneNode(true);
         template.querySelector("tr").id = ih;
+        template
+          .querySelector("#trackers")
+          .setAttribute("href", "test_trackers.html#" + ih);
         table.appendChild(template);
         row = document.getElementById(ih);
       }
@@ -181,6 +184,7 @@
       <td>Up rate</td>
       <td>Down rate</td>
       <td>Peers</td>
+      <td>Trackers</td>
     </tr>
   </thead>
   <tbody></tbody>
@@ -211,5 +215,6 @@
     <td id="upload-rate" class="counter"></td>
     <td id="download-rate" class="counter"></td>
     <td id="connected-peers" class="counter"></td>
+    <td><a href="test_trackers.html#" id="trackers">trackers</a></td>
   </tr>
 </template>

@@ -1403,6 +1403,7 @@ bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
 	if (!h.is_valid()) return error(st, f, invalid_argument);
 
 	std::vector<lt::announce_entry> const trackers = h.trackers();
+	lt::info_hash_t const info_hashes = h.info_hashes();
 
 	std::vector<char> response;
 	std::back_insert_iterator<std::vector<char>> ptr(response);
@@ -1430,6 +1431,8 @@ bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
 	for (lt::announce_entry const& entry : trackers) {
 		for (lt::announce_endpoint const& ep : entry.endpoints) {
 			for (lt::protocol_version const proto : lt::all_versions) {
+				if (proto == lt::protocol_version::V1 && !info_hashes.has_v1()) continue;
+				if (proto == lt::protocol_version::V2 && !info_hashes.has_v2()) continue;
 				lt::announce_infohash const& aih = ep.info_hashes[proto];
 
 				write_uint16(tracker_id++, ptr);
