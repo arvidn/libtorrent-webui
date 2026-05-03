@@ -49,9 +49,9 @@
     while (prune < data.length && data[prune].time < start_time) ++prune;
     if (prune > 1) data.splice(0, prune - 1);
 
-    for (var s in all_names) {
-      var defs = [{ name: all_names[s], color: "#e44" }];
-      render_graph(all_names[s], data, defs, start_time, now, "", "auto");
+    for (const name of all_names) {
+      var defs = [{ name: name, color: "#e44" }];
+      render_graph(name, data, defs, start_time, now, "", "auto");
     }
   };
 

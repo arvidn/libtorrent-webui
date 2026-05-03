@@ -14,16 +14,17 @@
       return;
     }
 
-    var table = document.getElementById("settings");
+    var tbody = document.getElementById("settings").tBodies[0];
+    var template = document.getElementById("settings-row");
 
     var req = [];
-    for (var i in settings) {
-      var s = settings[i];
-      var row = table.insertRow(-1);
+    for (const s of settings) {
+      var row = template.content.firstElementChild.cloneNode(true);
       row.id = s.id;
-      row.insertCell(0).textContent = s.id;
-      row.insertCell(1).textContent = s.name;
-      row.insertCell(2).textContent = s.type;
+      row.querySelector('[data-field="id"]').textContent = s.id;
+      row.querySelector('[data-field="name"]').textContent = s.name;
+      row.querySelector('[data-field="type"]').textContent = s.type;
+      tbody.appendChild(row);
       req.push(s.id);
     }
 
@@ -36,12 +37,13 @@
       for (var i = 0; i < req.length; ++i) {
         // find the row with this settings ID
         var row = document.getElementById(req[i]);
+        var value_cell = row.querySelector('[data-field="value"]');
 
         // type
-        var type = row.cells[2].textContent;
+        var type = row.querySelector('[data-field="type"]').textContent;
         switch (type) {
           case "string":
-            row.insertCell(3).innerHTML =
+            value_cell.innerHTML =
               '<input type="text" name="' +
               req[i] +
               '" value="' +
@@ -51,7 +53,7 @@
               "');\"/>";
             break;
           case "int":
-            row.insertCell(3).innerHTML =
+            value_cell.innerHTML =
               '<input type="number" name="' +
               req[i] +
               '" value="' +
@@ -61,7 +63,7 @@
               "');\"/>";
             break;
           case "bool":
-            row.insertCell(3).innerHTML =
+            value_cell.innerHTML =
               '<select id="dd-' +
               req[i] +
               '" onchange="submit(\'' +
@@ -86,9 +88,9 @@
 
   function submit(settings_id) {
     var id = parseInt(settings_id);
-    var cells = document.getElementById(settings_id).cells;
-    var type = cells[2].textContent;
-    var value = cells[3].childNodes[0];
+    var row = document.getElementById(settings_id);
+    var type = row.querySelector('[data-field="type"]').textContent;
+    var value = row.querySelector('[data-field="value"]').childNodes[0];
     switch (type) {
       case "string":
         value = value.value;
@@ -135,4 +137,13 @@
       <th>Value</th>
     </tr>
   </thead>
+  <tbody></tbody>
 </table>
+<template id="settings-row">
+  <tr>
+    <td data-field="id"></td>
+    <td data-field="name"></td>
+    <td data-field="type"></td>
+    <td data-field="value"></td>
+  </tr>
+</template>
