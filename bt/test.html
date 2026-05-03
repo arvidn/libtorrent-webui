@@ -65,9 +65,9 @@
       table.replaceChildren();
     }
 
-    for (var ih in updates) {
-      var t = updates[ih];
-      if (ih.length != 40) continue;
+    var modified = updates["updates"];
+    for (var ih in modified) {
+      var t = modified[ih];
 
       var row = document.getElementById(ih);
 
