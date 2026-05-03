@@ -983,9 +983,12 @@ The tracker fields, in bitmask bit-order (LSB is bit 0), are:
 |          |                     | sent when the scheduled time changes,    |
 |          |                     | not on every poll.                       |
 +----------+---------------------+------------------------------------------+
-| 7        | int32_t             | ``min-announce`` minimum interval in     |
-|          |                     | seconds between announces, as requested  |
-|          |                     | by the tracker.                          |
+| 7        | int32_t             | ``min-announce`` absolute timestamp (in  |
+|          |                     | seconds) of the earliest time at which   |
+|          |                     | the next announce is permitted, in the   |
+|          |                     | same clock as ``timestamp`` at the top   |
+|          |                     | of the response. Only sent when the      |
+|          |                     | value changes, not on every poll.        |
 +----------+---------------------+------------------------------------------+
 | 8        | uint8_t, uint8_t[]  | ``last-error`` error message from the    |
 |          |                     | most recent failed announce. 8-bit       |
