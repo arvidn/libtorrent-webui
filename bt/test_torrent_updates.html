@@ -28,8 +28,8 @@
         }
 
         var removed_torrents = updates["removed"];
-        for (var i in removed_torrents) {
-          var row = document.getElementById(removed_torrents[i]);
+        for (const ih of removed_torrents) {
+          var row = document.getElementById(ih);
           if (row) row.parentNode.removeChild(row);
         }
 
@@ -39,29 +39,19 @@
         }
 
         var modified = updates["updates"];
+        var template = document.getElementById("torrent-row");
         for (var ih in modified) {
           var t = modified[ih];
           var row = document.getElementById(ih);
 
-          var field_map = {
-            name: 0,
-            progress: 1,
-            "download-rate": 2,
-            "upload-rate": 3,
-            "connected-peers": 4,
-            error: 5,
-            flags: 6,
-            state: 7,
-          };
-
           if (row == null) {
-            row = table.insertRow(-1);
+            row = template.content.firstElementChild.cloneNode(true);
             row.id = ih;
-            for (var j in field_map) row.insertCell(0);
+            table.appendChild(row);
           }
           for (var field in t) {
-            if (!field_map.hasOwnProperty(field)) continue;
-            var cell = row.cells[field_map[field]];
+            var cell = row.querySelector('[data-field="' + field + '"]');
+            if (!cell) continue;
             cell.textContent = t[field];
             cell.className = "updated";
           }
@@ -119,5 +109,17 @@
       </thead>
       <tbody></tbody>
     </table>
+    <template id="torrent-row">
+      <tr>
+        <td data-field="name"></td>
+        <td data-field="progress"></td>
+        <td data-field="download-rate"></td>
+        <td data-field="upload-rate"></td>
+        <td data-field="connected-peers"></td>
+        <td data-field="error"></td>
+        <td data-field="flags"></td>
+        <td data-field="state"></td>
+      </tr>
+    </template>
   </body>
 </html>
