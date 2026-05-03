@@ -10,7 +10,7 @@ see LICENSE file.
 #include "torrent_post.hpp"
 #include "mime_part.hpp"
 #include "utils.hpp"
-#include "auth.hpp"
+#include "parse_http_auth.hpp"
 #include "libtorrent/load_torrent.hpp"
 #include "libtorrent/torrent_flags.hpp"
 
@@ -145,7 +145,7 @@ std::vector<lt::add_torrent_params> parse_torrent_post(
 namespace ltweb {
 
 torrent_post_handler::torrent_post_handler(
-	lt::session& ses, auth_interface const* auth, save_settings_interface* settings
+	lt::session& ses, auth_interface const& auth, save_settings_interface* settings
 )
 	: m_ses(ses)
 	, m_auth(auth)

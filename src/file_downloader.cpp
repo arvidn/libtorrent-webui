@@ -9,8 +9,8 @@ see LICENSE file.
 
 #include "webui.hpp"
 #include "file_downloader.hpp"
-#include "no_auth.hpp"
-#include "auth.hpp"
+#include "auth_interface.hpp"
+#include "parse_http_auth.hpp"
 #include "hex.hpp"
 #include "alert_handler.hpp"
 #include "utils.hpp"
@@ -65,6 +65,12 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
 	{
 		std::lock_guard<std::mutex> l(m_mutex);
 		return m_stopped;
+	}
+
+	void cancel()
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		abort();
 	}
 
 	void set_piece_deadlines()
@@ -270,7 +276,7 @@ parse_range(http::request<http::string_body> const& req, std::int64_t file_size)
 	return {first_byte, last_byte, true};
 }
 
-file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_interface const* auth)
+file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_interface const& auth)
 	: m_ses(s)
 	, m_auth(auth)
 	, m_attachment(true)
@@ -280,6 +286,18 @@ file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_inte
 }
 
 file_downloader::~file_downloader() { m_alert->unsubscribe(this); }
+
+void file_downloader::shutdown()
+{
+	std::vector<std::shared_ptr<file_request_conn>> conns;
+	{
+		std::lock_guard<std::mutex> l(m_mutex);
+		for (auto& [_, conn] : m_outstanding_requests)
+			conns.push_back(conn);
+	}
+	for (auto& conn : conns)
+		conn->cancel();
+}
 
 std::string file_downloader::path_prefix() const { return "/download/"; }
 

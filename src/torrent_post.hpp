@@ -48,7 +48,7 @@ namespace ltweb {
 // Responds 204 No Content on success, 400 or 413 on error.
 struct torrent_post_handler : http_handler {
 	torrent_post_handler(
-		lt::session& ses, auth_interface const* auth, save_settings_interface* settings = nullptr
+		lt::session& ses, auth_interface const& auth, save_settings_interface* settings = nullptr
 	);
 
 	std::string path_prefix() const override;
@@ -61,7 +61,7 @@ struct torrent_post_handler : http_handler {
 
 private:
 	lt::session& m_ses;
-	auth_interface const* m_auth;
+	auth_interface const& m_auth;
 	save_settings_interface* m_settings;
 };
 

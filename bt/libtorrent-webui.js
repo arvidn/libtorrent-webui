@@ -369,6 +369,7 @@
       var num_removed_torrents = view.getUint32(12);
       //		console.log('frame: ' + self._frame + ' num-torrents: ' + num_torrents + ' num-removed-torrents: ' + num_removed_torrents);
       var ret = {};
+      var updates = {};
       var offset = 16;
       for (var i = 0; i < num_torrents; ++i) {
         var infohash = read_infohash(view, offset);
@@ -486,9 +487,10 @@
               break;
           }
         }
-        ret[infohash] = torrent;
+        updates[infohash] = torrent;
       }
 
+      ret["updates"] = updates;
       ret["snapshot"] = num_removed_torrents == 0xffffffff;
 
       var removed = [];

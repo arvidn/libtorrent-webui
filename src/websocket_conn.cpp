@@ -12,7 +12,7 @@ see LICENSE file.
 #include <boost/asio/dispatch.hpp>
 
 #include "websocket_conn.hpp"
-#include "auth.hpp"
+#include "auth_interface.hpp"
 
 // TODO: drop this dependency
 #include "libtorrent_webui.hpp"

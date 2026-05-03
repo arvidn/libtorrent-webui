@@ -7,7 +7,7 @@ feature pam : off on : composite ;
 
 feature use-boost : system source : composite ;
 
-project libtorrent-webui : requirements <cxxstd>17 ;
+project libtorrent-webui : requirements <cxxstd>20 ;
 
 use-project /torrent : libtorrent ;
 lib sqlite : : <name>sqlite3 <search>/opt/local/lib : <include>/opt/local/include ;
@@ -33,8 +33,12 @@ SOURCES =
 	torrent_history
 	piece_history
 	peer_history
-	auth
 	no_auth
+	session_authenticator
+	sqlite_user_account
+	parse_http_auth
+	login
+	login_throttler
 	load_config
 	error_logger
 	websocket_conn
@@ -61,7 +65,7 @@ lib torrent-webui
 
 	: # default build
 	<link>static
-	<cxxstd>17
+	<cxxstd>20
 
 	: # usage-requirements
 	<include>src
@@ -76,8 +80,8 @@ lib rt : : <name>rt <search>/usr/local/lib <link>shared ;
 lib pam : : <name>pam <search>/usr/local/lib ;
 lib dynamic-linker : : <name>dl <link>shared ;
 
-exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>17 ;
+exe webui_test : test.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>20 ;
 install stage_webui_test : webui_test : <location>. ;
 
-exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <cxxstd>17 ;
+exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <library>sqlite <cxxstd>20 ;
 install stage_add_user : add_user : <location>. ;

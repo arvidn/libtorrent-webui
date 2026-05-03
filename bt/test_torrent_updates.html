@@ -17,7 +17,7 @@
         }
 
         // clear classes on all cells
-        var table = document.getElementById("torrents");
+        var table = document.getElementById("torrents").querySelector("tbody");
         var rows = table.rows;
         for (var i = 0; i < rows.length; ++i) {
           var r = rows[i];
@@ -27,44 +27,31 @@
           }
         }
 
-        for (var ih in updates) {
-          var t = updates[ih];
-          if (ih == "removed") {
-            var removed_torrents = updates[ih];
-            for (var i in removed_torrents) {
-              var row = document.getElementById(removed_torrents[i]);
-              row.parentNode.removeChild(row);
-            }
-            continue;
-          }
+        var removed_torrents = updates["removed"];
+        for (const ih of removed_torrents) {
+          var row = document.getElementById(ih);
+          if (row) row.parentNode.removeChild(row);
+        }
+
+        const snapshot = updates["snapshot"];
+        if (snapshot) {
+          table.replaceChildren();
+        }
+
+        var modified = updates["updates"];
+        var template = document.getElementById("torrent-row");
+        for (var ih in modified) {
+          var t = modified[ih];
           var row = document.getElementById(ih);
 
-          var field_map = {
-            name: 1,
-            progress: 2,
-            "download-rate": 3,
-            "upload-rate": 4,
-            "connected-peers": 5,
-            error: 6,
-            flags: 7,
-            state: 8,
-          };
-
           if (row == null) {
-            row = table.insertRow(-1);
+            row = template.content.firstElementChild.cloneNode(true);
             row.id = ih;
-            for (var j in field_map) row.insertCell(0);
-            row.insertCell(0).innerHTML =
-              '<a href="#" onclick="conn.start([\'' +
-              ih +
-              "']); return false;\">start</a> " +
-              '<a href="#" onclick="conn.stop([\'' +
-              ih +
-              "']); return false;\">stop</a>";
+            table.appendChild(row);
           }
           for (var field in t) {
-            if (!field_map.hasOwnProperty(field)) continue;
-            var cell = row.cells[field_map[field]];
+            var cell = row.querySelector('[data-field="' + field + '"]');
+            if (!cell) continue;
             cell.textContent = t[field];
             cell.className = "updated";
           }
@@ -108,17 +95,31 @@
       border="1"
       style="border-collapse: collapse; border-color: black"
     >
-      <tr>
-        <th>controls</th>
-        <th>Name</th>
-        <th>Progress</th>
-        <th>Download rate</th>
-        <th>Upload rate</th>
-        <th>Peers</th>
-        <th>Error</th>
-        <th>flags</th>
-        <th>state</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Progress</th>
+          <th>Download rate</th>
+          <th>Upload rate</th>
+          <th>Peers</th>
+          <th>Error</th>
+          <th>flags</th>
+          <th>state</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
+    <template id="torrent-row">
+      <tr>
+        <td data-field="name"></td>
+        <td data-field="progress"></td>
+        <td data-field="download-rate"></td>
+        <td data-field="upload-rate"></td>
+        <td data-field="connected-peers"></td>
+        <td data-field="error"></td>
+        <td data-field="flags"></td>
+        <td data-field="state"></td>
+      </tr>
+    </template>
   </body>
 </html>

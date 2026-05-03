@@ -10,16 +10,18 @@ see LICENSE file.
 #ifndef LTWEB_NO_AUTH_HPP
 #define LTWEB_NO_AUTH_HPP
 
-#include <string>
+#include <optional>
+#include <string_view>
 
 #include "auth_interface.hpp"
 
 namespace ltweb {
 
-struct no_auth : auth_interface {
-	no_auth() {}
-	virtual permissions_interface const*
-	find_user(std::string username, std::string password) const;
+// user_account implementation that accepts any username and password
+// and returns group 0. Useful as a development-mode default when no
+// real user directory is configured. Do not use in production.
+struct no_auth : user_account {
+	std::optional<int> verify(std::string_view username, std::string_view password) const override;
 };
 
 } // namespace ltweb

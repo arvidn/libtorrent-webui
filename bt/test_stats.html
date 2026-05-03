@@ -12,24 +12,27 @@
 
       var all_stats = [];
 
+      var stat_tables = function () {
+        return [
+          document.getElementById("stats1"),
+          document.getElementById("stats2"),
+          document.getElementById("stats3"),
+          document.getElementById("stats4"),
+          document.getElementById("stats5"),
+        ];
+      };
+
       var on_stats = function (updates) {
         if (typeof updates === "string") {
           console.log("ERROR: " + updates);
           return;
         }
 
-        var table = [];
-        table.push(document.getElementById("stats1"));
-        table.push(document.getElementById("stats2"));
-        table.push(document.getElementById("stats3"));
-        table.push(document.getElementById("stats4"));
-        table.push(document.getElementById("stats5"));
-        for (var j in table) {
-          var rows = table[j].rows;
+        var tables = stat_tables();
+        for (const t of tables) {
+          var rows = t.tBodies[0].rows;
           for (var i = 0; i < rows.length; ++i) {
-            var r = rows[i];
-            var cells = r.cells;
-            cells[0].className = "statValue";
+            rows[i].cells[0].className = "statValue";
           }
         }
 
@@ -50,22 +53,15 @@
           }
 
           conn.list_stats(function (stats) {
-            var table = [];
-            table.push(document.getElementById("stats1"));
-            table.push(document.getElementById("stats2"));
-            table.push(document.getElementById("stats3"));
-            table.push(document.getElementById("stats4"));
-            table.push(document.getElementById("stats5"));
+            var tables = stat_tables();
+            var template = document.getElementById("stat-row");
             var i = 0;
             for (var s in stats) {
-              var row = table[Math.floor(i / 60)].insertRow(-1);
+              var row = template.content.firstElementChild.cloneNode(true);
               row.id = s;
-              // always assume 0 until a get_stats says differently
-              const value_cell = row.insertCell(0);
-              value_cell.textContent = "0";
-              value_cell.className = "statValue";
-              row.insertCell(1).textContent =
+              row.cells[1].textContent =
                 s + (stats[s].type == 0 ? " (c)" : " (g)");
+              tables[Math.floor(i / 60)].tBodies[0].appendChild(row);
 
               all_stats.push(stats[s].id);
               ++i;
@@ -97,34 +93,55 @@
   </head>
   <body>
     <table id="stats1" class="statTable">
-      <tr>
-        <th>Value</th>
-        <th style="text-align: left">Metric</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th style="text-align: left">Metric</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
     <table id="stats2" class="statTable">
-      <tr>
-        <th>Value</th>
-        <th style="text-align: left">Metric</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th style="text-align: left">Metric</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
     <table id="stats3" class="statTable">
-      <tr>
-        <th>Value</th>
-        <th style="text-align: left">Metric</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th style="text-align: left">Metric</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
     <table id="stats4" class="statTable">
-      <tr>
-        <th>Value</th>
-        <th style="text-align: left">Metric</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th style="text-align: left">Metric</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
     <table id="stats5" class="statTable">
-      <tr>
-        <th>Value</th>
-        <th style="text-align: left">Metric</th>
-      </tr>
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th style="text-align: left">Metric</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
     </table>
+    <template id="stat-row">
+      <tr>
+        <td class="statValue">0</td>
+        <td></td>
+      </tr>
+    </template>
   </body>
 </html>

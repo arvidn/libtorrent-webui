@@ -50,7 +50,8 @@ struct libtorrent_webui
 		torrent_history const& hist,
 		auth_interface const& auth,
 		alert_handler& alerts,
-		save_settings_interface& sett
+		save_settings_interface& sett,
+		std::string login_url
 	);
 	~libtorrent_webui();
 
@@ -110,6 +111,7 @@ private:
 	// websockets are serviced from a thread pool
 	torrent_history const& m_hist;
 	auth_interface const& m_auth;
+	std::string m_login_url;
 	alert_handler& m_alert;
 	save_settings_interface& m_settings;
 

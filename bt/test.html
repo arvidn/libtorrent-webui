@@ -2,7 +2,6 @@
 <meta charset="utf-8" />
 <title>libtorrent websocket test</title>
 <script src="libtorrent-webui.js"></script>
-<script src="libtorrent-graph.js"></script>
 
 <!-- TODO: factor out this script into a separate file from the HTML -->
 <script>
@@ -10,25 +9,6 @@
   "use strict";
 
   var conn = null;
-
-  var g_stats = [];
-  var g_disk_graph_defs = [{ name: "disk.queued_write_bytes", color: "#888" }];
-
-  var g_disk_graph2_defs = [
-    { name: "disk.disk_blocks_in_use", color: "#444" },
-    { name: "disk.pinned_blocks", color: "#e49" },
-    { name: "disk.queued_disk_jobs", color: "#4ee" },
-  ];
-
-  var g_net_graph_defs = [
-    { name: "net.sent_payload_bytes-rate", color: "#d44" },
-    { name: "net.recv_payload_bytes-rate", color: "#4d4" },
-  ];
-
-  // list of -> [ {time:timestamp, name1:counter1, name2:coutner2, name3:counter3, ...}, ... ]
-  var g_stats_counters = [];
-
-  var first_time = new Date().getTime();
 
   var state_names = ["checking", "metadata", "downloading", "seeding"];
 
@@ -74,16 +54,20 @@
 
     var table = document.getElementById("torrents").querySelector("tbody");
 
-    for (var ih in updates) {
-      var t = updates[ih];
-      if (ih == "removed") {
-        var removed_torrents = updates[ih];
-        for (var i in removed_torrents) {
-          var row = document.getElementById(removed_torrents[i]);
-          row.parentNode.removeChild(row);
-        }
-        continue;
-      }
+    var removed_torrents = updates["removed"];
+    for (var i in removed_torrents) {
+      var row = document.getElementById(removed_torrents[i]);
+      row.parentNode.removeChild(row);
+    }
+
+    const snapshot = updates["snapshot"];
+    if (snapshot) {
+      table.replaceChildren();
+    }
+
+    var modified = updates["updates"];
+    for (var ih in modified) {
+      var t = modified[ih];
 
       var row = document.getElementById(ih);
 
@@ -129,89 +113,6 @@
     setTimeout(get_torrent_updates, 300);
   };
 
-  var new_data_point = function (data, now, new_values) {
-    var data_point = null;
-    if (data.length > 0) {
-      data_point = Object.assign({}, data[data.length - 1]);
-
-      for (var k in data_point) {
-        if (k.endsWith("-rate")) data_point[k] = 0;
-      }
-
-      const delta = (now - data_point.time) / 1000.0;
-      for (var p in new_values) {
-        data_point[p + "-rate"] = (new_values[p] - data_point[p]) / delta;
-        data_point[p] = new_values[p];
-      }
-
-      data_point.time = now;
-    } else {
-      data_point = Object.assign({}, new_values);
-      for (var k in new_values) data_point[k + "-rate"] = 0;
-      data_point.time = now;
-    }
-
-    data.push(data_point);
-  };
-
-  var prune_data_points = function (data, start_time) {
-    var prune = 0;
-    while (prune < data.length && data[prune].time < start_time) ++prune;
-    if (prune > 1) data.splice(0, prune - 1);
-  };
-
-  var redraw_graph = function (counters) {
-    if (typeof counters === "string") {
-      console.log("ERROR: " + counters);
-      return;
-    }
-
-    var now = new Date().getTime() - first_time;
-
-    // remove entries that are scrolled out of the graph view
-    // this is the start of the window to be graphed.
-    // 60 seconds
-    var start_time = now - 60 * 1000;
-
-    new_data_point(g_stats_counters, now, counters);
-    prune_data_points(g_stats_counters, start_time);
-
-    render_graph(
-      "disk_graph",
-      g_stats_counters,
-      g_disk_graph_defs,
-      start_time,
-      now,
-      "B",
-      "auto",
-      1,
-      true,
-    );
-    render_graph(
-      "disk_graph2",
-      g_stats_counters,
-      g_disk_graph2_defs,
-      start_time,
-      now,
-      "",
-      "auto",
-      1,
-      true,
-    );
-    render_graph(
-      "net_graph",
-      g_stats_counters,
-      g_net_graph_defs,
-      start_time,
-      now,
-      "B/s",
-      "auto",
-      1,
-      true,
-    );
-    setTimeout(get_session_stats, 300);
-  };
-
   var add_torrent = function () {
     var link_box = document.getElementById("magnet");
     conn.add_torrent(link_box.value, function (e) {
@@ -234,10 +135,6 @@
     );
   };
 
-  var get_session_stats = function () {
-    conn.get_stats(g_stats, redraw_graph);
-  };
-
   window.onload = function () {
     var url = "wss://" + window.location.host + "/bt/control";
     conn = new libtorrent_connection(url, function (state) {
@@ -245,30 +142,7 @@
         console.log(state);
         return;
       }
-
       get_torrent_updates();
-
-      conn.list_stats(function (stats) {
-        // save off the stats we're interested in, and will subscribe to
-        g_stats = [];
-        for (var name in stats) {
-          switch (name) {
-            case "net.sent_payload_bytes":
-            case "net.recv_payload_bytes":
-            case "dht.dht_nodes":
-            case "dht.dht_node_cache":
-            case "ses.num_unchoke_slots":
-            case "disk.num_running_threads":
-            case "disk.queued_write_bytes":
-            case "disk.disk_blocks_in_use":
-            case "disk.pinned_blocks":
-            case "disk.queued_disk_jobs":
-              var id = stats[name].id;
-              g_stats.push(id);
-          }
-        }
-        get_session_stats();
-      });
     });
   };
 </script>
@@ -328,9 +202,9 @@
       >
     </td>
     <td><a href="test_files.html#" id="name"></a></td>
-    <td>
+    <td style="position: relative">
       <div id="progress" style="height: 1em"></div>
-      <div style="position: absolute" id="state"></div>
+      <div style="position: absolute; top: 0; left: 0" id="state"></div>
     </td>
     <td id="total-uploaded" class="counter"></td>
     <td id="total-downloaded" class="counter"></td>
@@ -339,6 +213,3 @@
     <td id="connected-peers" class="counter"></td>
   </tr>
 </template>
-<canvas id="net_graph" width="800" height="250"></canvas>
-<canvas id="disk_graph" width="800" height="250"></canvas>
-<canvas id="disk_graph2" width="800" height="250"></canvas>

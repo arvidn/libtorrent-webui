@@ -235,11 +235,6 @@ std::ostream& operator<<(std::ostream& os, lt::torrent_status::state_t s)
 	return os << static_cast<int>(s);
 }
 
-std::ostream& operator<<(std::ostream& os, lt::time_duration const d)
-{
-	return os << std::chrono::duration_cast<std::chrono::seconds>(d).count();
-}
-
 std::ostream& operator<<(std::ostream& os, lt::time_point const t)
 {
 	return os << std::chrono::duration_cast<std::chrono::seconds>(t.time_since_epoch()).count();
