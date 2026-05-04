@@ -4,6 +4,7 @@
 #include "save_settings.hpp"
 #include "save_resume.hpp"
 #include "torrent_history.hpp"
+#include "prioritize_headers.hpp"
 #include "serve_files.hpp"
 #include "public_file.hpp"
 #include "webui.hpp"
@@ -73,6 +74,10 @@ int main(int argc, char *const argv[])
 	save_settings sett(ses, s.settings, "settings.dat");
 
 	torrent_history hist(&alerts);
+
+	// boosts piece priority for the first 128 kiB of every video/audio/
+	// image file, so streaming previews start fast. Honors file priority 0.
+	prioritize_headers headers(&alerts);
 
 	save_resume resume(ses, "resume.dat", &alerts);
 	resume.load(ec);

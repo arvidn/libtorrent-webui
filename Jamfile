@@ -34,6 +34,7 @@ SOURCES =
 	piece_history
 	peer_history
 	piece_state_history
+	prioritize_headers
 	no_auth
 	perms
 	session_authenticator
