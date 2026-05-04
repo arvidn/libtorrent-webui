@@ -1024,6 +1024,135 @@ The tracker fields, in bitmask bit-order (LSB is bit 0), are:
 |          |                     |                                          |
 +----------+---------------------+------------------------------------------+
 
+get-piece-states
+................
+
+function id 25.
+
+This function returns which pieces of a torrent have been fully downloaded.
+It is distinct from `get-piece-updates`_, which tracks the block-level state
+of currently downloading pieces; ``get-piece-states`` tracks the completed
+("have") set across all pieces in the torrent.
+
+The response is either a *snapshot* (a complete bitfield of which pieces we
+have) or a *delta* (a list of piece indices that have been newly completed
+since the supplied frame number). The server picks the form: it sends a
+delta whenever it can, and falls back to a snapshot when a delta would be
+incorrect or unavailable.
+
+The frame-number is **per-torrent**, just like for `get-piece-updates`_.
+A client tracking multiple torrents must keep a separate frame counter
+for each info-hash; counters from one torrent are not comparable with
+counters from another, and a given torrent's counter may even reset to 0
+(for example, if the torrent is removed and re-added, or after a server
+restart).
+
+The call is (offset includes RPC call header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 23       | uint32_t           | ``frame-number`` timestamp of the last    |
+|          |                    | piece-states update received by the       |
+|          |                    | caller for this torrent. Pass 0 to        |
+|          |                    | request a full snapshot.                  |
++----------+--------------------+-------------------------------------------+
+
+The response is (offset includes RPC response header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 4        | uint32_t           | ``frame-number`` timestamp of this        |
+|          |                    | response. The client should pass this     |
+|          |                    | value as ``frame-number`` in the next     |
+|          |                    | call for this torrent.                    |
++----------+--------------------+-------------------------------------------+
+| 8        | uint8_t            | ``response-type``                         |
+|          |                    |                                           |
+|          |                    |  | 0. delta (list of newly completed      |
+|          |                    |  |    pieces follows)                     |
+|          |                    |  | 1. snapshot (full bitfield follows)    |
+|          |                    |                                           |
++----------+--------------------+-------------------------------------------+
+| 9        | *see below*        | payload, format depends on                |
+|          |                    | ``response-type``.                        |
++----------+--------------------+-------------------------------------------+
+
+When ``response-type`` is **1 (snapshot)**, the payload is:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 9        | uint32_t           | ``num-pieces`` total number of pieces in  |
+|          |                    | the torrent. May be 0 if the torrent's    |
+|          |                    | metadata has not yet been retrieved (for  |
+|          |                    | example, a magnet link that has not       |
+|          |                    | resolved yet); in that case the bitfield  |
+|          |                    | below is empty.                           |
++----------+--------------------+-------------------------------------------+
+| 13       | uint8_t[]          | ``bitfield`` ``ceil(num-pieces / 8)``     |
+|          |                    | bytes. Bit ordering: piece index ``i``    |
+|          |                    | is at bit ``7 - (i mod 8)`` of byte       |
+|          |                    | ``i / 8``. That is, piece 0 is the most-  |
+|          |                    | significant bit of byte 0, piece 7 is     |
+|          |                    | the least-significant bit of byte 0,      |
+|          |                    | piece 8 is the most-significant bit of    |
+|          |                    | byte 1, and so on. This matches the       |
+|          |                    | bit ordering of the BitTorrent wire       |
+|          |                    | bitfield message. A 1 bit means we have   |
+|          |                    | the corresponding piece (downloaded and   |
+|          |                    | hash-checked); a 0 bit means we don't.    |
+|          |                    | If ``num-pieces`` is not a multiple of 8, |
+|          |                    | the unused trailing bits in the last      |
+|          |                    | byte must be 0.                           |
++----------+--------------------+-------------------------------------------+
+
+A snapshot replaces any prior state the client has for this torrent. The
+client should advance its per-torrent frame counter to the response's
+``frame-number`` and apply subsequent deltas relative to it.
+
+When ``response-type`` is **0 (delta)**, the payload is:
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 9        | uint32_t           | ``num-added`` the number of piece         |
+|          |                    | indices to follow. May be 0 if no         |
+|          |                    | pieces have been completed since the      |
+|          |                    | requested frame.                          |
++----------+--------------------+-------------------------------------------+
+| 13       | uint32_t           | ``piece-index`` index of a piece that     |
+|          |                    | has been completed since the requested    |
+|          |                    | frame. Repeated ``num-added`` times.      |
++----------+--------------------+-------------------------------------------+
+
+A delta is purely additive: it lists pieces that have transitioned from
+*not-have* to *have* since the requested frame. To apply it, the client
+sets the corresponding bits in its locally cached bitfield.
+
+The server will choose to respond with a snapshot (``response-type`` 1)
+in any of the following cases:
+
+  * The caller passed ``frame-number`` of 0.
+  * The supplied ``frame-number`` is not known to the server. This
+    happens when the value is older than the server's history window,
+    or larger than the server's current frame number for this torrent
+    (which can occur after a server restart, or after the torrent has
+    been removed and re-added, both of which can reset the frame
+    counter).
+  * One or more pieces have *regressed* from *have* to *not-have* since
+    the requested frame. This is uncommon but can happen, for example,
+    when the user issues a force-recheck and some piece hashes fail.
+    Since the delta format cannot represent a piece becoming
+    not-downloaded, the server sends a fresh snapshot in this case.
+
+If the torrent referred to by ``info-hash`` does not exist (for example
+because it was just removed), the server responds with error code 6
+(resource not found) and no payload.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -1091,6 +1220,8 @@ Function IDs
 |     |                           | priority (uint8_t), ...                 |
 +-----+---------------------------+-----------------------------------------+
 |  24 | get-tracker-updates       | info-hash, frame-number (uint32_t)      |
++-----+---------------------------+-----------------------------------------+
+|  25 | get-piece-states          | info-hash, frame-number (uint32_t)      |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf
