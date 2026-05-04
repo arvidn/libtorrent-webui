@@ -32,6 +32,7 @@ SOURCES =
 	save_resume
 	torrent_history
 	piece_history
+	piece_state_history
 	no_auth
 	perms
 	session_authenticator

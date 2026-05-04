@@ -12,6 +12,7 @@ see LICENSE file.
 
 #include "torrent_history.hpp" // for frame_t
 #include "piece_history.hpp"
+#include "piece_state_history.hpp"
 #include "file_history.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
@@ -80,6 +81,7 @@ struct libtorrent_webui
 	bool get_piece_updates(websocket_conn* st, function_call f);
 	bool set_file_priority(websocket_conn* st, function_call f);
 	bool get_tracker_updates(websocket_conn* st, function_call f);
+	bool get_piece_states(websocket_conn* st, function_call f);
 
 	bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
@@ -124,6 +126,14 @@ private:
 	// m_file_mutex protects both the list structure and the entries in it.
 	std::mutex m_file_mutex;
 	std::list<file_history> m_file_histories;
+
+	// LRU cache of piece-state histories (the "have" bitfield for each
+	// torrent), same eviction policy. Accessed from both the websocket
+	// thread (queries) and the alert thread (piece_finished, hash_failed,
+	// torrent_checked). m_piece_states_mutex protects both the list
+	// structure and the entries.
+	std::mutex m_piece_states_mutex;
+	std::list<piece_state_history> m_piece_state_histories;
 
 	std::mutex m_conns_mutex;
 	std::vector<std::weak_ptr<websocket_conn>> m_connections;
