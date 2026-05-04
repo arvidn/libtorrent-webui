@@ -1402,6 +1402,102 @@
     this._socket.send(call);
   };
 
+  // Fetch the "have" bitfield for a torrent.
+  //
+  // last_frame is the per-torrent frame number returned by the previous
+  // call; pass 0 to request a full snapshot. The server may also respond
+  // with a snapshot when last_frame is unknown to it (server restart, or
+  // the torrent was re-added) or when a regression occurred (force-recheck
+  // failed pieces).
+  //
+  // The callback receives one of two shapes:
+  //   snapshot: { frame: n, snapshot: true, num_pieces: num-pieces, pieces: Uint8Array }
+  //   delta:    { frame: n, snapshot: false, added: [piece_index, ...] }
+  //
+  // The "pieces" Uint8Array is laid out per the BitTorrent wire format:
+  // piece i is bit (0x80 >> (i & 7)) of byte (i >> 3). Trailing bits in
+  // the last byte are zero. When metadata has not yet resolved (e.g. a
+  // magnet still bootstrapping), num_pieces is 0 and pieces is empty.
+  //
+  // For a delta, added lists the piece indices completed since last_frame,
+  // in completion order. The client should set those bits in its locally
+  // cached bitfield.
+  libtorrent_connection.prototype["get_piece_states"] = function (
+    ih,
+    last_frame,
+    callback,
+  ) {
+    if (this._socket.readyState != WebSocket.OPEN) {
+      window.setTimeout(function () {
+        callback("socket closed");
+      }, 0);
+      return;
+    }
+
+    var tid = this._tid++;
+    if (this._tid > 65535) this._tid = 0;
+
+    this._transactions[tid] = function (view, fun, e) {
+      if (_check_error(e, callback)) return;
+
+      var frame = view.getUint32(4);
+      var response_type = view.getUint8(8);
+
+      if (response_type === 1) {
+        // snapshot: uint32 num_pieces, then ceil(num_pieces / 8) bytes
+        var num_pieces = view.getUint32(9);
+        var num_bytes = (num_pieces + 7) >> 3;
+        // Slice to give the caller an owned copy decoupled from the
+        // websocket frame buffer.
+        var pieces = new Uint8Array(
+          view.buffer,
+          view.byteOffset + 13,
+          num_bytes,
+        ).slice();
+
+        if (typeof callback !== "undefined")
+          callback({
+            frame: frame,
+            snapshot: true,
+            num_pieces: num_pieces,
+            pieces: pieces,
+          });
+      } else {
+        // delta: uint32 num_added, then num_added uint32 piece indices
+        var num_added = view.getUint32(9);
+        var added = new Array(num_added);
+        var offset = 13;
+        for (var i = 0; i < num_added; ++i) {
+          added[i] = view.getUint32(offset);
+          offset += 4;
+        }
+
+        if (typeof callback !== "undefined")
+          callback({
+            frame: frame,
+            snapshot: false,
+            added: added,
+          });
+      }
+    };
+
+    // 3 header + 20 info-hash + 4 frame = 27 bytes
+    var call = new ArrayBuffer(27);
+    var view = new DataView(call);
+    // function 25
+    view.setUint8(0, 25);
+    view.setUint16(1, tid);
+
+    var offset = 3;
+    for (var i = 0; i < 40; i += 2) {
+      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+      offset += 1;
+    }
+    view.setUint32(offset, last_frame);
+
+    this._socket.send(call);
+  };
+
   libtorrent_connection.prototype["close"] = function () {
     this._socket.close();
   };
