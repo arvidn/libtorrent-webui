@@ -79,6 +79,9 @@
         template
           .querySelector("#trackers")
           .setAttribute("href", "test_trackers.html#" + ih);
+        template
+          .querySelector("#pieces")
+          .setAttribute("href", "test_piece_state.html#" + ih);
         table.appendChild(template);
         row = document.getElementById(ih);
       }
@@ -184,6 +187,7 @@
       <td>Up rate</td>
       <td>Down rate</td>
       <td>Peers</td>
+      <td>Pieces</td>
       <td>Trackers</td>
     </tr>
   </thead>
@@ -215,6 +219,7 @@
     <td id="upload-rate" class="counter"></td>
     <td id="download-rate" class="counter"></td>
     <td id="connected-peers" class="counter"></td>
+    <td><a href="test_piece_state.html#" id="pieces">pieces</a></td>
     <td><a href="test_trackers.html#" id="trackers">trackers</a></td>
   </tr>
 </template>
