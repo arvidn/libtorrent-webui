@@ -12,6 +12,7 @@ see LICENSE file.
 
 #include "torrent_history.hpp" // for frame_t
 #include "piece_history.hpp"
+#include "peer_history.hpp"
 #include "file_history.hpp"
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/fwd.hpp"
@@ -119,6 +120,11 @@ private:
 	// m_piece_mutex protects both the list structure and the entries in it.
 	std::mutex m_piece_mutex;
 	std::list<piece_history> m_piece_histories;
+
+	// LRU cache of peer histories, same eviction policy.
+	// m_peer_mutex protects the list structure.
+	std::mutex m_peer_mutex;
+	std::list<std::shared_ptr<peer_history>> m_peer_histories;
 
 	// LRU cache of file histories, same eviction policy.
 	// m_file_mutex protects both the list structure and the entries in it.

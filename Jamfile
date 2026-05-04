@@ -32,6 +32,7 @@ SOURCES =
 	save_resume
 	torrent_history
 	piece_history
+	peer_history
 	no_auth
 	perms
 	session_authenticator
@@ -87,4 +88,3 @@ install stage_webui_test : webui_test : <location>. ;
 
 exe add_user : tools/add_user.cpp : <library>torrent-webui <library>/torrent//torrent <library>sqlite <cxxstd>20 ;
 install stage_add_user : add_user : <location>. ;
-

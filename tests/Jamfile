@@ -22,6 +22,7 @@ unit-test test_url_decode : test_url_decode.cpp ;
 unit-test test_utils : test_utils.cpp ;
 unit-test test_torrent_history : test_torrent_history.cpp ;
 unit-test test_piece_history : test_piece_history.cpp ;
+unit-test test_peer_history : test_peer_history.cpp ;
 unit-test test_file_history : test_file_history.cpp ;
 unit-test test_torrent_post : test_torrent_post.cpp ;
 unit-test test_auto_load : test_auto_load.cpp ;
