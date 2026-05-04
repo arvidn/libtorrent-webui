@@ -9,6 +9,7 @@
 #include "public_file.hpp"
 #include "webui.hpp"
 #include "login.hpp"
+#include "logout.hpp"
 #include "login_throttler.hpp"
 #include "session_authenticator.hpp"
 
@@ -155,6 +156,10 @@ int main(int argc, char *const argv[])
 		, accounts, sessions, throttler, "/bt/test.html"
 		, {&full_perms, &ro_perms});
 
+	// GET /logout destroys the session referenced by the session
+	// cookie, clears the cookie, and redirects to the login form.
+	logout logout_handler("/logout", sessions, "/login");
+
 	webui_base webport(8090, "server.pem");
 
 	webport.add_handler(&static_files);
@@ -165,6 +170,7 @@ int main(int argc, char *const argv[])
 	webport.add_handler(&post);
 	webport.add_handler(&file_handler);
 	webport.add_handler(&login_handler);
+	webport.add_handler(&logout_handler);
 
 	signal(SIGTERM, &sighandler);
 	signal(SIGINT, &sighandler);

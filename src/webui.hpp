@@ -72,6 +72,17 @@ auto find_longest_prefix(Container const& c, std::string_view const path)
 	return best;
 }
 
+// Returns true iff the path portion of target equals prefix. The path
+// portion is target up to (but not including) the first '?'. A query
+// string is allowed; sub-paths (eg /logout/foo) and prefix-but-not-path
+// matches (eg /logoutx) are not.
+inline bool path_matches_exact(std::string_view target, std::string_view prefix)
+{
+	auto const q = target.find('?');
+	std::string_view const path = (q == std::string_view::npos) ? target : target.substr(0, q);
+	return path == prefix;
+}
+
 } // namespace aux
 
 template <typename Body, typename Fields>
