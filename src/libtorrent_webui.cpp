@@ -107,7 +107,7 @@ struct rpc_entry {
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 };
 
-static std::array<rpc_entry, 25> const functions = {{
+static std::array<rpc_entry, 26> const functions = {{
 	{"get-torrent-updates", &libtorrent_webui::get_torrent_updates},
 	{"start", &libtorrent_webui::start},
 	{"stop", &libtorrent_webui::stop},
@@ -133,6 +133,7 @@ static std::array<rpc_entry, 25> const functions = {{
 	{"get-piece-updates", &libtorrent_webui::get_piece_updates},
 	{"set-file-priority", &libtorrent_webui::set_file_priority},
 	{"get-tracker-updates", &libtorrent_webui::get_tracker_updates},
+	{"get-piece-states", &libtorrent_webui::get_piece_states},
 }};
 
 // maps torrent field to RPC field. These fields are the ones defined in
@@ -253,7 +254,14 @@ libtorrent_webui::libtorrent_webui(
 		m_stats.resize(lt::counters::num_counters, std::pair<std::int64_t, frame_t>(0, 0));
 
 	m_alert.subscribe(
-		this, 0, lt::session_stats_alert::alert_type, lt::add_torrent_alert::alert_type, 0
+		this,
+		0,
+		lt::session_stats_alert::alert_type,
+		lt::add_torrent_alert::alert_type,
+		lt::piece_finished_alert::alert_type,
+		lt::hash_failed_alert::alert_type,
+		lt::torrent_checked_alert::alert_type,
+		0
 	);
 }
 
@@ -909,6 +917,36 @@ void libtorrent_webui::handle_alert(lt::alert const* a)
 			write_uint8(no_error, ptr);
 
 		ud->st->send_packet(rpc, sizeof(rpc));
+	} else if (auto* pf = lt::alert_cast<lt::piece_finished_alert>(a)) {
+		// Record the new completion in the per-torrent piece_state_history,
+		// but only if we already have one for this torrent: a history is
+		// created on demand by the first get-piece-states query, and we
+		// don't want every piece_finished alert to materialize one.
+		lt::sha1_hash const ih = pf->handle.info_hashes().get_best();
+		std::lock_guard<std::mutex> l(m_piece_states_mutex);
+		auto it = std::find_if(
+			m_piece_state_histories.begin(),
+			m_piece_state_histories.end(),
+			[&](piece_state_history const& ph) { return ph.info_hash() == ih; }
+		);
+		if (it != m_piece_state_histories.end()) it->on_piece_finished(pf->piece_index);
+	} else if (auto* hf = lt::alert_cast<lt::hash_failed_alert>(a)) {
+		// Possible regression: a piece we may have considered "have" failed
+		// hash verification. Drop the history; the next query will rebuild
+		// it from the live bitfield.
+		lt::sha1_hash const ih = hf->handle.info_hashes().get_best();
+		std::lock_guard<std::mutex> l(m_piece_states_mutex);
+		m_piece_state_histories.remove_if([&](piece_state_history const& ph) {
+			return ph.info_hash() == ih;
+		});
+	} else if (auto* tc = lt::alert_cast<lt::torrent_checked_alert>(a)) {
+		// Force-recheck just completed; pieces may have regressed. Same
+		// drop-and-recreate treatment as hash_failed.
+		lt::sha1_hash const ih = tc->handle.info_hashes().get_best();
+		std::lock_guard<std::mutex> l(m_piece_states_mutex);
+		m_piece_state_histories.remove_if([&](piece_state_history const& ph) {
+			return ph.info_hash() == ih;
+		});
 	}
 }
 
@@ -1357,6 +1395,77 @@ bool libtorrent_webui::get_piece_updates(websocket_conn* st, function_call f)
 	return st->send_packet(response.data(), response.size());
 }
 
+bool libtorrent_webui::get_piece_states(websocket_conn* st, function_call f)
+{
+	if (!st->perms()->allow_list()) return error(st, f, permission_denied);
+
+	char const* iptr = f.data;
+	if (f.len != 24) return error(st, f, invalid_number_of_args);
+	lt::sha1_hash const ih(iptr);
+	iptr += 20;
+	frame_t const client_frame = read_uint32(iptr);
+
+	lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
+	if (!h.is_valid()) return error(st, f, resource_not_found);
+
+	std::unique_lock<std::mutex> l(m_piece_states_mutex);
+
+	auto it = std::find_if(
+		m_piece_state_histories.begin(),
+		m_piece_state_histories.end(),
+		[&](piece_state_history const& ph) { return ph.info_hash() == ih; }
+	);
+	if (it != m_piece_state_histories.end()) {
+		m_piece_state_histories.splice(
+			m_piece_state_histories.begin(), m_piece_state_histories, it
+		);
+	} else {
+		// No history yet (or it was just dropped due to a regression).
+		// Seed a fresh one from the live bitfield. status() is a
+		// cross-thread call to libtorrent, so the brief block on the
+		// network thread happens under our mutex; that's acceptable here
+		// because the cache is small and per-torrent first-query cost is
+		// already dominated by the bitfield copy.
+		lt::torrent_status ts = h.status(lt::torrent_handle::query_pieces);
+		m_piece_state_histories.emplace_front(ih, std::move(ts.pieces));
+		if (m_piece_state_histories.size() > 10) m_piece_state_histories.pop_back();
+	}
+
+	auto const r = m_piece_state_histories.front().query(client_frame);
+	// query_result owns its bitfield and added vector, so nothing below
+	// touches the cache. Drop the mutex before serializing.
+	l.unlock();
+
+	std::vector<char> response;
+	std::back_insert_iterator<std::vector<char>> ptr(response);
+
+	write_uint8(f.function_id | 0x80, ptr);
+	write_uint16(f.transaction_id, ptr);
+	write_uint8(no_error, ptr);
+	write_uint32(r.frame, ptr);
+
+	if (r.is_snapshot) {
+		write_uint8(1, ptr); // response-type 1 = snapshot
+		write_uint32(static_cast<std::uint32_t>(r.snapshot.size()), ptr);
+
+		if (!r.snapshot.empty()) {
+			// bitfield::data() is already in BT-wire layout (piece i at bit
+			// 0x80 >> (i % 8) of byte i / 8) and clear_trailing_bits() keeps
+			// the unused tail bits zero, matching the spec exactly.
+			auto const* bytes = reinterpret_cast<char const*>(r.snapshot.data());
+			response.insert(response.end(), bytes, bytes + r.snapshot.num_bytes());
+		}
+	} else {
+		write_uint8(0, ptr); // response-type 0 = delta
+		std::uint32_t const num_added = static_cast<std::uint32_t>(r.added.size());
+		write_uint32(num_added, ptr);
+		for (auto const& idx : r.added)
+			write_uint32(static_cast<std::uint32_t>(static_cast<int>(idx)), ptr);
+	}
+
+	return st->send_packet(response.data(), response.size());
+}
+
 bool libtorrent_webui::set_file_priority(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_set_file_prio()) return error(st, f, permission_denied);
@@ -1403,6 +1512,7 @@ bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
 	if (!h.is_valid()) return error(st, f, invalid_argument);
 
 	std::vector<lt::announce_entry> const trackers = h.trackers();
+	lt::info_hash_t const info_hashes = h.info_hashes();
 
 	std::vector<char> response;
 	std::back_insert_iterator<std::vector<char>> ptr(response);
@@ -1430,6 +1540,8 @@ bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
 	for (lt::announce_entry const& entry : trackers) {
 		for (lt::announce_endpoint const& ep : entry.endpoints) {
 			for (lt::protocol_version const proto : lt::all_versions) {
+				if (proto == lt::protocol_version::V1 && !info_hashes.has_v1()) continue;
+				if (proto == lt::protocol_version::V2 && !info_hashes.has_v2()) continue;
 				lt::announce_infohash const& aih = ep.info_hashes[proto];
 
 				write_uint16(tracker_id++, ptr);

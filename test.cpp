@@ -5,6 +5,7 @@
 #include "save_resume.hpp"
 #include "torrent_history.hpp"
 #include "serve_files.hpp"
+#include "public_file.hpp"
 #include "webui.hpp"
 #include "login.hpp"
 #include "login_throttler.hpp"
@@ -99,6 +100,12 @@ int main(int argc, char *const argv[])
 	// /login, not from here.
 	serve_files static_files("/bt/", "bt", sessions, "/login");
 
+	// a small set of files that must be reachable without authentication
+	// (eg /favicon.ico, the public stylesheet). Each handler serves a
+	// single file at an exact server path; no directory traversal, no auth.
+	public_file favicon("/favicon.ico", "bt/favicon.ico");
+	public_file public_styles("/styles.css", "bt/styles.css");
+
 	// websocket access to controlling the bittorrent client exposed at HTTP
 	// path /bt/control. Authenticates via session cookie; redirects to the
 	// login page when the cookie is missing or expired.
@@ -146,6 +153,8 @@ int main(int argc, char *const argv[])
 	webui_base webport(8090, "server.pem");
 
 	webport.add_handler(&static_files);
+	webport.add_handler(&favicon);
+	webport.add_handler(&public_styles);
 	webport.add_handler(&lt_handler);
 	webport.add_handler(&ut_handler);
 	webport.add_handler(&post);

@@ -20,10 +20,8 @@ namespace http = boost::beast::http;
 
 namespace ltweb {
 
-// Extract the session cookie value and Authorization header from a
-// Beast request and forward to auth.authenticate(). All scheme-
-// specific parsing (Basic, sessions, ...) lives inside the
-// auth_interface implementation.
+// Extract the session cookie value from a Beast request and forward to
+// auth.authenticate().
 permissions_interface const*
 parse_http_auth(http::request<http::string_body> const& request, auth_interface const& auth);
 

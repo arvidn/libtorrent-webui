@@ -1,0 +1,109 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>libtorrent piece state test</title>
+<script src="libtorrent-webui.js"></script>
+<script>
+  /* global libtorrent_connection */
+  "use strict";
+
+  var conn = null;
+  var g_frame = 0;
+  var g_num_pieces = 0;
+
+  // Owned, mutable copy of the snapshot bitfield. Deltas mutate this in place.
+  var g_bitfield = null;
+
+  function update_pieces(data) {
+    if (typeof data === "string") {
+      console.log("ERROR: " + data);
+      return;
+    }
+
+    var grid = document.getElementById("pieces");
+
+    // Strip "updated" pink from the previous poll.
+    var prev = grid.getElementsByClassName("updated");
+    while (prev.length) prev[0].classList.remove("updated");
+
+    if (data.snapshot) {
+      g_bitfield = data.pieces;
+      g_num_pieces = data.num_pieces;
+
+      if (grid.children.length !== g_num_pieces) {
+        grid.replaceChildren();
+        var frag = document.createDocumentFragment();
+        for (var j = 0; j < g_num_pieces; ++j) {
+          var cell = document.createElement("div");
+          cell.className = "piece";
+          frag.appendChild(cell);
+        }
+        grid.appendChild(frag);
+      }
+      for (var i = 0; i < g_num_pieces; ++i) {
+        var have = (g_bitfield[i >> 3] & (0x80 >> (i & 7))) !== 0;
+        grid.children[i].classList.toggle("have", have);
+      }
+    } else {
+      // Delta: set bits and mark each new piece pink for one cycle.
+      for (var k = 0; k < data.added.length; ++k) {
+        var p = data.added[k];
+        if (g_bitfield) g_bitfield[p >> 3] |= 0x80 >> (p & 7);
+        var cell = grid.children[p];
+        if (cell) {
+          cell.classList.add("have");
+          cell.classList.add("updated");
+        }
+      }
+    }
+
+    document.getElementById("status").textContent =
+      "frame " + data.frame + ", " + g_num_pieces + " pieces";
+    g_frame = data.frame;
+  }
+
+  window.onload = function () {
+    var ih = window.location.hash.substring(1);
+    document.getElementById("headline").innerText = "Pieces for " + ih;
+
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
+      window.setInterval(function () {
+        conn.get_piece_states(ih, g_frame, update_pieces);
+      }, 1000);
+    });
+  };
+</script>
+<style>
+  body {
+    font-family: sans-serif;
+  }
+  #pieces {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    margin-top: 0.5em;
+  }
+  .piece {
+    width: 1em;
+    height: 1em;
+    background: #fff;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+  }
+  .piece.have {
+    background: #4af;
+    border-color: #4af;
+  }
+  /* Last rule wins on equal specificity, so updated overrides have. */
+  .piece.updated {
+    background: #faa;
+    border-color: #faa;
+  }
+</style>
+<h1 id="headline"></h1>
+<div id="status"></div>
+<div id="pieces"></div>

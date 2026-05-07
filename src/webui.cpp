@@ -282,8 +282,7 @@ void ltweb::webui_base::remove_handler(http_handler* h)
 
 void ltweb::webui_base::add_handler(http_handler* h)
 {
-	std::string prefix = h->path_prefix();
-	m_handlers.emplace_back(std::move(prefix), h);
+	m_handlers.emplace_back(h->path_prefix(), h);
 }
 
 ltweb::webui_base::webui_base(int const port, char const* cert_path, int const num_threads)

@@ -1,0 +1,228 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>libtorrent websocket test - trackers</title>
+<script src="libtorrent-webui.js"></script>
+<script>
+  /* global libtorrent_connection */
+  "use strict";
+
+  var conn = null;
+  var g_trackers_frame = 0;
+  // tracker_id -> { fields..., _row: <tr> }
+  var g_trackers = {};
+  // most recent server clock timestamp; used as the reference for next-announce
+  var g_server_ts = 0;
+
+  var SOURCE_BITS = [
+    [0x01, "torrent"],
+    [0x02, "client"],
+    [0x04, "magnet"],
+    [0x08, "tex"],
+  ];
+
+  var FLAG_BITS = [
+    [0x01, "updating"],
+    [0x02, "complete-sent"],
+    [0x04, "verified"],
+    [0x08, "enabled"],
+    [0x10, "v2"],
+  ];
+
+  var format_bits = function (bits, table) {
+    var out = [];
+    for (var i = 0; i < table.length; ++i) {
+      if (bits & table[i][0]) out.push(table[i][1]);
+    }
+    return out.join(" ");
+  };
+
+  var format_int = function (v) {
+    if (v === -1) return "?";
+    return String(v);
+  };
+
+  // next-announce and min-announce are both absolute timestamps in the
+  // server clock; render them relative to the response's timestamp.
+  var format_time = function (ts, ref) {
+    if (!ts) return "-";
+    var delta = ts - ref;
+    if (delta >= 0) return "in " + delta + "s";
+    return -delta + "s ago";
+  };
+
+  var update_tracker_list = function (data) {
+    if (typeof data === "string") {
+      console.log("ERROR: " + data);
+      return;
+    }
+
+    var tbody = document.getElementById("trackers").tBodies[0];
+    var template = document.getElementById("tracker-row");
+
+    // clear "updated" highlighting from the previous tick
+    var rows = tbody.rows;
+    for (var i = 0; i < rows.length; ++i) {
+      var cells = rows[i].cells;
+      for (var j = 0; j < cells.length; ++j) cells[j].className = "";
+    }
+
+    g_server_ts = data["timestamp"];
+
+    if (data["snapshot"]) {
+      // full state transfer: drop everything we had
+      while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+      g_trackers = {};
+    }
+
+    // remove gone trackers (delta only)
+    var removed = data["removed"];
+    for (var i = 0; i < removed.length; ++i) {
+      var rid = removed[i];
+      if (g_trackers[rid]) {
+        tbody.removeChild(g_trackers[rid]._row);
+        delete g_trackers[rid];
+      }
+    }
+
+    // apply per-tracker updates
+    var updates = data["updates"];
+    for (var id in updates) {
+      var entry = g_trackers[id];
+      if (!entry) {
+        var row = template.content.firstElementChild.cloneNode(true);
+        tbody.appendChild(row);
+        entry = { _row: row };
+        g_trackers[id] = entry;
+      }
+
+      // upd holds only the fields that changed this tick; highlight those
+      var upd = updates[id];
+      var set_cell = function (field, value) {
+        var c = entry._row.querySelector('[data-field="' + field + '"]');
+        c.textContent = value;
+        c.className = "updated";
+      };
+
+      if ("url" in upd) set_cell("url", upd["url"]);
+      if ("tier" in upd) set_cell("tier", upd["tier"]);
+      if ("source" in upd)
+        set_cell("source", format_bits(upd["source"], SOURCE_BITS));
+      if ("complete" in upd) set_cell("complete", format_int(upd["complete"]));
+      if ("incomplete" in upd)
+        set_cell("incomplete", format_int(upd["incomplete"]));
+      if ("downloaded" in upd)
+        set_cell("downloaded", format_int(upd["downloaded"]));
+      if ("next-announce" in upd)
+        set_cell(
+          "next-announce",
+          format_time(upd["next-announce"], g_server_ts),
+        );
+      if ("min-announce" in upd)
+        set_cell("min-announce", format_time(upd["min-announce"], g_server_ts));
+      if ("last-error" in upd) set_cell("last-error", upd["last-error"]);
+      if ("message" in upd) set_cell("message", upd["message"]);
+      if ("flags" in upd)
+        set_cell("flags", format_bits(upd["flags"], FLAG_BITS));
+      if ("local-endpoint" in upd)
+        set_cell("local-endpoint", upd["local-endpoint"]);
+
+      // merge changed fields into the cached state we keep around
+      for (var k in upd) entry[k] = upd[k];
+    }
+
+    // re-render the relative-time fields for trackers whose schedule did
+    // not change this tick, so the displayed time stays in sync with the
+    // new server clock. We don't use set_cell here because it would add
+    // the "updated" highlight class -- but the schedule itself didn't
+    // change, only the reference clock advanced.
+    for (var id in g_trackers) {
+      var t = g_trackers[id];
+      if ("next-announce" in t) {
+        var c = t._row.querySelector('[data-field="next-announce"]');
+        c.textContent = format_time(t["next-announce"], g_server_ts);
+      }
+      if ("min-announce" in t) {
+        var c = t._row.querySelector('[data-field="min-announce"]');
+        c.textContent = format_time(t["min-announce"], g_server_ts);
+      }
+    }
+
+    g_trackers_frame = data["frame"];
+  };
+
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
+
+      var ih = window.location.hash.substring(1);
+      document.getElementById("headline").innerText = "Trackers for " + ih;
+
+      window.setInterval(function () {
+        conn.get_tracker_updates(ih, g_trackers_frame, update_tracker_list);
+      }, 1000);
+    });
+  };
+</script>
+<style>
+  .updated {
+    background-color: #faa;
+  }
+  table {
+    font-family: monospace;
+    font-size: 12px;
+  }
+  th,
+  td {
+    padding: 2px 6px;
+    vertical-align: top;
+  }
+  td[data-field="url"] {
+    max-width: 400px;
+    overflow-wrap: anywhere;
+  }
+  td[data-field="last-error"],
+  td[data-field="message"] {
+    max-width: 250px;
+    overflow-wrap: anywhere;
+  }
+</style>
+<h1 id="headline"></h1>
+<table id="trackers" border="1" style="border-collapse: collapse">
+  <thead>
+    <tr>
+      <th>URL</th>
+      <th>Tier</th>
+      <th>Source</th>
+      <th>Seeds</th>
+      <th>Leech</th>
+      <th>Downloaded</th>
+      <th>Next announce</th>
+      <th>Min interval</th>
+      <th>Flags</th>
+      <th>Last error</th>
+      <th>Message</th>
+      <th>Local endpoint</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<template id="tracker-row">
+  <tr>
+    <td data-field="url"></td>
+    <td data-field="tier"></td>
+    <td data-field="source"></td>
+    <td data-field="complete"></td>
+    <td data-field="incomplete"></td>
+    <td data-field="downloaded"></td>
+    <td data-field="next-announce"></td>
+    <td data-field="min-announce"></td>
+    <td data-field="flags"></td>
+    <td data-field="last-error"></td>
+    <td data-field="message"></td>
+    <td data-field="local-endpoint"></td>
+  </tr>
+</template>

@@ -33,7 +33,9 @@ SOURCES =
 	torrent_history
 	piece_history
 	peer_history
+	piece_state_history
 	no_auth
+	perms
 	session_authenticator
 	sqlite_user_account
 	parse_http_auth
@@ -46,6 +48,8 @@ SOURCES =
 	file_requests
 	stats_logging
 	serve_files
+	public_file
+	file_response
 	hex
 	utorrent_webui
 	file_history
