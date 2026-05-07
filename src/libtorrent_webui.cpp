@@ -1448,11 +1448,13 @@ bool libtorrent_webui::get_piece_states(websocket_conn* st, function_call f)
 		write_uint8(1, ptr); // response-type 1 = snapshot
 		write_uint32(static_cast<std::uint32_t>(r.snapshot.size()), ptr);
 
-		// bitfield::data() is already in BT-wire layout (piece i at bit
-		// 0x80 >> (i % 8) of byte i / 8) and clear_trailing_bits() keeps
-		// the unused tail bits zero, matching the spec exactly.
-		auto const* bytes = reinterpret_cast<char const*>(r.snapshot.data());
-		response.insert(response.end(), bytes, bytes + r.snapshot.num_bytes());
+		if (!r.snapshot.empty()) {
+			// bitfield::data() is already in BT-wire layout (piece i at bit
+			// 0x80 >> (i % 8) of byte i / 8) and clear_trailing_bits() keeps
+			// the unused tail bits zero, matching the spec exactly.
+			auto const* bytes = reinterpret_cast<char const*>(r.snapshot.data());
+			response.insert(response.end(), bytes, bytes + r.snapshot.num_bytes());
+		}
 	} else {
 		write_uint8(0, ptr); // response-type 0 = delta
 		std::uint32_t const num_added = static_cast<std::uint32_t>(r.added.size());
