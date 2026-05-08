@@ -1,0 +1,210 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>libtorrent websocket peer test</title>
+<script src="libtorrent-webui.js"></script>
+<script>
+  /* global libtorrent_connection, peer_fields */
+  "use strict";
+
+  var conn = null;
+  var g_peers_frame = 0;
+  // map from peer-id (uint32) to <tr> element
+  var g_rows = new Map();
+
+  var format_flags = function (f) {
+    var names = [];
+    switch (f & 0x000009) {
+      // interested and unchoked
+      case 1:
+        names.push("\u2b07");
+        break;
+      // interested and choked
+      case 9:
+        names.push("\u21e9");
+        break;
+    }
+
+    switch (f & 0x000006) {
+      // interested and unchoked
+      case 4:
+        names.push("\u2b06");
+        break;
+      // interested and choked
+      case 6:
+        names.push("\u21e7");
+        break;
+    }
+
+    if (f & 0x000020) names.push("outgoing");
+    // seed
+    if (f & 0x000400) names.push("\u23fa");
+    // optimistically unchoked
+    if (f & 0x000800) names.push("\u21a5");
+    // snubbed
+    if (f & 0x001000) names.push("\u2a2f");
+    if (f & 0x002000) names.push("ul-only");
+    // end-game
+    if (f & 0x004000) names.push("\u21e5");
+    if (f & 0x020000) names.push("utp");
+    if (f & 0x040000) names.push("ssl");
+    if (f & 0x080000) names.push("rc4");
+    if (f & 0x100000) names.push("plain");
+    return names.join(" ");
+  };
+
+  var format_source = function (s) {
+    var names = [];
+    if (s & 0x01) names.push("tracker");
+    if (s & 0x02) names.push("dht");
+    if (s & 0x04) names.push("pex");
+    if (s & 0x08) names.push("lsd");
+    if (s & 0x10) names.push("resume");
+    if (s & 0x20) names.push("in");
+    return names.join(" ");
+  };
+
+  var update_peer_list = function (data) {
+    if (typeof data === "string") {
+      console.log("ERROR: " + data);
+      return;
+    }
+
+    var tbody = document.getElementById("peers").tBodies[0];
+    var template = document.getElementById("peer-row");
+
+    // a snapshot replaces the entire state -- drop everything upfront
+    if (data["snapshot"]) {
+      tbody.replaceChildren();
+      g_rows.clear();
+    }
+
+    // clear "updated" highlight from the previous tick on every existing row
+    g_rows.forEach(function (row) {
+      var cells = row.cells;
+      for (var j = 0; j < cells.length; ++j) cells[j].className = "";
+    });
+
+    var updates = data["updates"];
+
+    Object.keys(updates).forEach(function (pid_str) {
+      var pid = pid_str | 0; // numeric peer-id
+      var p = updates[pid_str];
+
+      var row = g_rows.get(pid);
+      if (!row) {
+        row = template.content.firstElementChild.cloneNode(true);
+        row.dataset.peerId = pid;
+        tbody.appendChild(row);
+        g_rows.set(pid, row);
+      }
+
+      var set_cell = function (field, value) {
+        var c = row.querySelector('[data-field="' + field + '"]');
+        c.textContent = value;
+        c.className = "updated";
+      };
+
+      if ("endpoint" in p) set_cell("endpoint", p["endpoint"]);
+      if ("client" in p) set_cell("client", p["client"]);
+      if ("flags" in p) set_cell("flags", format_flags(p["flags"]));
+      if ("source" in p) set_cell("source", format_source(p["source"]));
+      if ("down-rate" in p) set_cell("down-rate", p["down-rate"]);
+      if ("up-rate" in p) set_cell("up-rate", p["up-rate"]);
+      if ("num-pieces" in p) set_cell("num-pieces", p["num-pieces"]);
+      if ("progress" in p) {
+        // progress is in [0, 1000000]
+        set_cell("progress", (p["progress"] / 10000).toFixed(2) + "%");
+      }
+      if ("total-download" in p)
+        set_cell("total-download", p["total-download"]);
+      if ("total-upload" in p) set_cell("total-upload", p["total-upload"]);
+      if ("peer-id" in p) set_cell("peer-id", p["peer-id"]);
+    });
+
+    // apply explicit removals (empty for a snapshot, since the table was reset)
+    data["removed"].forEach(function (pid) {
+      var row = g_rows.get(pid);
+      if (row) {
+        row.remove();
+        g_rows.delete(pid);
+      }
+    });
+
+    g_peers_frame = data["frame"];
+  };
+
+  window.onload = function () {
+    var url = "wss://" + window.location.host + "/bt/control";
+    conn = new libtorrent_connection(url, function (state) {
+      if (state != "OK") {
+        console.log(state);
+        return;
+      }
+
+      document.getElementById("headline").innerText =
+        "Peers for " + window.location.hash.substring(1);
+
+      window.setInterval(function () {
+        conn.get_peers_updates(
+          window.location.hash.substring(1),
+          g_peers_frame,
+          peer_fields.flags |
+            peer_fields.source |
+            peer_fields.client |
+            peer_fields.num_pieces |
+            peer_fields.down_rate |
+            peer_fields.up_rate |
+            peer_fields.peer_id |
+            peer_fields.progress |
+            peer_fields.endpoints |
+            peer_fields.total_download |
+            peer_fields.total_upload,
+          update_peer_list,
+        );
+      }, 1000);
+    });
+  };
+</script>
+<style>
+  .updated {
+    background-color: #faa;
+  }
+  td {
+    font-family: monospace;
+    white-space: nowrap;
+  }
+</style>
+<h1 id="headline"></h1>
+<table id="peers" border="1" style="border-collapse: collapse">
+  <thead>
+    <tr>
+      <th>Endpoint</th>
+      <th>Client</th>
+      <th>Flags</th>
+      <th>Source</th>
+      <th>Down B/s</th>
+      <th>Up B/s</th>
+      <th>Pieces</th>
+      <th>Progress</th>
+      <th>Total Down</th>
+      <th>Total Up</th>
+      <th>Peer ID</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<template id="peer-row">
+  <tr>
+    <td data-field="endpoint"></td>
+    <td data-field="client"></td>
+    <td data-field="flags"></td>
+    <td data-field="source"></td>
+    <td data-field="down-rate"></td>
+    <td data-field="up-rate"></td>
+    <td data-field="num-pieces"></td>
+    <td data-field="progress"></td>
+    <td data-field="total-download"></td>
+    <td data-field="total-upload"></td>
+    <td data-field="peer-id"></td>
+  </tr>
+</template>
