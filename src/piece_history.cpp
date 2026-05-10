@@ -33,7 +33,8 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> const& pieces)
 	// Remove pieces that are no longer in the download queue.
 	auto incoming_it = incoming.begin();
 	for (auto it = m_pieces.begin(); it != m_pieces.end();) {
-		while (incoming_it != incoming.end() && *incoming_it < it->first) ++incoming_it;
+		while (incoming_it != incoming.end() && *incoming_it < it->first)
+			++incoming_it;
 		if (incoming_it == incoming.end() || *incoming_it != it->first) {
 			m_removed.push_front({frame, it->second.added_frame, it->first});
 			it = m_pieces.erase(it);
