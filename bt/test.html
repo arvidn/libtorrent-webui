@@ -82,6 +82,9 @@
         template
           .querySelector("#pieces")
           .setAttribute("href", "test_piece_state.html#" + ih);
+        template
+          .querySelector("#peers")
+          .setAttribute("href", "test_peers.html#" + ih);
         table.appendChild(template);
         row = document.getElementById(ih);
       }
@@ -189,6 +192,7 @@
       <td>Peers</td>
       <td>Pieces</td>
       <td>Trackers</td>
+      <td>Peers</td>
     </tr>
   </thead>
   <tbody></tbody>
@@ -221,5 +225,6 @@
     <td id="connected-peers" class="counter"></td>
     <td><a href="test_piece_state.html#" id="pieces">pieces</a></td>
     <td><a href="test_trackers.html#" id="trackers">trackers</a></td>
+    <td><a href="test_peers.html#" id="peers">peers</a></td>
   </tr>
 </template>

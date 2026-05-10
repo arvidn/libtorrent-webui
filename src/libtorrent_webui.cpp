@@ -44,34 +44,6 @@ using namespace lt::literals;
 namespace ltweb {
 namespace {
 
-std::uint32_t peer_identifier(lt::peer_info const& pi)
-{
-	lt::hasher h;
-	h.update(pi.pid);
-#if TORRENT_USE_I2P
-	if (pi.flags & lt::peer_info::i2p_socket) {
-		lt::sha256_hash const dest = pi.i2p_destination();
-		h.update(dest);
-	} else
-#endif
-	{
-		auto const ep = pi.remote_endpoint();
-		if (ep.address().is_v6()) {
-			auto const b = ep.address().to_v6().to_bytes();
-			h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
-		} else {
-			auto const b = ep.address().to_v4().to_bytes();
-			h.update({reinterpret_cast<char const*>(b.data()), std::ptrdiff_t(b.size())});
-		}
-		std::uint8_t const port_bytes[2] = {std::uint8_t(ep.port() >> 8), std::uint8_t(ep.port())};
-		h.update({reinterpret_cast<char const*>(port_bytes), 2});
-	}
-	lt::sha1_hash const digest = h.final();
-	std::uint32_t ret;
-	std::memcpy(&ret, digest.data(), sizeof(ret));
-	return ret;
-}
-
 template <typename It>
 std::uint8_t read_uint8(It& p)
 {
@@ -1171,8 +1143,7 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	if (f.len != 32) return error(st, f, invalid_number_of_args);
 	lt::sha1_hash const ih(iptr);
 	iptr += 20;
-	frame_t const frame = read_uint32(iptr);
-	(void)frame;
+	frame_t const client_frame = read_uint32(iptr);
 	std::uint64_t const field_mask = read_uint64(iptr);
 
 	lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
@@ -1189,6 +1160,33 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	});
 	peers.erase(new_end, peers.end());
 
+	// Find or create the peer_history for this info-hash in the LRU cache.
+	// query() returns a self-contained value, so we can release the mutex
+	// before serialising the response.
+	frame_t new_frame;
+	peer_history::query_result r;
+	{
+		std::lock_guard<std::mutex> l(m_peer_mutex);
+		auto it = std::find_if(
+			m_peer_histories.begin(),
+			m_peer_histories.end(),
+			[&](peer_history const& ph) { return ph.info_hash() == ih; }
+		);
+		if (it != m_peer_histories.end())
+			m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);
+		else {
+			m_peer_histories.emplace_front(ih);
+			if (m_peer_histories.size() > 10) m_peer_histories.pop_back();
+		}
+		peer_history& history = m_peer_histories.front();
+
+		new_frame = history.update(std::move(peers));
+		r = history.query(client_frame, field_mask);
+	}
+
+	if (r.updated.size() > std::size_t(0xffffffffu)) r.updated.resize(std::size_t(0xffffffffu));
+	if (r.removed.size() > std::size_t(0xfffffffeu)) r.removed.resize(std::size_t(0xfffffffeu));
+
 	std::vector<char> response;
 	std::back_insert_iterator<std::vector<char>> ptr(response);
 
@@ -1197,20 +1195,18 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	write_uint8(no_error, ptr);
 
 	// frame-number
-	// TODO: implement delta tracking
-	write_uint32(0, ptr);
+	write_uint32(new_frame, ptr);
 
 	// num-updates
-	write_uint32(static_cast<std::uint32_t>(peers.size()), ptr);
+	write_uint32(static_cast<std::uint32_t>(r.updated.size()), ptr);
 
 	// num-removed: 0xffffffff means "all peers not in this update disconnected"
-	write_uint32(0xffffffff, ptr);
+	write_uint32(r.is_snapshot ? 0xffffffffu : static_cast<std::uint32_t>(r.removed.size()), ptr);
 
-	for (lt::peer_info const& pi : peers) {
-		write_uint32(peer_identifier(pi), ptr);
-
-		// build bitmask of fields we will include
-		std::uint64_t bitmask = field_mask & 0xfffff; // 20 defined fields (bits 0-19)
+	for (auto const& u : r.updated) {
+		lt::peer_info const& pi = u.info;
+		std::uint64_t const bitmask = u.field_mask;
+		write_uint32(u.id, ptr);
 		write_uint64(bitmask, ptr);
 
 		// field 0: flags - peer_flags_t
@@ -1325,6 +1321,11 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 
 		// field 19: total-upload
 		if (bitmask & (1ULL << 19)) write_uint64(static_cast<std::uint64_t>(pi.total_upload), ptr);
+	}
+
+	if (!r.is_snapshot) {
+		for (auto const id : r.removed)
+			write_uint32(id, ptr);
 	}
 
 	return st->send_packet(std::move(response));
