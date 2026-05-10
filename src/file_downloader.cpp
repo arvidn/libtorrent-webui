@@ -30,7 +30,7 @@ see LICENSE file.
 #include <condition_variable>
 #include <charconv>
 #include <filesystem>
-#include <iostream>
+#include <sstream>
 
 #include "percent_encode.hpp"
 
@@ -124,7 +124,6 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
 		if (it == m_out_of_order.end()) return;
 
 		int const size = std::min(std::int64_t(m_piece_size - m_offset), m_left_to_send);
-		std::cout << "async_write: " << m_next_piece << '\n';
 		async_write(std::move(it->second), m_offset, size);
 		m_out_of_order.erase(it);
 		++m_next_piece;
@@ -145,7 +144,6 @@ private:
 		int deadline = 1;
 		while (m_next_priority_piece - m_next_piece < prefetch
 			   && m_next_priority_piece < m_end_piece) {
-			std::cout << "set piece deadline: " << m_next_priority_piece << '\n';
 			m_torrent.set_piece_deadline(
 				m_next_priority_piece, deadline, lt::torrent_handle::alert_when_available
 			);
@@ -160,7 +158,6 @@ private:
 		m_stopped = true;
 		m_out_of_order.clear();
 		for (lt::piece_index_t i = m_next_piece; i < m_next_priority_piece; ++i) {
-			std::cout << "reset piece deadline: " << i << '\n';
 			m_torrent.reset_piece_deadline(i);
 		}
 		//TODO: It would be nice to have reference counting, so we won't remove the
@@ -363,11 +360,6 @@ void file_downloader::handle_http(
 		response.keep_alive(request.keep_alive());
 		response.set(http::field::content_range, content_range.str());
 		return send_http(socket, std::move(done), std::move(response));
-	}
-
-	std::cout << info_hash << " / " << file << '\n';
-	if (range_request) {
-		std::cout << "GET range: " << range_first_byte << " - " << range_last_byte << '\n';
 	}
 
 	lt::peer_request const req = ti->map_file(file, range_first_byte, 0);
