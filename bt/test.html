@@ -65,6 +65,11 @@
       table.replaceChildren();
     }
 
+    // clear "updated" highlight from the previous tick
+    table.querySelectorAll(".updated").forEach(function (el) {
+      el.classList.remove("updated");
+    });
+
     var modified = updates["updates"];
     for (var ih in modified) {
       var t = modified[ih];
@@ -116,6 +121,7 @@
           default:
             cell.innerText = t[field];
         }
+        cell.closest("td").classList.add("updated");
       }
     }
 
@@ -165,6 +171,9 @@
   }
   .downloading-progress {
     background-color: #aaf;
+  }
+  .updated {
+    background-color: #faa;
   }
 </style>
 
