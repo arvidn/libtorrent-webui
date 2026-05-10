@@ -1139,25 +1139,6 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	lt::torrent_handle h = m_hist.get_torrent_status(ih).handle;
 	if (!h.is_valid()) return error(st, f, invalid_argument);
 
-	std::shared_ptr<peer_history> history;
-	{
-		std::unique_lock<std::mutex> l(m_peer_mutex);
-		auto it = std::find_if(
-			m_peer_histories.begin(),
-			m_peer_histories.end(),
-			[&](std::shared_ptr<peer_history> const& ph) { return ph->info_hash() == ih; }
-		);
-		if (it != m_peer_histories.end()) {
-			history = *it;
-			m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);
-		} else {
-			history = std::make_shared<peer_history>(ih);
-			m_peer_histories.push_front(history);
-			if (m_peer_histories.size() > 10) m_peer_histories.pop_back();
-		}
-	}
-
-	std::unique_lock<std::mutex> history_lock(history->mutex());
 	std::vector<lt::peer_info> peers;
 	// TODO: get_peer_info() is a synchronous call. use the async. call
 	h.get_peer_info(peers);
@@ -1169,9 +1150,29 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 	});
 	peers.erase(new_end, peers.end());
 
-	frame_t const new_frame = history->update(peers);
-	auto r = history->query(client_frame, field_mask);
-	history_lock.unlock();
+	// Find or create the peer_history for this info-hash in the LRU cache.
+	// query() returns a self-contained value, so we can release the mutex
+	// before serialising the response.
+	frame_t new_frame;
+	peer_history::query_result r;
+	{
+		std::lock_guard<std::mutex> l(m_peer_mutex);
+		auto it = std::find_if(
+			m_peer_histories.begin(),
+			m_peer_histories.end(),
+			[&](peer_history const& ph) { return ph.info_hash() == ih; }
+		);
+		if (it != m_peer_histories.end())
+			m_peer_histories.splice(m_peer_histories.begin(), m_peer_histories, it);
+		else {
+			m_peer_histories.emplace_front(ih);
+			if (m_peer_histories.size() > 10) m_peer_histories.pop_back();
+		}
+		peer_history& history = m_peer_histories.front();
+
+		new_frame = history.update(std::move(peers));
+		r = history.query(client_frame, field_mask);
+	}
 
 	if (r.updated.size() > std::size_t(0xffffffffu)) r.updated.resize(std::size_t(0xffffffffu));
 	if (r.removed.size() > std::size_t(0xfffffffeu)) r.removed.resize(std::size_t(0xfffffffeu));

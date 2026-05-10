@@ -11,8 +11,8 @@ see LICENSE file.
 #include "libtorrent/hasher.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
-#include <set>
 
 namespace ltweb {
 namespace {
@@ -71,8 +71,6 @@ std::uint64_t changed_fields(
 	return ret;
 }
 
-bool entry_less(peer_history_entry const& lhs, std::uint32_t const rhs) { return lhs.id < rhs; }
-
 peer_history::peer_update
 make_update(peer_history_entry const& entry, std::uint64_t const field_mask)
 {
@@ -86,53 +84,82 @@ peer_history::peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones)
 {
 }
 
-frame_t peer_history::update(std::vector<lt::peer_info> const& peers)
+frame_t peer_history::update(std::vector<lt::peer_info> peers)
 {
 	frame_t const frame = ++m_frame;
 
-	using snapshot_entry = std::pair<std::uint32_t, lt::peer_info const*>;
-	std::vector<snapshot_entry> snapshot;
-	snapshot.reserve(peers.size());
-	std::set<std::uint32_t> incoming;
+	// Precompute identifiers and a permutation that puts peers in id order.
+	// We sort the lightweight (id, original-index) pairs rather than peers
+	// themselves, so each sort swap moves 12 bytes instead of a peer_info.
+	using indexed = std::pair<std::uint32_t, std::size_t>;
+	std::vector<indexed> idx;
+	idx.reserve(peers.size());
+	for (std::size_t i = 0; i < peers.size(); ++i)
+		idx.emplace_back(peer_identifier(peers[i]), i);
 
-	for (auto const& pi : peers) {
-		std::uint32_t const id = peer_identifier(pi);
-		incoming.insert(id);
-		snapshot.emplace_back(id, &pi);
+	std::sort(idx.begin(), idx.end(), [](indexed const& a, indexed const& b) {
+		return a.first < b.first;
+	});
+	// Guard against two peers hashing to the same id within one poll
+	// (effectively impossible, but keeps the merge below well-defined).
+	auto const dedup_end =
+		std::unique(idx.begin(), idx.end(), [](indexed const& a, indexed const& b) {
+			return a.first == b.first;
+		});
+	idx.erase(dedup_end, idx.end());
+
+	// Fast path: same id-set as last frame, in the same order. This is the
+	// expected common case (peers persist across polls). Skips the rebuild.
+	bool same_layout = (idx.size() == m_peers.size());
+	for (std::size_t i = 0; same_layout && i < idx.size(); ++i)
+		same_layout = (idx[i].first == m_peers[i].id);
+	if (same_layout) {
+		for (std::size_t i = 0; i < idx.size(); ++i)
+			m_peers[i].update_info(std::move(peers[idx[i].second]), frame);
+		return frame;
 	}
 
-	for (auto it = m_peers.begin(); it != m_peers.end();) {
-		if (incoming.count(it->id) == 0) {
-			m_removed.push_front({frame, it->added_frame, it->id});
-			it = m_peers.erase(it);
+	// Slow path: structural change. Merge-walk into a fresh vector.
+	std::vector<peer_history_entry> next;
+	next.reserve(idx.size());
+
+	auto add_new = [&](std::uint32_t const id, lt::peer_info& info) {
+		peer_history_entry entry;
+		entry.id = id;
+		entry.info = std::move(info);
+		entry.added_frame = frame;
+		entry.frame.fill(frame);
+		next.push_back(std::move(entry));
+
+		auto const rem_end =
+			std::remove_if(m_removed.begin(), m_removed.end(), [id](removed_entry const& r) {
+				return r.id == id;
+			});
+		m_removed.erase(rem_end, m_removed.end());
+	};
+
+	auto p_it = m_peers.begin();
+	auto i_it = idx.begin();
+	while (p_it != m_peers.end() && i_it != idx.end()) {
+		if (p_it->id < i_it->first) {
+			m_removed.push_front({frame, p_it->added_frame, p_it->id});
+			++p_it;
+		} else if (p_it->id > i_it->first) {
+			add_new(i_it->first, peers[i_it->second]);
+			++i_it;
 		} else {
-			++it;
+			p_it->update_info(std::move(peers[i_it->second]), frame);
+			next.push_back(std::move(*p_it));
+			++p_it;
+			++i_it;
 		}
 	}
+	for (; p_it != m_peers.end(); ++p_it)
+		m_removed.push_front({frame, p_it->added_frame, p_it->id});
+	for (; i_it != idx.end(); ++i_it)
+		add_new(i_it->first, peers[i_it->second]);
 
-	for (auto const& s : snapshot) {
-		std::uint32_t const id = s.first;
-		lt::peer_info const& pi = *s.second;
-		auto it = std::lower_bound(m_peers.begin(), m_peers.end(), id, entry_less);
-		bool const inserted = it == m_peers.end() || it->id != id;
-		if (inserted) it = m_peers.insert(it, peer_history_entry{});
-		peer_history_entry& entry = *it;
-
-		if (inserted) {
-			entry.id = id;
-			entry.info = pi;
-			entry.added_frame = frame;
-			entry.frame.fill(frame);
-
-			auto const rem_end =
-				std::remove_if(m_removed.begin(), m_removed.end(), [&](removed_entry const& r) {
-					return r.id == id;
-				});
-			m_removed.erase(rem_end, m_removed.end());
-		} else {
-			entry.update_info(pi, frame);
-		}
-	}
+	m_peers = std::move(next);
 
 	while (m_removed.size() > m_max_tombstones) {
 		m_horizon = std::max(m_horizon, m_removed.back().removed_frame + 1);
@@ -175,7 +202,7 @@ peer_history::query(frame_t since_frame, std::uint64_t requested_mask) const
 	return result;
 }
 
-void peer_history_entry::update_info(lt::peer_info const& pi, frame_t const f)
+void peer_history_entry::update_info(lt::peer_info pi, frame_t const f)
 {
 	if (pi.flags != info.flags) frame[flags] = f;
 	if (pi.source != info.source) frame[source] = f;
@@ -199,7 +226,7 @@ void peer_history_entry::update_info(lt::peer_info const& pi, frame_t const f)
 	if (pi.total_download != info.total_download) frame[total_download] = f;
 	if (pi.total_upload != info.total_upload) frame[total_upload] = f;
 
-	info = pi;
+	info = std::move(pi);
 }
 
 } // namespace ltweb

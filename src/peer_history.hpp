@@ -17,7 +17,6 @@ see LICENSE file.
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <mutex>
 #include <vector>
 
 namespace ltweb {
@@ -52,7 +51,7 @@ struct peer_history_entry {
 	frame_t added_frame = 0;
 	std::array<frame_t, num_fields> frame{};
 
-	void update_info(lt::peer_info const& pi, frame_t frame);
+	void update_info(lt::peer_info pi, frame_t frame);
 };
 
 // Tracks per-peer delta state for a single torrent.
@@ -61,7 +60,6 @@ struct peer_history {
 	explicit peer_history(lt::sha1_hash const& ih, std::size_t max_tombstones = 1000);
 
 	lt::sha1_hash const& info_hash() const { return m_ih; }
-	std::mutex& mutex() const { return m_mutex; }
 	frame_t frame() const { return m_frame; }
 
 	// The oldest frame for which delta queries are reliable.
@@ -70,7 +68,9 @@ struct peer_history {
 
 	// Feed a fresh peer snapshot.
 	// Always increments the internal frame counter and returns the new frame.
-	frame_t update(std::vector<lt::peer_info> const& peers);
+	// Takes peers by value: callers may std::move() to avoid the copy, since
+	// update() reorders and may move-from the input internally.
+	frame_t update(std::vector<lt::peer_info> peers);
 
 	struct peer_update {
 		std::uint32_t id;
@@ -100,7 +100,6 @@ struct peer_history {
 
 private:
 	lt::sha1_hash const m_ih;
-	mutable std::mutex m_mutex;
 	frame_t m_frame = 0;
 	frame_t m_horizon = 0;
 	std::size_t m_max_tombstones;
