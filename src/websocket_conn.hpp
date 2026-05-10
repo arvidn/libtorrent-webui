@@ -13,6 +13,7 @@ see LICENSE file.
 #include <memory> // enable_shared_from_this
 #include <functional>
 #include <deque>
+#include <vector>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/ssl.hpp>
@@ -38,8 +39,7 @@ struct websocket_conn : std::enable_shared_from_this<websocket_conn> {
 	);
 	~websocket_conn();
 
-	// TODO: this should take a span
-	bool send_packet(char const* buffer, int len);
+	bool send_packet(std::vector<char>&& packet);
 	void start_accept(http::request<http::string_body> const& request);
 	void close();
 

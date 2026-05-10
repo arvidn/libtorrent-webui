@@ -130,6 +130,22 @@ void write_uint64(std::uint64_t v, It& p)
 	write_uint32(std::uint32_t(v), p);
 }
 
+std::vector<char> make_rpc_response(
+	int const function_id,
+	std::uint16_t const transaction_id,
+	std::uint8_t const status,
+	int const extra = 0
+)
+{
+	std::vector<char> response;
+	response.reserve(4 + extra);
+	auto ptr = std::back_inserter(response);
+	write_uint8(function_id | 0x80, ptr);
+	write_uint16(transaction_id, ptr);
+	write_uint8(status, ptr);
+	return response;
+}
+
 struct rpc_entry {
 	char const* name;
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
@@ -556,7 +572,7 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 	for (auto const& ih : removed_torrents)
 		std::copy(ih.begin(), ih.end(), ptr);
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 template <typename Fun>
@@ -771,7 +787,7 @@ bool libtorrent_webui::list_settings(websocket_conn* st, function_call f)
 	}
 	patch = response.data() + bool_count_offset;
 	write_uint32(count, patch);
-	return st->send_packet(&response[0], response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::set_settings(websocket_conn* st, function_call f)
@@ -883,7 +899,7 @@ bool libtorrent_webui::get_settings(websocket_conn* st, function_call f)
 		}
 	}
 
-	return st->send_packet(&response[0], response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::list_stats(websocket_conn* st, function_call f)
@@ -909,7 +925,7 @@ bool libtorrent_webui::list_stats(websocket_conn* st, function_call f)
 		std::copy(s.name, s.name + len, ptr);
 	}
 
-	return st->send_packet(&response[0], response.size());
+	return st->send_packet(std::move(response));
 }
 
 void libtorrent_webui::handle_alert(lt::alert const* a)
@@ -935,16 +951,9 @@ void libtorrent_webui::handle_alert(lt::alert const* a)
 
 		std::unique_ptr<add_torrent_user_data> deleter(ud);
 
-		char rpc[4];
-		char* ptr = &rpc[0];
-		write_uint8(ud->function_id | 0x80, ptr);
-		write_uint16(ud->transaction_id, ptr);
-		if (at->error)
-			write_uint8(failed, ptr);
-		else
-			write_uint8(no_error, ptr);
-
-		ud->st->send_packet(rpc, sizeof(rpc));
+		auto response =
+			make_rpc_response(ud->function_id, ud->transaction_id, at->error ? failed : no_error);
+		ud->st->send_packet(std::move(response));
 	} else if (auto* pf = lt::alert_cast<lt::piece_finished_alert>(a)) {
 		// Record the new completion in the per-torrent piece_state_history,
 		// but only if we already have one for this torrent: a history is
@@ -1027,7 +1036,7 @@ bool libtorrent_webui::get_stats(websocket_conn* st, function_call f)
 	char* counter_ptr = &response[counter_pos];
 	write_uint16(num_updates, counter_ptr);
 
-	return st->send_packet(&response[0], response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::get_file_updates(websocket_conn* st, function_call f)
@@ -1055,7 +1064,7 @@ bool libtorrent_webui::get_file_updates(websocket_conn* st, function_call f)
 		write_uint8(no_error, ptr);
 		write_uint32(client_frame, ptr); // frame number
 		write_uint32(0, ptr); // number of files
-		return st->send_packet(response.data(), response.size());
+		return st->send_packet(std::move(response));
 	}
 
 	lt::file_storage const& fs = t->layout();
@@ -1150,7 +1159,7 @@ bool libtorrent_webui::get_file_updates(websocket_conn* st, function_call f)
 	}
 	l.unlock();
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
@@ -1317,7 +1326,7 @@ bool libtorrent_webui::get_peers_updates(websocket_conn* st, function_call f)
 		if (bitmask & (1ULL << 19)) write_uint64(static_cast<std::uint64_t>(pi.total_upload), ptr);
 	}
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::get_piece_updates(websocket_conn* st, function_call f)
@@ -1392,7 +1401,7 @@ bool libtorrent_webui::get_piece_updates(websocket_conn* st, function_call f)
 	}
 	l.unlock();
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::get_piece_states(websocket_conn* st, function_call f)
@@ -1463,7 +1472,7 @@ bool libtorrent_webui::get_piece_states(websocket_conn* st, function_call f)
 			write_uint32(static_cast<std::uint32_t>(static_cast<int>(idx)), ptr);
 	}
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::set_file_priority(websocket_conn* st, function_call f)
@@ -1637,7 +1646,7 @@ bool libtorrent_webui::get_tracker_updates(websocket_conn* st, function_call f)
 	char* patch = response.data() + num_updates_pos;
 	write_uint16(num_updates, patch);
 
-	return st->send_packet(response.data(), response.size());
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
@@ -1731,25 +1740,16 @@ bool libtorrent_webui::on_websocket_read(websocket_conn* st, lt::span<char const
 
 bool libtorrent_webui::respond(websocket_conn* st, function_call f, int error, int val)
 {
-	char rpc[6];
-	char* ptr = rpc;
-
-	write_uint8(f.function_id | 0x80, ptr);
-	write_uint16(f.transaction_id, ptr);
-	write_uint8(no_error, ptr);
+	auto response = make_rpc_response(f.function_id, f.transaction_id, no_error, 2);
+	auto ptr = std::back_inserter(response);
 	write_uint16(val, ptr);
 
-	return st->send_packet(rpc, sizeof(rpc));
+	return st->send_packet(std::move(response));
 }
 
 bool libtorrent_webui::error(websocket_conn* st, function_call f, int error)
 {
-	char rpc[4];
-	char* ptr = &rpc[0];
-	write_uint8(f.function_id | 0x80, ptr);
-	write_uint16(f.transaction_id, ptr);
-	write_uint8(error, ptr);
-
-	return st->send_packet(rpc, sizeof(rpc));
+	auto response = make_rpc_response(f.function_id, f.transaction_id, error);
+	return st->send_packet(std::move(response));
 }
 } // namespace ltweb

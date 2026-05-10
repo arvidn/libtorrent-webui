@@ -36,14 +36,16 @@ websocket_conn::websocket_conn(
 
 websocket_conn::~websocket_conn() { TORRENT_ASSERT(m_stopping); }
 
-bool websocket_conn::send_packet(char const* buffer, int len)
+bool websocket_conn::send_packet(std::vector<char>&& packet)
 {
-	std::vector<char> data(buffer, buffer + len);
+	TORRENT_ASSERT(!packet.empty());
+	if (packet.empty()) return false;
+
 	boost::asio::dispatch(
 		beast::get_lowest_layer(m_conn).get_executor(),
-		[self = shared_from_this(), data = std::move(data)]() mutable {
+		[self = shared_from_this(), packet = std::move(packet)]() mutable {
 			if (self->m_stopping) return;
-			self->m_send_buffer.push_back(std::move(data));
+			self->m_send_buffer.push_back(std::move(packet));
 			if (self->m_send_buffer.size() == 1) self->do_send();
 		}
 	);
