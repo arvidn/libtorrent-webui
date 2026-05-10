@@ -39,7 +39,7 @@ struct websocket_conn : std::enable_shared_from_this<websocket_conn> {
 	);
 	~websocket_conn();
 
-	bool send_packet(std::vector<char>&& packet);
+	bool send_packet(std::vector<char> packet);
 	void start_accept(http::request<http::string_body> const& request);
 	void close();
 
