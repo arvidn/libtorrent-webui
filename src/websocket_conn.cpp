@@ -36,7 +36,7 @@ websocket_conn::websocket_conn(
 
 websocket_conn::~websocket_conn() { TORRENT_ASSERT(m_stopping); }
 
-bool websocket_conn::send_packet(std::vector<char>&& packet)
+bool websocket_conn::send_packet(std::vector<char> packet)
 {
 	boost::asio::dispatch(
 		beast::get_lowest_layer(m_conn).get_executor(),
