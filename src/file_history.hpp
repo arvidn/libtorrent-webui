@@ -73,9 +73,12 @@ struct file_history {
 	std::uint8_t open_mode(int fi) const { return m_files[fi].open_mode; }
 
 private:
+	void update_open_modes(std::vector<lt::open_file_state> const& open_modes, frame_t frame);
+
 	lt::sha1_hash const m_ih;
 	frame_t m_frame = 1;
 	std::vector<file_history_entry> m_files; // indexed by file_index
+	std::vector<int> m_open_files; // sorted currently-open file indices
 };
 
 } // namespace ltweb
