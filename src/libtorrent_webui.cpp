@@ -7,6 +7,7 @@ You may use, distribute and modify this code under the terms of the BSD license,
 see LICENSE file.
 */
 
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <chrono>
@@ -133,8 +134,8 @@ void write_uint64(std::uint64_t v, It& p)
 std::vector<char> make_rpc_response(
 	int const function_id,
 	std::uint16_t const transaction_id,
-	std::uint8_t const status,
-	int const extra = 0
+	int const status,
+	std::size_t const extra = 0
 )
 {
 	std::vector<char> response;
@@ -142,7 +143,7 @@ std::vector<char> make_rpc_response(
 	auto ptr = std::back_inserter(response);
 	write_uint8(function_id | 0x80, ptr);
 	write_uint16(transaction_id, ptr);
-	write_uint8(status, ptr);
+	write_uint8(std::uint8_t(status), ptr);
 	return response;
 }
 
@@ -1740,7 +1741,7 @@ bool libtorrent_webui::on_websocket_read(websocket_conn* st, lt::span<char const
 
 bool libtorrent_webui::respond(websocket_conn* st, function_call f, int error, int val)
 {
-	auto response = make_rpc_response(f.function_id, f.transaction_id, no_error, 2);
+	auto response = make_rpc_response(f.function_id, f.transaction_id, error, 2);
 	auto ptr = std::back_inserter(response);
 	write_uint16(val, ptr);
 
