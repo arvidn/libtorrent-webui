@@ -59,8 +59,7 @@ frame_t file_history::update(
 }
 
 void file_history::update_open_modes(
-	std::vector<lt::open_file_state> const& open_modes,
-	frame_t const frame
+	std::vector<lt::open_file_state> const& open_modes, frame_t const frame
 )
 {
 	int const n = static_cast<int>(m_files.size());
