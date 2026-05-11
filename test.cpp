@@ -94,9 +94,12 @@ int main(int argc, char *const argv[])
 	// references it.
 	session_authenticator sessions;
 
-	// permission singletons for the login handler's group_id mapping.
-	// group_id 0 -> full access, group_id 1 -> read-only.
+	// permission singletons for the login handler's group_id mapping,
+	// listed in order of decreasing permissions: group_id 0 -> full
+	// access, group_id 1 -> remote user (full torrent control,
+	// host-local settings denied), group_id 2 -> read-only.
 	full_permissions full_perms;
+	remote_user user_perms;
 	read_only_permissions ro_perms;
 
 	// this serves static files from directory "bt" exposed at HTTP path /bt/.
@@ -153,7 +156,7 @@ int main(int argc, char *const argv[])
 
 	login login_handler("/login", login_html_buf.str()
 		, accounts, sessions, throttler, "/bt/test.html"
-		, {&full_perms, &ro_perms});
+		, {&full_perms, &user_perms, &ro_perms});
 
 	// GET /logout destroys the session referenced by the session
 	// cookie, clears the cookie, and redirects to the login form.
