@@ -272,10 +272,7 @@ void login::handle_http(
 		// same prefix are not part of the login flow. A query string
 		// (eg ?error=...) is allowed because the failure path
 		// redirects back here with one.
-		std::string_view const target = req.target();
-		auto const q = target.find('?');
-		std::string_view const path = (q == std::string_view::npos) ? target : target.substr(0, q);
-		if (path != m_path_prefix) {
+		if (!aux::path_matches_exact(req.target(), m_path_prefix)) {
 			send_http(socket, std::move(done), http_error(req, http::status::not_found));
 			return;
 		}

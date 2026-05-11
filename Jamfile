@@ -41,6 +41,7 @@ SOURCES =
 	sqlite_user_account
 	parse_http_auth
 	login
+	logout
 	login_throttler
 	load_config
 	error_logger

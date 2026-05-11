@@ -12,6 +12,7 @@ see LICENSE file.
 
 #include "login.hpp"
 #include "login_throttler.hpp"
+#include "logout.hpp"
 #include "session_authenticator.hpp"
 #include "auth_interface.hpp"
 
@@ -365,4 +366,161 @@ BOOST_FIXTURE_TEST_CASE(success_does_not_mint_session_in_try_login, login_fixtur
 	auto r = try_login(l, make_authed_post("username=alice&password=secret"));
 	BOOST_TEST(std::holds_alternative<int>(r));
 	BOOST_TEST(sessions.size() == std::size_t(0));
+}
+
+// ---------- logout::try_logout ----------
+
+// Separate fixture so logout tests don't carry login's mock_accounts /
+// throttler / template baggage. session_authenticator is the only piece
+// logout actually needs.
+struct logout_fixture {
+	session_authenticator sessions;
+
+	logout_fixture()
+		: sessions(std::chrono::seconds(60))
+	{
+	}
+
+	logout make_logout() { return logout("/logout", sessions, "/login"); }
+
+	// Delegation method - logout::try_logout is private and only
+	// reachable through the friend declaration on this fixture type.
+	http::status try_logout(logout const& lo, http::request<http::string_body> const& req) const
+	{
+		return lo.try_logout(req);
+	}
+
+	// Build a GET request with target `target` and an optional Cookie
+	// header. logout does not care about the HTTP method beyond the
+	// path check, so GET is fine.
+	static http::request<http::string_body>
+	make_get(std::string target, char const* cookie = nullptr)
+	{
+		http::request<http::string_body> req{http::verb::get, std::move(target), 11};
+		if (cookie) req.set(http::field::cookie, cookie);
+		return req;
+	}
+};
+
+BOOST_FIXTURE_TEST_CASE(try_logout_destroys_named_session, logout_fixture)
+{
+	// Happy path: a request that carries the session cookie of an
+	// existing session removes that session from the authenticator.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+	BOOST_TEST(sessions.size() == std::size_t(1));
+	BOOST_TEST(sessions.authenticate(sid) != nullptr);
+
+	auto r = try_logout(lo, make_get("/logout", ("session=" + sid).c_str()));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.size() == std::size_t(0));
+	BOOST_TEST(sessions.authenticate(sid) == nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_destroys_only_named_session, logout_fixture)
+{
+	// Other sessions in the table must be left alone - destroying the
+	// caller's session must not be a global wipe.
+	auto lo = make_logout();
+	std::string const victim = sessions.create(&g_full);
+	std::string const bystander = sessions.create(&g_ro);
+	BOOST_TEST(sessions.size() == std::size_t(2));
+
+	auto r = try_logout(lo, make_get("/logout", ("session=" + victim).c_str()));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.size() == std::size_t(1));
+	BOOST_TEST(sessions.authenticate(victim) == nullptr);
+	BOOST_TEST(sessions.authenticate(bystander) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_no_cookie_header, logout_fixture)
+{
+	// No Cookie header at all: the response is still 303 (logout is
+	// idempotent and must not leak whether you had a session), and the
+	// table is untouched.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout"));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.size() == std::size_t(1));
+	BOOST_TEST(sessions.authenticate(sid) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_cookie_without_session, logout_fixture)
+{
+	// Cookie header is present but does not contain a "session" cookie.
+	// Existing sessions must not be touched.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout", "theme=dark; lang=en"));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.size() == std::size_t(1));
+	BOOST_TEST(sessions.authenticate(sid) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_unknown_session_id, logout_fixture)
+{
+	// A "session=..." cookie that names a session the server never
+	// minted is a no-op on the table. The response is still 303 -
+	// from the client's perspective logout always succeeds.
+	auto lo = make_logout();
+	std::string const real = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout", "session=ghost-id"));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.size() == std::size_t(1));
+	BOOST_TEST(sessions.authenticate(real) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_session_among_other_cookies, logout_fixture)
+{
+	// The "session" cookie can be reached when the Cookie header
+	// carries multiple cookies separated by "; ". This is exercise of
+	// the same parser path that authenticate() relies on, but it is
+	// worth verifying end-to-end through the logout entry point.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r =
+		try_logout(lo, make_get("/logout", ("theme=dark; session=" + sid + "; lang=en").c_str()));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.authenticate(sid) == nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_empty_session_value, logout_fixture)
+{
+	// "session=" with no value must not be treated as a request to
+	// destroy session "". The table must be left alone.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout", "session="));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.authenticate(sid) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_path_mismatch_does_not_destroy, logout_fixture)
+{
+	// A sub-path request must return 404 and must NOT destroy the
+	// session - that's the whole reason for the exact-path check.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout/foo", ("session=" + sid).c_str()));
+	BOOST_TEST(int(r) == int(http::status::not_found));
+	BOOST_TEST(sessions.authenticate(sid) != nullptr);
+}
+
+BOOST_FIXTURE_TEST_CASE(try_logout_query_string_allowed, logout_fixture)
+{
+	// A query string on the exact path is allowed and does not prevent
+	// the session destruction.
+	auto lo = make_logout();
+	std::string const sid = sessions.create(&g_full);
+
+	auto r = try_logout(lo, make_get("/logout?reason=expired", ("session=" + sid).c_str()));
+	BOOST_TEST(int(r) == int(http::status::see_other));
+	BOOST_TEST(sessions.authenticate(sid) == nullptr);
 }
