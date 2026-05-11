@@ -8,9 +8,17 @@ see LICENSE file.
 */
 
 #include "file_history.hpp"
-#include <unordered_map>
+#include <algorithm>
 
 namespace ltweb {
+namespace {
+
+struct open_file_entry {
+	int file_index;
+	std::uint8_t open_mode;
+};
+
+} // anonymous namespace
 
 file_history::file_history(lt::sha1_hash const& ih, lt::file_storage const& fs)
 	: m_ih(ih)
@@ -45,25 +53,71 @@ frame_t file_history::update(
 		}
 	}
 
-	if (open_modes != nullptr) {
-		// open_modes is sparse: only currently-open files appear.
-		// Build a dense lookup for this update round.
-		std::unordered_map<int, std::uint8_t> om;
-		om.reserve(open_modes->size());
-		for (auto const& s : *open_modes)
-			om[static_cast<int>(s.file_index)] = static_cast<std::uint8_t>(s.open_mode);
-
-		for (int fi = 0; fi < n; ++fi) {
-			auto const it = om.find(fi);
-			std::uint8_t const new_mode = (it != om.end()) ? it->second : std::uint8_t(0);
-			if (new_mode != m_files[fi].open_mode) {
-				m_files[fi].open_mode = new_mode;
-				m_files[fi].open_mode_frame = frame;
-			}
-		}
-	}
+	if (open_modes != nullptr) update_open_modes(*open_modes, frame);
 
 	return frame;
+}
+
+void file_history::update_open_modes(
+	std::vector<lt::open_file_state> const& open_modes, frame_t const frame
+)
+{
+	int const n = static_cast<int>(m_files.size());
+	std::vector<open_file_entry> current;
+	current.reserve(open_modes.size());
+
+	for (auto const& s : open_modes) {
+		int const fi = static_cast<int>(s.file_index);
+		if (fi < 0 || fi >= n) continue;
+		current.push_back({fi, static_cast<std::uint8_t>(s.open_mode)});
+	}
+
+	std::stable_sort(current.begin(), current.end(), [](auto const& lhs, auto const& rhs) {
+		return lhs.file_index < rhs.file_index;
+	});
+
+	auto out = current.begin();
+	for (auto it = current.begin(); it != current.end();) {
+		int const fi = it->file_index;
+		std::uint8_t mode = it->open_mode;
+		for (++it; it != current.end() && it->file_index == fi; ++it)
+			mode = it->open_mode;
+		*out++ = {fi, mode};
+	}
+	current.erase(out, current.end());
+
+	std::vector<int> next_open_files;
+	next_open_files.reserve(current.size());
+
+	auto old = m_open_files.begin();
+	auto cur = current.begin();
+	while (old != m_open_files.end() || cur != current.end()) {
+		int file_index;
+		std::uint8_t new_mode;
+
+		if (old == m_open_files.end() || (cur != current.end() && cur->file_index < *old)) {
+			file_index = cur->file_index;
+			new_mode = cur->open_mode;
+			++cur;
+		} else if (cur == current.end() || *old < cur->file_index) {
+			file_index = *old;
+			new_mode = 0;
+			++old;
+		} else {
+			file_index = *old;
+			new_mode = cur->open_mode;
+			++old;
+			++cur;
+		}
+
+		if (m_files[file_index].open_mode != new_mode) {
+			m_files[file_index].open_mode = new_mode;
+			m_files[file_index].open_mode_frame = frame;
+		}
+		if (new_mode != 0) next_open_files.push_back(file_index);
+	}
+
+	m_open_files.swap(next_open_files);
 }
 
 std::vector<std::uint16_t>

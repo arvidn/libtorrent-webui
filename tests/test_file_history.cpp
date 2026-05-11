@@ -226,6 +226,30 @@ BOOST_AUTO_TEST_CASE(open_mode_accessor_after_close)
 	BOOST_TEST(fh.open_mode(0) == 0u);
 }
 
+BOOST_AUTO_TEST_CASE(open_mode_duplicate_entries_use_last_value)
+{
+	auto const fs = make_fs(1);
+	ltweb::file_history fh(make_hash(0x11), fs);
+
+	std::vector<lt::open_file_state> om = {make_open(0, 0x02), make_open(0, 0x06)};
+	fh.update(nullptr, nullptr, &om);
+
+	BOOST_TEST(fh.open_mode(0) == 0x06u);
+}
+
+BOOST_AUTO_TEST_CASE(open_mode_invalid_entries_ignored)
+{
+	auto const fs = make_fs(1);
+	ltweb::file_history fh(make_hash(0x11), fs);
+
+	std::vector<lt::open_file_state> om = {make_open(-1, 0x02), make_open(1, 0x04)};
+	ltweb::frame_t const f1 = fh.update(nullptr, nullptr, &om);
+
+	BOOST_TEST(fh.open_mode(0) == 0u);
+	auto const masks = fh.query(f1, 0x20u);
+	BOOST_TEST(masks[0] == 0u);
+}
+
 // Value accessors return the values last passed to update().
 BOOST_AUTO_TEST_CASE(accessors_return_updated_values)
 {
