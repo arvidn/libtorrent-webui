@@ -58,17 +58,13 @@ save_resume::save_resume(lt::session& s, std::string const& resume_file, alert_h
 		return;
 	}
 
-	m_alerts->subscribe(
-		this,
-		0,
-		lt::add_torrent_alert::alert_type,
-		lt::torrent_removed_alert::alert_type,
-		lt::save_resume_data_alert::alert_type,
-		lt::save_resume_data_failed_alert::alert_type,
-		lt::metadata_received_alert::alert_type,
-		lt::torrent_finished_alert::alert_type,
-		0
-	);
+	m_alerts->subscribe<
+		lt::add_torrent_alert,
+		lt::torrent_removed_alert,
+		lt::save_resume_data_alert,
+		lt::save_resume_data_failed_alert,
+		lt::metadata_received_alert,
+		lt::torrent_finished_alert>(this);
 
 	ret = sqlite3_exec(
 		m_db,

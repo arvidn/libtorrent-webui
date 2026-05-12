@@ -270,16 +270,12 @@ libtorrent_webui::libtorrent_webui(
 	if (m_stats.size() < lt::counters::num_counters)
 		m_stats.resize(lt::counters::num_counters, std::pair<std::int64_t, frame_t>(0, 0));
 
-	m_alert.subscribe(
-		this,
-		0,
-		lt::session_stats_alert::alert_type,
-		lt::add_torrent_alert::alert_type,
-		lt::piece_finished_alert::alert_type,
-		lt::hash_failed_alert::alert_type,
-		lt::torrent_checked_alert::alert_type,
-		0
-	);
+	m_alert.subscribe<
+		lt::session_stats_alert,
+		lt::add_torrent_alert,
+		lt::piece_finished_alert,
+		lt::hash_failed_alert,
+		lt::torrent_checked_alert>(this);
 }
 
 libtorrent_webui::~libtorrent_webui() { m_alert.unsubscribe(this); }

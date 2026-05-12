@@ -66,7 +66,6 @@ int main(int argc, char *const argv[])
 		++argv;
 		--argc;
 	}
-	s.settings.set_int(settings_pack::alert_mask, 0xffffffff);
 
 	lt::session ses(s);
 
