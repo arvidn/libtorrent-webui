@@ -9,10 +9,10 @@ see LICENSE file.
 
 #include "libtorrent/config.hpp"
 #include "libtorrent/session.hpp"
+#include "libtorrent/settings_pack.hpp"
 
 #include <algorithm>
 #include <mutex>
-#include <cstdarg>
 #include <memory>
 #include <condition_variable>
 
@@ -25,23 +25,6 @@ alert_handler::alert_handler(lt::session& ses)
 	: m_abort(false)
 	, m_ses(ses)
 {
-}
-
-void alert_handler::subscribe(alert_observer* o, int const flags, ...)
-{
-	std::array<int, 64> types;
-	types.fill(0);
-	va_list l;
-	va_start(l, flags);
-	int t = va_arg(l, int);
-	int i = 0;
-	while (t != 0 && i < 64) {
-		types[i] = t;
-		++i;
-		t = va_arg(l, int);
-	}
-	va_end(l);
-	subscribe_impl(types.data(), i, o, flags);
 }
 
 void alert_handler::dispatch_alerts(std::vector<lt::alert*>& alerts) const
@@ -81,15 +64,16 @@ void alert_handler::unsubscribe(alert_observer* o)
 	o->num_types = 0;
 }
 
-// TODO: use span<int const>
 void alert_handler::subscribe_impl(
-	int const* type_list, int const num_types, alert_observer* o, int const flags
+	lt::span<int const> const types,
+	alert_observer* o,
+	int const flags,
+	lt::alert_category_t const cats
 )
 {
 	o->types.fill(0);
 	o->flags = flags;
-	for (int i = 0; i < num_types; ++i) {
-		int const type = type_list[i];
+	for (int const type : types) {
 		if (type == 0) break;
 
 		// only subscribe once per observer per type
@@ -102,6 +86,14 @@ void alert_handler::subscribe_impl(
 		o->types[o->num_types++] = type;
 		m_observers[type].push_back(o);
 		TORRENT_ASSERT(o->num_types < 64);
+	}
+
+	lt::alert_category_t const new_mask = m_subscribed_categories | cats;
+	if (new_mask != m_subscribed_categories) {
+		m_subscribed_categories = new_mask;
+		lt::settings_pack p;
+		p.set_int(lt::settings_pack::alert_mask, new_mask);
+		m_ses.apply_settings(std::move(p));
 	}
 }
 

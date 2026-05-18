@@ -83,13 +83,8 @@ prioritize_headers::prioritize_headers(alert_handler* h, std::int64_t const head
 	: m_alerts(h)
 	, m_header_size(header_size)
 {
-	m_alerts->subscribe(
-		this,
-		0,
-		lt::add_torrent_alert::alert_type,
-		lt::metadata_received_alert::alert_type,
-		lt::file_prio_alert::alert_type,
-		0
+	m_alerts->subscribe<lt::add_torrent_alert, lt::metadata_received_alert, lt::file_prio_alert>(
+		this
 	);
 }
 

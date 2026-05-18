@@ -48,24 +48,20 @@ error_logger::error_logger(alert_handler* alerts, std::string const& log_file, b
 			dup2(fileno(m_file), STDOUT_FILENO);
 			dup2(fileno(m_file), STDERR_FILENO);
 		}
-		m_alerts->subscribe(
-			this,
-			0,
-			lt::peer_disconnected_alert::alert_type,
-			lt::peer_error_alert::alert_type,
-			lt::save_resume_data_failed_alert::alert_type,
-			lt::torrent_delete_failed_alert::alert_type,
-			lt::storage_moved_failed_alert::alert_type,
-			lt::file_rename_failed_alert::alert_type,
-			lt::torrent_error_alert::alert_type,
-			lt::hash_failed_alert::alert_type,
-			lt::file_error_alert::alert_type,
-			lt::metadata_failed_alert::alert_type,
-			lt::udp_error_alert::alert_type,
-			lt::listen_failed_alert::alert_type,
-			lt::invalid_request_alert::alert_type,
-			0
-		);
+		m_alerts->subscribe<
+			lt::peer_disconnected_alert,
+			lt::peer_error_alert,
+			lt::save_resume_data_failed_alert,
+			lt::torrent_delete_failed_alert,
+			lt::storage_moved_failed_alert,
+			lt::file_rename_failed_alert,
+			lt::torrent_error_alert,
+			lt::hash_failed_alert,
+			lt::file_error_alert,
+			lt::metadata_failed_alert,
+			lt::udp_error_alert,
+			lt::listen_failed_alert,
+			lt::invalid_request_alert>(this);
 	}
 }
 

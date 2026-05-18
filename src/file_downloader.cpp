@@ -279,7 +279,7 @@ file_downloader::file_downloader(lt::session& s, alert_handler* alert, auth_inte
 	, m_attachment(true)
 	, m_alert(alert)
 {
-	m_alert->subscribe(this, 0, lt::read_piece_alert::alert_type, 0);
+	m_alert->subscribe<lt::read_piece_alert>(this);
 }
 
 file_downloader::~file_downloader() { m_alert->unsubscribe(this); }

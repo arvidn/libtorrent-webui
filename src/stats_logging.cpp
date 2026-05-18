@@ -26,7 +26,7 @@ stats_logging::stats_logging(alert_handler* h)
 	: m_alerts(h)
 	, m_log_seq(0)
 {
-	m_alerts->subscribe(this, 0, lt::session_stats_alert::alert_type, 0);
+	m_alerts->subscribe<lt::session_stats_alert>(this);
 	rotate_stats_log();
 }
 

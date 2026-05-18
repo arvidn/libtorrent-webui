@@ -15,8 +15,11 @@ see LICENSE file.
 #include <mutex>
 #include <deque>
 #include <future>
+#include <array>
 #include "libtorrent/fwd.hpp"
+#include "libtorrent/alert.hpp" // for alert_category_t
 #include "libtorrent/alert_types.hpp" // for num_alert_types
+#include "libtorrent/span.hpp"
 
 namespace ltweb {
 
@@ -26,12 +29,21 @@ struct alert_observer;
 struct TORRENT_EXPORT alert_handler {
 	alert_handler(lt::session& ses);
 
-	// TODO 2: move the responsibility of picking which
-	// alert types to subscribe to to the observer
-	// TODO 3: make subscriptions automatically enable
-	// the corresponding category of alerts in the session somehow
-	// TODO: 3 make this a variadic template
-	void subscribe(alert_observer* o, int flags = 0, ...);
+	// subscribes `o` to a set of alert types, given as a list of alert
+	// classes (each must expose the `alert_type` and `static_category`
+	// static constants the libtorrent alert hierarchy provides). The OR of
+	// every subscriber's `static_category` is pushed to the session as
+	// `settings_pack::alert_mask`, so callers no longer have to enable
+	// alert categories manually.
+	template <typename... Alerts>
+	void subscribe(alert_observer* o, int flags = 0)
+	{
+		constexpr std::array<int, sizeof...(Alerts)> types{Alerts::alert_type...};
+		constexpr lt::alert_category_t cats =
+			(lt::alert_category_t{} | ... | Alerts::static_category);
+		subscribe_impl(lt::span<int const>{types}, o, flags, cats);
+	}
+
 	void dispatch_alerts(std::vector<lt::alert*>& alerts) const;
 	void dispatch_alerts(lt::time_duration max_wait) const;
 	void unsubscribe(alert_observer* o);
@@ -39,9 +51,15 @@ struct TORRENT_EXPORT alert_handler {
 	void abort();
 
 private:
-	void subscribe_impl(int const* type_list, int num_types, alert_observer* o, int flags);
+	void subscribe_impl(
+		lt::span<int const> types, alert_observer* o, int flags, lt::alert_category_t cats
+	);
 
 	std::array<std::vector<alert_observer*>, lt::num_alert_types> m_observers;
+
+	// running OR of every subscriber's category bits. pushed to the
+	// session via apply_settings() whenever it grows.
+	lt::alert_category_t m_subscribed_categories{};
 
 	// when set to true, all outstanding (std::future-based) subscriptions
 	// are cancelled, and new such subscriptions are disabled, by failing

@@ -22,13 +22,8 @@ torrent_history::torrent_history(alert_handler* h, std::size_t max_tombstones)
 	, m_deferred_frame_count(false)
 	, m_max_tombstones(max_tombstones)
 {
-	m_alerts->subscribe(
-		this,
-		0,
-		lt::add_torrent_alert::alert_type,
-		lt::torrent_removed_alert::alert_type,
-		lt::state_update_alert::alert_type,
-		0
+	m_alerts->subscribe<lt::add_torrent_alert, lt::torrent_removed_alert, lt::state_update_alert>(
+		this
 	);
 }
 
