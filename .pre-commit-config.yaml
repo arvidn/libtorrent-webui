@@ -56,3 +56,11 @@ repos:
         language: node
         files: ^bt/.*\.html$
         additional_dependencies: ['html-validate@9']
+
+      - id: html-tokenize
+        # Strict HTML5 tokenization check via parse5. Catches malformed HTML
+        name: html-tokenize (parse5)
+        entry: node tools/lint-html-tokenize.js
+        language: node
+        files: ^bt/.*\.html$
+        additional_dependencies: ['parse5@7']
