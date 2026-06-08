@@ -15,6 +15,7 @@ see LICENSE file.
 #include "libtorrent/sha1_hash.hpp"
 #include "alert_observer.hpp"
 
+#include <cstdint>
 #include <set>
 #include <string>
 #include <mutex>
@@ -24,9 +25,12 @@ see LICENSE file.
 
 namespace ltweb {
 struct alert_handler;
+struct torrent_history;
 
 struct save_resume : alert_observer {
-	save_resume(lt::session& s, std::string const& resume_file, alert_handler* alerts);
+	save_resume(
+		lt::session& s, std::string const& resume_file, alert_handler* alerts, torrent_history& hist
+	);
 	~save_resume();
 
 	void load(lt::error_code& ec);
@@ -41,6 +45,7 @@ struct save_resume : alert_observer {
 private:
 	lt::session& m_ses;
 	alert_handler* m_alerts;
+	torrent_history& m_hist;
 	sqlite3* m_db;
 
 	// all torrents currently loaded
@@ -55,6 +60,14 @@ private:
 	// stay that way for life, so they are evicted after the transition is
 	// persisted.
 	std::unordered_map<lt::sha1_hash, int> m_last_queue_pos;
+
+	// Tags read from disk in load() but not yet applied to torrent_history,
+	// keyed by info-hash. The matching add_torrent_alert is the trigger that
+	// drains an entry from this map into m_hist.set_tag(). Entries that never
+	// have an add_torrent_alert (eg the torrent failed to load) leak the
+	// uint64 value here until process exit -- acceptable since the map is
+	// bounded by the resume file's row count.
+	std::unordered_map<lt::sha1_hash, std::uint64_t> m_pending_tags;
 
 	// the next torrent to save (may point to end)
 	std::set<lt::torrent_handle>::iterator m_cursor;
