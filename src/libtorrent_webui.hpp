@@ -48,7 +48,7 @@ struct libtorrent_webui
 	, alert_observer {
 	libtorrent_webui(
 		lt::session& ses,
-		torrent_history const& hist,
+		torrent_history& hist,
 		auth_interface const& auth,
 		alert_handler& alerts,
 		save_settings_interface& sett,
@@ -83,6 +83,7 @@ struct libtorrent_webui
 	bool set_file_priority(websocket_conn* st, function_call f);
 	bool get_tracker_updates(websocket_conn* st, function_call f);
 	bool get_piece_states(websocket_conn* st, function_call f);
+	bool set_tag(websocket_conn* st, function_call f);
 
 	bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 
@@ -111,7 +112,7 @@ private:
 	lt::session& m_ses;
 	// TODO: all of these should be protected by individual mutexes.
 	// websockets are serviced from a thread pool
-	torrent_history const& m_hist;
+	torrent_history& m_hist;
 	auth_interface const& m_auth;
 	std::string m_login_url;
 	alert_handler& m_alert;

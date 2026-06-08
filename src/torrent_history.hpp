@@ -12,8 +12,10 @@ see LICENSE file.
 
 #include "alert_observer.hpp"
 #include "libtorrent/torrent_status.hpp"
+#include "libtorrent/torrent_handle.hpp"
 #include <mutex> // for mutex
 #include <deque>
+#include <unordered_map>
 
 #define BOOST_BIMAP_DISABLE_SERIALIZATION
 // boost/bimap/detail/user_interface_config.hpp defines
@@ -113,6 +115,13 @@ struct torrent_history_entry {
 		announcing_to_lsd,
 		announcing_to_dht,
 
+		// application-defined per-torrent bitfield set via the set-tag RPC.
+		// not part of lt::torrent_status; the value lives in torrent_history's
+		// m_tags map keyed by torrent_handle. only the per-field frame counter
+		// is tracked here, so tag changes participate in the normal delta-update
+		// machinery (relocate-on-update in m_queue).
+		tag,
+
 		num_fields,
 	};
 
@@ -160,6 +169,20 @@ struct torrent_history : alert_observer {
 
 	lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
 
+	// get-modify-set on the per-torrent tag bitfield.
+	//   new_tag = (old_tag & ~mask) | (value & mask)
+	// Returns true if the tag value actually changed (so the caller can
+	// flag resume data dirty for persistence). Returns false when the
+	// info-hash is unknown, when mask is 0, or when the masked bits were
+	// already at the requested values. On a real change, the entry's
+	// frame[tag] counter is bumped and the entry is relocated to the head
+	// of m_queue.left so the next delta query picks it up.
+	bool set_tag(lt::sha1_hash const& ih, std::uint64_t value, std::uint64_t mask);
+
+	// Returns the tag value for h, or 0 if absent. Used by the
+	// get-torrent-updates serializer and by save_resume.
+	std::uint64_t get_tag(lt::torrent_handle const& h) const;
+
 	// the current frame number
 	frame_t frame() const;
 
@@ -188,6 +211,12 @@ private:
 	mutable std::mutex m_mutex;
 
 	queue_t m_queue;
+
+	// per-torrent application-defined tag bitfield, set via the set-tag RPC.
+	// keyed by torrent_handle (8-byte shared_ptr hash, materially cheaper
+	// than a 20-byte sha1_hash). entries are erased when their torrent is
+	// removed from the session. absent keys are treated as tag value 0.
+	std::unordered_map<lt::torrent_handle, std::uint64_t> m_tags;
 
 	struct removed_entry {
 		frame_t removed_frame;

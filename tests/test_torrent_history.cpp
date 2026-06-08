@@ -260,6 +260,176 @@ BOOST_AUTO_TEST_CASE(query_current_frame_matches_deferred_snapshot)
 	}
 }
 
+// Basic round-trip: set_tag returns true on a real change, get_tag returns the
+// value that was stored, and get_tag returns 0 for any handle that has never
+// had a tag set.
+BOOST_AUTO_TEST_CASE(tag_basic_round_trip)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih = make_v1(0x10);
+	p.info_hashes = lt::info_hash_t(ih);
+	lt::torrent_handle h = ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	// Default tag for a never-tagged torrent is 0.
+	BOOST_TEST(history.get_tag(h) == 0u);
+
+	// Setting a real value returns true.
+	BOOST_TEST(history.set_tag(ih, 0x00ff, ~std::uint64_t(0)));
+	BOOST_TEST(history.get_tag(h) == 0x00ffu);
+
+	// Setting the same value via the same full mask is a no-op (returns false).
+	BOOST_TEST(!history.set_tag(ih, 0x00ff, ~std::uint64_t(0)));
+	BOOST_TEST(history.get_tag(h) == 0x00ffu);
+
+	// Setting an unknown info-hash returns false and does not pollute m_tags.
+	BOOST_TEST(!history.set_tag(make_v1(0xfe), 0x1, ~std::uint64_t(0)));
+}
+
+// Get-modify-set: the resulting tag is (old & ~mask) | (value & mask). Bits
+// outside the mask are preserved, so two clients writing disjoint masks never
+// step on each other.
+BOOST_AUTO_TEST_CASE(tag_mask_semantics)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih = make_v1(0x20);
+	p.info_hashes = lt::info_hash_t(ih);
+	lt::torrent_handle h = ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	// Start with 0xff in the low byte.
+	BOOST_TEST(history.set_tag(ih, 0x00ff, 0x00ff));
+	BOOST_TEST(history.get_tag(h) == 0x00ffu);
+
+	// Clear the low nibble only: value=0, mask=0x0f.
+	// new = (0xff & ~0x0f) | (0x00 & 0x0f) = 0xf0
+	BOOST_TEST(history.set_tag(ih, 0x0000, 0x000f));
+	BOOST_TEST(history.get_tag(h) == 0x00f0u);
+
+	// Set the high nibble of the second byte without touching anything else.
+	// new = (0x00f0 & ~0xf000) | (0xa000 & 0xf000) = 0xa0f0
+	BOOST_TEST(history.set_tag(ih, 0xa000, 0xf000));
+	BOOST_TEST(history.get_tag(h) == 0xa0f0u);
+
+	// mask == 0 is a deliberate no-op regardless of value.
+	BOOST_TEST(!history.set_tag(ih, ~std::uint64_t(0), 0));
+	BOOST_TEST(history.get_tag(h) == 0xa0f0u);
+
+	// Setting bits to the values they already have is also a no-op.
+	BOOST_TEST(!history.set_tag(ih, 0xa000, 0xf000));
+	BOOST_TEST(history.get_tag(h) == 0xa0f0u);
+
+	// Driving the tag back to 0 still returns true (a real change) and the
+	// next get_tag reads 0 again, matching the sparse-map convention where
+	// "absent" and "zero" are indistinguishable.
+	BOOST_TEST(history.set_tag(ih, 0, ~std::uint64_t(0)));
+	BOOST_TEST(history.get_tag(h) == 0u);
+}
+
+// A tag change must surface in the next delta query: frame[tag] is bumped to
+// a value greater than the caller's previous frame, and the entry is relocated
+// to the head of m_queue so the early-break iteration finds it. Untouched
+// torrents must not appear in the delta.
+BOOST_AUTO_TEST_CASE(tag_delta_visible_in_query)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0x30);
+	lt::sha1_hash const ih_b = make_v1(0x31);
+	p.info_hashes = lt::info_hash_t(ih_a);
+	lt::torrent_handle ha = ses.add_torrent(p);
+	(void)ha;
+	p.info_hashes = lt::info_hash_t(ih_b);
+	lt::torrent_handle hb = ses.add_torrent(p);
+	(void)hb;
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	// Drain both torrents into a known frame the client has already seen.
+	auto const initial = history.query(0);
+	BOOST_TEST(initial.updated.size() == 2u);
+	ltweb::frame_t const f_client = initial.current_frame;
+
+	// No further changes -> query is empty.
+	{
+		auto const r = history.query(f_client);
+		BOOST_TEST(r.updated.empty());
+	}
+
+	// Tag only A.
+	BOOST_TEST(history.set_tag(ih_a, 0x42, ~std::uint64_t(0)));
+
+	// The next delta should contain exactly A (B was not touched).
+	{
+		auto const r = history.query(f_client);
+		BOOST_TEST(r.updated.size() == 1u);
+		if (r.updated.size() == 1u) {
+			BOOST_TEST((r.updated[0].status.info_hashes == lt::info_hash_t(ih_a)));
+			// frame[tag] must be strictly greater than the caller's frame —
+			// that's what makes the entry "new" from the client's perspective.
+			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::tag] > f_client);
+			// No other per-field counter should have advanced as a side-effect
+			// of set_tag.
+			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::state] <= f_client);
+			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::flags] <= f_client);
+		}
+	}
+}
+
+// When a torrent is removed from the session, its m_tags entry must be erased
+// too. Otherwise the map would slowly grow with stale handles. We probe this
+// by reading get_tag(handle) after the removal — even if the handle object
+// still exists in the caller's scope, the underlying torrent is gone and the
+// tag must read back as 0.
+BOOST_AUTO_TEST_CASE(tag_cleared_on_torrent_removal)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih = make_v1(0x40);
+	p.info_hashes = lt::info_hash_t(ih);
+	lt::torrent_handle h = ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	BOOST_TEST(history.set_tag(ih, 0xdead, ~std::uint64_t(0)));
+	BOOST_TEST(history.get_tag(h) == 0xdeadu);
+
+	// Capture a copy of the handle before removal. The shared_ptr keeps the
+	// object alive enough to use as a map key after the session drops its
+	// own reference.
+	lt::torrent_handle h_copy = h;
+
+	ses.remove_torrent(h);
+	wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
+
+	// After removal the entry in m_tags must be gone.
+	BOOST_TEST(history.get_tag(h_copy) == 0u);
+
+	// And set_tag on the now-unknown info-hash must return false (the entry
+	// is no longer in m_queue, so there is nothing to write to).
+	BOOST_TEST(!history.set_tag(ih, 0x1, ~std::uint64_t(0)));
+}
+
 // When tombstones overflow the limit they are evicted and the horizon advances.
 // Any query with since_frame < horizon() must be treated as a full snapshot
 BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)

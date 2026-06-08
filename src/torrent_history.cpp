@@ -45,6 +45,11 @@ try {
 	} else if (lt::torrent_removed_alert const* td = lt::alert_cast<lt::torrent_removed_alert>(a)) {
 		std::unique_lock<std::mutex> l(m_mutex);
 
+		// Drop any tag entry the torrent had. The handle's underlying
+		// shared_ptr is what unordered_map hashes on, so the erase works
+		// even though the torrent itself is going away.
+		m_tags.erase(td->handle);
+
 		torrent_history_entry st;
 		st.status.info_hashes = td->info_hashes;
 
@@ -136,6 +141,57 @@ lt::torrent_status torrent_history::get_torrent_status(lt::sha1_hash const& ih) 
 	queue_t::right_const_iterator it = m_queue.right.find(st);
 	if (it != m_queue.right.end()) return it->first.status;
 	return st.status;
+}
+
+bool torrent_history::set_tag(
+	lt::sha1_hash const& ih, std::uint64_t const value, std::uint64_t const mask
+)
+{
+	if (mask == 0) return false;
+
+	torrent_history_entry key;
+	key.status.info_hashes.v1 = ih;
+
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	auto it = m_queue.right.find(key);
+	if (it == m_queue.right.end()) return false;
+
+	lt::torrent_handle const h = it->first.status.handle;
+
+	auto tag_it = m_tags.find(h);
+	std::uint64_t const old_tag = (tag_it != m_tags.end()) ? tag_it->second : 0;
+	std::uint64_t const new_tag = (old_tag & ~mask) | (value & mask);
+	if (new_tag == old_tag) return false;
+
+	// Drop the entry from m_tags when the value goes back to 0 (the default).
+	// Keeps the map sparse and matches the "absent == 0" convention used by
+	// get_tag().
+	if (new_tag == 0) {
+		if (tag_it != m_tags.end()) m_tags.erase(tag_it);
+	} else {
+		m_tags[h] = new_tag;
+	}
+
+	// Bump the per-field frame for tag and relocate the entry to the head of
+	// m_queue.left, matching the pattern used by state_update_alert. Frame
+	// advancement is deferred (m_frame + 1) so multiple set_tag calls and the
+	// next state_update_alert coalesce into a single frame, matching the
+	// add/remove convention.
+	frame_t const f = m_frame + 1;
+	const_cast<torrent_history_entry&>(it->first).frame[torrent_history_entry::tag] = f;
+	m_queue.right.replace_data(it, f);
+	m_queue.left.relocate(m_queue.left.begin(), m_queue.project_left(it));
+
+	m_deferred_frame_count = true;
+	return true;
+}
+
+std::uint64_t torrent_history::get_tag(lt::torrent_handle const& h) const
+{
+	std::unique_lock<std::mutex> l(m_mutex);
+	auto const it = m_tags.find(h);
+	return (it != m_tags.end()) ? it->second : 0;
 }
 
 frame_t torrent_history::frame() const

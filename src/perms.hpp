@@ -10,6 +10,8 @@ see LICENSE file.
 #ifndef LTWEB_PERMS_HPP
 #define LTWEB_PERMS_HPP
 
+#include <cstdint>
+
 namespace ltweb {
 
 // This is the interface an object needs to implement in order
@@ -61,6 +63,16 @@ struct permissions_interface {
 	// If returning true, the user is allowed to query session status,
 	// like global upload and download rates
 	virtual bool allow_session_status() const = 0;
+
+	// Returns the bitmask of tag bits this user is permitted to set via the
+	// set-tag RPC. The RPC handler ANDs each request's mask with this value:
+	// bits set here are writable, bits cleared here are denied. A return
+	// value of 0 denies all writes; ~0ULL allows the full 64-bit tag space.
+	// Letting different presets expose different sub-fields means, for
+	// example, a remote user can be given write access to user-defined
+	// category bits while being denied write access to bits the daemon
+	// maintains itself.
+	virtual std::uint64_t allow_set_tag() const = 0;
 };
 
 // an implementation of permissions_interface that rejects all access
@@ -78,6 +90,7 @@ struct no_permissions : permissions_interface {
 	bool allow_set_settings(int) const override;
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
+	std::uint64_t allow_set_tag() const override;
 };
 
 // an implementation of permissions_interface that only allow inspecting
@@ -97,6 +110,7 @@ struct read_only_permissions : permissions_interface {
 	bool allow_set_settings(int) const override;
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
+	std::uint64_t allow_set_tag() const override;
 };
 
 // an implementation of permissions_interface that permit all access.
@@ -114,6 +128,7 @@ struct full_permissions : permissions_interface {
 	bool allow_set_settings(int) const override;
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
+	std::uint64_t allow_set_tag() const override;
 };
 
 // an implementation of permissions_interface for users connecting from a
@@ -138,6 +153,7 @@ struct remote_user : permissions_interface {
 	bool allow_set_settings(int name) const override;
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
+	std::uint64_t allow_set_tag() const override;
 };
 
 } // namespace ltweb
