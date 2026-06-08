@@ -496,6 +496,15 @@
               torrent["redundant-bytes"] = read_uint64(view, offset);
               offset += 8;
               break;
+            case 23: // tag
+              // application-defined 64-bit bitfield set via set_tag.
+              // Split into two 32-bit halves so the full width survives
+              // JS Number precision (which only covers 53 bits).
+              torrent["tag_high"] = view.getUint32(offset);
+              offset += 4;
+              torrent["tag_low"] = view.getUint32(offset);
+              offset += 4;
+              break;
           }
         }
         updates[infohash] = torrent;
@@ -1263,6 +1272,76 @@
     this._socket.send(call);
   };
 
+  // Set the application-defined tag bitfield on one or more torrents.
+  //
+  // The tag is a full 64-bit bitfield, which JS Numbers cannot represent
+  // losslessly (Number precision is 53 bits). Each entry therefore carries
+  // value and mask as two 32-bit halves with _high / _low suffixes, mirroring
+  // how tag is reported on torrent objects in get_updates.
+  //
+  // entries is an array of objects, each with:
+  //   infohash:   40-char hex string identifying the torrent.
+  //   value_high: upper 32 bits of the desired bit values (uint32).
+  //   value_low:  lower 32 bits of the desired bit values (uint32).
+  //   mask_high:  upper 32 bits of the bits-to-modify mask (uint32).
+  //   mask_low:   lower 32 bits of the bits-to-modify mask (uint32).
+  //
+  // The resulting tag is (old & ~mask) | (value & mask), evaluated server-
+  // side over the full 64 bits. mask_high == 0 && mask_low == 0 is a
+  // deliberate no-op.
+  //
+  // callback receives either an error string (on RPC failure) or a Number:
+  // the count of entries whose tag value actually changed. Entries with
+  // unknown info-hash, fully-denied permission mask, or already-at-target
+  // bits do not count toward num-success. The whole call fails with
+  // permission-denied only when every entry that wanted to write
+  // (mask != 0) had all of its bits denied.
+  libtorrent_connection.prototype["set_tag"] = function (entries, callback) {
+    if (this._socket.readyState != WebSocket.OPEN) {
+      window.setTimeout(function () {
+        callback("socket closed");
+      }, 0);
+      return;
+    }
+
+    var tid = this._tid++;
+    if (this._tid > 65535) this._tid = 0;
+
+    this._transactions[tid] = function (view, fun, e) {
+      if (_check_error(e, callback)) return;
+      var num_success = view.getUint16(4);
+      if (typeof callback !== "undefined") callback(num_success);
+    };
+
+    // 3 header + 2 num-tags + entries.length * 36 (20 ih + 8 value + 8 mask)
+    var call = new ArrayBuffer(3 + 2 + entries.length * 36);
+    var view = new DataView(call);
+    // function 26
+    view.setUint8(0, 26);
+    // transaction-id
+    view.setUint16(1, tid);
+    // num-tags
+    view.setUint16(3, entries.length);
+
+    var offset = 5;
+    for (var i = 0; i < entries.length; ++i) {
+      var ih = entries[i]["infohash"];
+      offset = write_infohash(view, offset, ih);
+      // value (8 bytes: high then low)
+      view.setUint32(offset, entries[i]["value_high"]);
+      offset += 4;
+      view.setUint32(offset, entries[i]["value_low"]);
+      offset += 4;
+      // mask (8 bytes: high then low)
+      view.setUint32(offset, entries[i]["mask_high"]);
+      offset += 4;
+      view.setUint32(offset, entries[i]["mask_low"]);
+      offset += 4;
+    }
+
+    this._socket.send(call);
+  };
+
   libtorrent_connection.prototype["get_tracker_updates"] = function (
     ih,
     last_frame,
@@ -1541,6 +1620,7 @@
     state: 1 << 20,
     failed_bytes: 1 << 21,
     redundant_bytes: 1 << 22,
+    tag: 1 << 23,
   };
 
   var file_fields = {
