@@ -12,10 +12,23 @@ see LICENSE file.
 #include "alert_handler.hpp"
 #include "libtorrent/units.hpp"
 #include "libtorrent/flags.hpp"
+#include "libtorrent/torrent_flags.hpp"
 #include <chrono>
 #include <iostream>
 
 namespace ltweb {
+
+namespace {
+// The subset of lt::torrent_status::flags whose changes advance the
+// frame counter for the status_flags slot. update_status uses this to
+// drive the narrower comparison for frame[status_flags], and
+// debug_print uses it to show the masked subset alongside its own
+// frame counter. Any future code that wants its stability tied to a
+// specific flag bit must include that bit here.
+constexpr lt::torrent_flags_t status_flags_mask =
+	lt::torrent_flags::paused | lt::torrent_flags::auto_managed;
+} // anonymous namespace
+
 torrent_history::torrent_history(alert_handler* h, std::size_t max_tombstones)
 	: m_alerts(h)
 	, m_frame(1)
@@ -215,7 +228,10 @@ void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t c
 	if (s.x != status.x) frame[int(x)] = f
 
 	CMP_SET(state);
-	CMP_SET(flags);
+	if ((s.flags & status_flags_mask) != (status.flags & status_flags_mask))
+		frame[int(status_flags)] = f;
+	if ((s.flags & ~status_flags_mask) != (status.flags & ~status_flags_mask))
+		frame[int(other_flags)] = f;
 	CMP_SET(is_seeding);
 	CMP_SET(is_finished);
 	CMP_SET(has_metadata);
@@ -309,7 +325,20 @@ void torrent_history_entry::debug_print(frame_t const current_frame) const
 	} while (0)
 
 	PRINT(state);
-	PRINT(flags);
+	// status_flags and other_flags both project from status.flags through
+	// complementary masks, so the macro -- which expects a status.<name>
+	// field -- doesn't apply. Print each masked subset alongside its own
+	// frame counter.
+	{
+		int const frame_diff = (std::min)(current_frame - frame[status_flags], 20u);
+		os << (frame[status_flags] >= current_frame ? "\x1b[41m" : "") << "\x1b[38;5;"
+		   << (255 - frame_diff) << 'm' << (status.flags & status_flags_mask) << "\x1b[0m ";
+	}
+	{
+		int const frame_diff = (std::min)(current_frame - frame[other_flags], 20u);
+		os << (frame[other_flags] >= current_frame ? "\x1b[41m" : "") << "\x1b[38;5;"
+		   << (255 - frame_diff) << 'm' << (status.flags & ~status_flags_mask) << "\x1b[0m ";
+	}
 	PRINT(is_seeding);
 	PRINT(is_finished);
 	PRINT(has_metadata);

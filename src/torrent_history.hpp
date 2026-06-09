@@ -52,7 +52,19 @@ struct torrent_history_entry {
 
 	enum {
 		state,
-		flags,
+		// lt::torrent_status::flags is split into two frame-tracking slots
+		// so that toggling a flag bit other code does not care about (eg
+		// upload_mode after a disk error) does not advance the frame for
+		// callers that only care about paused and auto_managed. Both
+		// slots still map to wire field 0 in torrent_field_map, so the
+		// client still receives a flags update when any bit changes;
+		// only the per-field frame counters are split.
+		//
+		//   status_flags: paused, auto_managed
+		//   other_flags : sequential_download, seed_mode, upload_mode,
+		//                 share_mode, super_seeding
+		status_flags,
+		other_flags,
 		is_seeding,
 		is_finished,
 		has_metadata,

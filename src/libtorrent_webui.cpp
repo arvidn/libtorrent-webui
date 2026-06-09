@@ -158,7 +158,8 @@ static std::array<rpc_entry, 27> const functions = {{
 // torrent_history_entry
 std::array<int const, torrent_history_entry::num_fields> const torrent_field_map = {{
 	20, // state,
-	0, // flags,
+	0, // status_flags,
+	0, // other_flags,
 	0, // is_seeding,
 	0, // is_finished,
 	0, // has_metadata,

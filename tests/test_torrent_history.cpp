@@ -385,9 +385,11 @@ BOOST_AUTO_TEST_CASE(tag_delta_visible_in_query)
 			// that's what makes the entry "new" from the client's perspective.
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::tag] > f_client);
 			// No other per-field counter should have advanced as a side-effect
-			// of set_tag.
+			// of set_tag. The flag bits are tracked across two slots
+			// (status_flags + other_flags); check both.
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::state] <= f_client);
-			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::flags] <= f_client);
+			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::status_flags] <= f_client);
+			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::other_flags] <= f_client);
 		}
 	}
 }
