@@ -350,10 +350,27 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 	if (f.len < 12) return error(st, f, truncated_message);
 
 	frame_t const frame = read_uint32(f.data);
-	std::uint64_t user_mask = read_uint64(f.data);
+	std::uint64_t const user_mask = read_uint64(f.data);
 	f.len -= 12;
 
-	auto const r = m_hist.query(frame);
+	// Optional 20-byte trailing block: (status_mask_old, status_value_old,
+	// tag_old, status_mask_new, status_value_new, tag_new). 0 = unfiltered;
+	// anything else is malformed.
+	filter_spec f_old;
+	filter_spec f_new;
+	if (f.len == 20) {
+		f_old.status_mask = read_uint8(f.data);
+		f_old.status_value = read_uint8(f.data);
+		f_old.tag_mask = read_uint64(f.data);
+		f_new.status_mask = read_uint8(f.data);
+		f_new.status_value = read_uint8(f.data);
+		f_new.tag_mask = read_uint64(f.data);
+		f.len -= 20;
+	} else if (f.len != 0) {
+		return error(st, f, truncated_message);
+	}
+
+	auto const r = m_hist.query_filtered(frame, f_old, f_new);
 	auto const& torrents = r.updated;
 	auto const& removed_torrents = r.removed;
 
@@ -370,23 +387,22 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 	// allocate space for torrent count
 	// this will be filled in later when we know
 	int num_torrents = 0;
-	int const num_torrents_pos = response.size();
+	std::size_t const num_torrents_pos = response.size();
 	write_uint32(num_torrents, ptr);
 
 	write_uint32(r.is_snapshot ? 0xffffffff : removed_torrents.size(), ptr);
 
-	for (std::vector<torrent_history_entry>::const_iterator i = torrents.begin(),
-															end(torrents.end());
-		 i != end;
-		 ++i) {
+	for (torrent_history_entry const& entry : torrents) {
 		std::uint64_t bitmask = 0;
 
 		// look at which fields actually have a newer frame number
 		// than the caller. Don't return fields that haven't changed.
+		// Newly-matched filter entries have their frames pre-filled by
+		// query_filtered so every requested field passes this check.
 		for (int k = 0; k < torrent_history_entry::num_fields; ++k) {
 			int f = torrent_field_map[k];
 			if (f < 0) continue;
-			if (i->frame[k] <= frame && !r.is_snapshot) continue;
+			if (entry.frame[k] <= frame && !r.is_snapshot) continue;
 
 			// this field has changed and should be included in this update
 			bitmask |= 1ULL << f;
@@ -399,13 +415,13 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 
 		++num_torrents;
 		// first write the info-hash
-		auto const ih = i->status.info_hashes.get_best();
+		auto const ih = entry.status.info_hashes.get_best();
 		std::copy(ih.begin(), ih.end(), ptr);
 		// then 64 bits of bitmask, indicating which fields
 		// are included in the update for this torrent
 		write_uint64(bitmask, ptr);
 
-		lt::torrent_status const& s = i->status;
+		lt::torrent_status const& s = entry.status;
 
 		for (int f = 0; f < 24; ++f) {
 			if ((bitmask & (1ULL << f)) == 0) continue;
