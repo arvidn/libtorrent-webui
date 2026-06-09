@@ -114,6 +114,24 @@ The call looks like this (not including the RPC-call header):
 | 7        | uint64_t           | ``field-bitmask`` (only these fields are  |
 |          |                    | returned)                                 |
 +----------+--------------------+-------------------------------------------+
+| 15       | uint8_t            | ``status-mask-old`` (optional, see        |
+|          |                    | Filtering below)                          |
++----------+--------------------+-------------------------------------------+
+| 16       | uint8_t            | ``status-value-old`` (optional)           |
++----------+--------------------+-------------------------------------------+
+| 17       | uint64_t           | ``tag-mask-old`` (optional)               |
++----------+--------------------+-------------------------------------------+
+| 25       | uint8_t            | ``status-mask-new`` (optional)            |
++----------+--------------------+-------------------------------------------+
+| 26       | uint8_t            | ``status-value-new`` (optional)           |
++----------+--------------------+-------------------------------------------+
+| 27       | uint64_t           | ``tag-mask-new`` (optional)               |
++----------+--------------------+-------------------------------------------+
+
+The six filter fields are an optional 20-byte trailing block. The call is
+either exactly 12 bytes after the RPC header (no filter) or exactly 32 bytes
+(filter present). Any other length returns error code 5 (truncated request).
+See Filtering_ below for semantics.
 
 The torrent updates don't necessarily include all fields of the torrent. There is
 a bitmask indicating which fields are included in this update. Any field not
@@ -252,6 +270,79 @@ more torrent updates, the next field to read will be the info-hash for the next
 update.
 
 *TODO: add a list of removed torrents*
+
+.. _Filtering:
+
+Filtering
+.........
+
+A get-torrent-updates request may carry a pair of filter specs in its
+optional 20-byte trailing block. The request carries both the spec the
+client used at the previous frame-number (the ``-old`` fields) and the
+spec it wants now (the ``-new`` fields), so the server can decide per
+torrent whether to emit a delta, a fresh full update for a newly-
+matching torrent, or a removal for one that fell out of the view --
+without keeping per-client state.
+
+A filter spec is ``(status_mask, status_value, tag_mask)``. A torrent
+matches iff::
+
+   (status_mask == 0
+     || (torrent.status_bits & status_mask) == (status_value & status_mask))
+   AND
+   (tag_mask == 0 || (torrent.tag & tag_mask) != 0)
+
+The status axis is exact-match within the masked bits: bits selected by
+``status_mask`` must equal the corresponding bits in ``status_value``,
+bits outside the mask are don't-care. This lets a single filter require
+some bits set and others cleared -- eg. matching "stopped" as paused
+set AND auto-managed cleared.
+
+The tag axis is any-of: a torrent matches when any bit selected by
+``tag_mask`` is also set in the torrent's tag.
+
+A mask of 0 disables that axis (``status_value`` is ignored when
+``status_mask == 0``). Both axes all-zero on both specs degenerates to
+an unfiltered query, identical to the request without the trailing 20
+bytes.
+
+``torrent.status_bits`` is an 8-bit projection of the torrent's state
+and flags:
+
++-----+----------------------------------+
+| bit | meaning                          |
++=====+==================================+
+| 0   | stopped (``flags`` bit 0)        |
++-----+----------------------------------+
+| 1   | auto-managed (``flags`` bit 1)   |
++-----+----------------------------------+
+| 2   | -- reserved --                   |
++-----+----------------------------------+
+| 3   | errored                          |
++-----+----------------------------------+
+| 4   | state == checking-files          |
++-----+----------------------------------+
+| 5   | state == downloading-metadata    |
++-----+----------------------------------+
+| 6   | state == downloading             |
++-----+----------------------------------+
+| 7   | state == seeding                 |
++-----+----------------------------------+
+
+``torrent.tag`` is the 64-bit value reported as wire field 23 and set by
+the `set-tag`_ RPC.
+
+Per-torrent outcomes:
+
+- *matches new filter, matched old filter*: normal delta of changed
+  fields, exactly as if no filter were in effect.
+- *matches new filter, did not match old*: the response carries every
+  client-requested field for this torrent (treated as a fresh
+  initialisation).
+- *matched old, no longer matches new*: the torrent's info-hash appears
+  in the ``removed-info-hash`` list alongside session-level tombstones;
+  the client should drop it from its local view.
+- *neither*: omitted from the response entirely.
 
 torrent actions
 ...............
