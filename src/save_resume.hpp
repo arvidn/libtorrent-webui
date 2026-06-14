@@ -12,11 +12,13 @@ see LICENSE file.
 
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
+#include "libtorrent/sha1_hash.hpp"
 #include "alert_observer.hpp"
 
 #include <set>
 #include <string>
 #include <mutex>
+#include <unordered_map>
 
 #include <sqlite3.h>
 
@@ -43,6 +45,16 @@ private:
 
 	// all torrents currently loaded
 	std::set<lt::torrent_handle> m_torrents;
+
+	// Last queue_position value we persisted to the DB, keyed by info-hash.
+	// queue_position is not part of the resume blob, so libtorrent's
+	// only_if_modified check never triggers a save_resume_data_alert for a
+	// pure reorder. We watch state_update_alert and emit a targeted UPDATE
+	// of the QUEUE_POSITION column when the value diverges from this cache.
+	// Only downloading torrents are tracked -- seeds have no_pos (-1) and
+	// stay that way for life, so they are evicted after the transition is
+	// persisted.
+	std::unordered_map<lt::sha1_hash, int> m_last_queue_pos;
 
 	// the next torrent to save (may point to end)
 	std::set<lt::torrent_handle>::iterator m_cursor;
