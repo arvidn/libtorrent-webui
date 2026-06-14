@@ -591,6 +591,38 @@ bool libtorrent_webui::apply_torrent_fun(websocket_conn* st, function_call f, Fu
 	return respond(st, f, 0, counter);
 }
 
+template <typename Cmp, typename Fun>
+bool libtorrent_webui::apply_torrent_fun_ordered(
+	websocket_conn* st, function_call f, Cmp cmp, Fun const& fun
+)
+{
+	char const* ptr = f.data;
+	int const num_torrents = read_uint16(ptr);
+
+	if (f.len < num_torrents * 20) return error(st, f, invalid_argument_type);
+
+	// resolve info-hashes to handles up front, recording each torrent's current
+	// queue_position so we can apply fun in a queue-aware order. unknown
+	// info-hashes are silently skipped, matching apply_torrent_fun.
+	std::vector<std::pair<lt::queue_position_t, lt::torrent_handle>> ordered;
+	ordered.reserve(num_torrents);
+	for (int i = 0; i < num_torrents; ++i) {
+		lt::sha1_hash const h(ptr + i * 20);
+		lt::torrent_status ts = m_hist.get_torrent_status(h);
+		if (!ts.handle.is_valid()) continue;
+		ordered.emplace_back(ts.queue_position, ts.handle);
+	}
+
+	std::sort(ordered.begin(), ordered.end(), [&cmp](auto const& a, auto const& b) {
+		return cmp(a.first, b.first);
+	});
+
+	for (auto const& [pos, handle] : ordered)
+		fun(handle);
+
+	return respond(st, f, 0, static_cast<int>(ordered.size()));
+}
+
 bool libtorrent_webui::start(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_start()) return error(st, f, permission_denied);
@@ -632,7 +664,10 @@ bool libtorrent_webui::queue_up(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_queue_change()) return error(st, f, permission_denied);
 
-	return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+	// move highest-in-queue first: each call only swaps with the neighbour
+	// above, so moving the lower-positioned sibling first leaves the higher
+	// one with a fresh slot to move into.
+	return apply_torrent_fun_ordered(st, f, std::less<>{}, [](lt::torrent_handle const& handle) {
 		handle.queue_position_up();
 	});
 }
@@ -640,7 +675,9 @@ bool libtorrent_webui::queue_down(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_queue_change()) return error(st, f, permission_denied);
 
-	return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+	// symmetric to queue_up: start from the lowest-in-queue (highest position
+	// number) so each swap-with-below sees a stable neighbour.
+	return apply_torrent_fun_ordered(st, f, std::greater<>{}, [](lt::torrent_handle const& handle) {
 		handle.queue_position_down();
 	});
 }
@@ -648,7 +685,10 @@ bool libtorrent_webui::queue_top(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_queue_change()) return error(st, f, permission_denied);
 
-	return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+	// move the lowest-in-queue sibling first; the highest-in-queue lands at
+	// position 0 last, so the selection's relative queue order is preserved
+	// at the top.
+	return apply_torrent_fun_ordered(st, f, std::greater<>{}, [](lt::torrent_handle const& handle) {
 		handle.queue_position_top();
 	});
 }
@@ -656,7 +696,10 @@ bool libtorrent_webui::queue_bottom(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_queue_change()) return error(st, f, permission_denied);
 
-	return apply_torrent_fun(st, f, [](lt::torrent_handle const& handle) {
+	// symmetric to queue_top: the highest-in-queue (lowest position number)
+	// is moved first so the lowest-in-queue ends up at the very bottom and
+	// the relative order is preserved.
+	return apply_torrent_fun_ordered(st, f, std::less<>{}, [](lt::torrent_handle const& handle) {
 		handle.queue_position_bottom();
 	});
 }
