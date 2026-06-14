@@ -423,39 +423,33 @@ void save_resume::load(lt::error_code& ec)
 		return;
 	}
 
-	ret = sqlite3_step(stmt);
-	while (ret == SQLITE_ROW) {
+	for (ret = sqlite3_step(stmt); ret == SQLITE_ROW; ret = sqlite3_step(stmt)) {
 		int bytes = sqlite3_column_bytes(stmt, 0);
-		if (bytes > 0) {
-			void const* buffer = sqlite3_column_blob(stmt, 0);
-			lt::error_code ec;
-			lt::add_torrent_params p =
-				lt::read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
-			if (ec) {
-				ret = sqlite3_step(stmt);
-				continue;
-			}
+		if (bytes <= 0) continue;
 
-			// populate m_last_queue_pos so the first state_update_alert
-			// compares against the persisted value. Skip NULL (unknown)
-			// and negative sentinels (seeds have no position to track).
-			if (sqlite3_column_type(stmt, 1) == SQLITE_INTEGER) {
-				int const qp = sqlite3_column_int(stmt, 1);
-				if (qp >= 0) m_last_queue_pos.emplace(p.info_hashes.get_best(), qp);
-			}
+		void const* buffer = sqlite3_column_blob(stmt, 0);
+		lt::error_code ec;
+		lt::add_torrent_params p =
+			lt::read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
+		if (ec) continue;
 
-			// Stash the persisted tag for the matching add_torrent_alert to
-			// apply once torrent_history has an entry for this info-hash.
-			// sqlite3_column_int64 returns 0 on a NULL column (legacy rows
-			// that pre-date the TAG column), which is also the never-tagged
-			// default, so the single tag != 0 check covers both cases.
-			std::uint64_t const tag = static_cast<std::uint64_t>(sqlite3_column_int64(stmt, 2));
-			if (tag != 0) m_pending_tags.emplace(p.info_hashes.get_best(), tag);
-
-			m_ses.async_add_torrent(std::move(p));
+		// populate m_last_queue_pos so the first state_update_alert
+		// compares against the persisted value. Skip NULL (unknown)
+		// and negative sentinels (seeds have no position to track).
+		if (sqlite3_column_type(stmt, 1) == SQLITE_INTEGER) {
+			int const qp = sqlite3_column_int(stmt, 1);
+			if (qp >= 0) m_last_queue_pos.emplace(p.info_hashes.get_best(), qp);
 		}
 
-		ret = sqlite3_step(stmt);
+		// Stash the persisted tag for the matching add_torrent_alert to
+		// apply once torrent_history has an entry for this info-hash.
+		// sqlite3_column_int64 returns 0 on a NULL column (legacy rows
+		// that pre-date the TAG column), which is also the never-tagged
+		// default, so the single tag != 0 check covers both cases.
+		std::uint64_t const tag = static_cast<std::uint64_t>(sqlite3_column_int64(stmt, 2));
+		if (tag != 0) m_pending_tags.emplace(p.info_hashes.get_best(), tag);
+
+		m_ses.async_add_torrent(std::move(p));
 	}
 	if (ret != SQLITE_DONE) {
 		// TODO: improve error reporting
