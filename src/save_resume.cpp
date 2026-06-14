@@ -64,13 +64,15 @@ save_resume::save_resume(lt::session& s, std::string const& resume_file, alert_h
 		lt::save_resume_data_alert,
 		lt::save_resume_data_failed_alert,
 		lt::metadata_received_alert,
-		lt::torrent_finished_alert>(this);
+		lt::torrent_finished_alert,
+		lt::state_update_alert>(this);
 
 	ret = sqlite3_exec(
 		m_db,
 		"CREATE TABLE TORRENTS("
 		"INFOHASH STRING PRIMARY KEY NOT NULL,"
-		"RESUME BLOB NOT NULL);",
+		"RESUME BLOB NOT NULL,"
+		"QUEUE_POSITION INTEGER);",
 		nullptr,
 		0,
 		nullptr
@@ -82,6 +84,16 @@ save_resume::save_resume(lt::session& s, std::string const& resume_file, alert_h
 	// ignore errors, since the table is likely to already
 	// exist (and sqlite doesn't give a reasonable way to
 	// know what failed programatically).
+
+	// Additive schema migration for databases created before QUEUE_POSITION
+	// existed. On a fresh DB the column is already in the CREATE above and
+	// this ALTER fails with "duplicate column name"; on an already-migrated
+	// legacy DB it also fails with the same error. Either way we ignore the
+	// result -- the column is nullable, so legacy rows read back as NULL
+	// until the next save rewrites them.
+	sqlite3_exec(
+		m_db, "ALTER TABLE TORRENTS ADD COLUMN QUEUE_POSITION INTEGER;", nullptr, nullptr, nullptr
+	);
 }
 
 save_resume::~save_resume()
@@ -100,6 +112,7 @@ try {
 		lt::alert_cast<lt::save_resume_data_failed_alert>(a);
 	lt::metadata_received_alert const* mr = lt::alert_cast<lt::metadata_received_alert>(a);
 	lt::torrent_finished_alert const* tf = lt::alert_cast<lt::torrent_finished_alert>(a);
+	lt::state_update_alert const* su = lt::alert_cast<lt::state_update_alert>(a);
 	if (ta) {
 		lt::torrent_status st = ta->handle.status(lt::torrent_handle::query_name);
 		printf("added torrent: %s\n", st.name.c_str());
@@ -142,6 +155,8 @@ try {
 		m_torrents.erase(i);
 		if (wrapped) m_cursor = m_torrents.begin();
 
+		m_last_queue_pos.erase(td->info_hashes.get_best());
+
 		// we need to delete the resume file from the resume directory
 		// as well, to prevent it from being reloaded on next startup
 		sqlite3_stmt* stmt = nullptr;
@@ -176,8 +191,8 @@ try {
 		sqlite3_stmt* stmt = nullptr;
 		int ret = sqlite3_prepare_v2(
 			m_db,
-			"INSERT OR REPLACE INTO TORRENTS(INFOHASH,RESUME) "
-			"VALUES(?, ?);",
+			"INSERT OR REPLACE INTO TORRENTS(INFOHASH,RESUME,QUEUE_POSITION) "
+			"VALUES(?, ?, ?);",
 			-1,
 			&stmt,
 			nullptr
@@ -200,6 +215,22 @@ try {
 			sqlite3_finalize(stmt);
 			return;
 		}
+		// queue_position is -1 (lt::no_pos) for seeds/finished torrents; we
+		// store the sentinel as-is and rely on the load-side ORDER BY to put
+		// such rows after the queued ones. This is a synchronous call into
+		// the libtorrent network thread.
+		int const qp = static_cast<int>(sr->handle.queue_position());
+		lt::sha1_hash const sr_ih = sr->params.info_hashes.get_best();
+		if (qp >= 0)
+			m_last_queue_pos[sr_ih] = qp;
+		else
+			m_last_queue_pos.erase(sr_ih);
+		ret = sqlite3_bind_int(stmt, 3, qp);
+		if (ret != SQLITE_OK) {
+			printf("failed to bind insert statement: %s\n", sqlite3_errmsg(m_db));
+			sqlite3_finalize(stmt);
+			return;
+		}
 
 		ret = sqlite3_step(stmt);
 		if (ret != SQLITE_DONE) {
@@ -209,6 +240,63 @@ try {
 		}
 		sqlite3_finalize(stmt);
 		printf("saving %s\n", ih.c_str());
+	} else if (su) {
+		// Queue position is not part of the resume blob, so a reorder by
+		// itself never produces a save_resume_data_alert. We watch the
+		// per-torrent status feed instead and emit a single-cell UPDATE
+		// when the value diverges from the last one we persisted. Only
+		// torrents that libtorrent reports as changed appear in
+		// su->status, so we never scan the full set.
+		sqlite3_stmt* stmt = nullptr;
+		for (lt::torrent_status const& st : su->status) {
+			int const qp = static_cast<int>(st.queue_position);
+			lt::sha1_hash const ih = st.info_hashes.get_best();
+
+			auto it = m_last_queue_pos.find(ih);
+			if (it == m_last_queue_pos.end()) {
+				// Seeds are not queued and stay unqueued for life, so
+				// there is nothing to track. For a downloading torrent
+				// we seed the cache without writing -- the value
+				// either matches what we loaded from the DB or will be
+				// picked up by the next full save_resume_data path.
+				if (qp >= 0) m_last_queue_pos.emplace(ih, qp);
+				continue;
+			}
+			if (it->second == qp) continue;
+
+			if (!stmt) {
+				int const pret = sqlite3_prepare_v2(
+					m_db,
+					"UPDATE TORRENTS SET QUEUE_POSITION = ? WHERE INFOHASH = ?;",
+					-1,
+					&stmt,
+					nullptr
+				);
+				if (pret != SQLITE_OK) {
+					fprintf(stderr, "failed to prepare qp update: %s\n", sqlite3_errmsg(m_db));
+					return;
+				}
+			}
+			std::string const ih_hex =
+				to_hex(lt::span<char const>{ih.data(), lt::sha1_hash::size()});
+			sqlite3_bind_int(stmt, 1, qp);
+			sqlite3_bind_text(stmt, 2, ih_hex.c_str(), 40, SQLITE_TRANSIENT);
+			if (sqlite3_step(stmt) != SQLITE_DONE) {
+				fprintf(stderr, "failed to step qp update: %s\n", sqlite3_errmsg(m_db));
+			}
+			sqlite3_reset(stmt);
+			sqlite3_clear_bindings(stmt);
+
+			// Persist the new value, then drop the entry once the
+			// torrent has transitioned to a seed -- it will not get a
+			// non-negative queue_position again, so there is no point
+			// keeping it in the cache.
+			if (qp < 0)
+				m_last_queue_pos.erase(it);
+			else
+				it->second = qp;
+		}
+		if (stmt) sqlite3_finalize(stmt);
 	} else if (sf) {
 		TORRENT_ASSERT(m_num_in_flight > 0);
 		--m_num_in_flight;
@@ -283,7 +371,20 @@ void save_resume::load(lt::error_code& ec)
 {
 	ec.clear();
 	sqlite3_stmt* stmt = nullptr;
-	int ret = sqlite3_prepare_v2(m_db, "SELECT RESUME FROM TORRENTS;", -1, &stmt, nullptr);
+	// Load in queue-position order so libtorrent assigns new positions in
+	// the same order the user previously curated. The boolean first key
+	// (NULL or negative) sorts legacy rows and seeds/finished torrents
+	// after the properly-queued ones; among themselves their relative
+	// order is unspecified, which is fine because libtorrent removes
+	// seeds from the queue after the resume check.
+	int ret = sqlite3_prepare_v2(
+		m_db,
+		"SELECT RESUME, QUEUE_POSITION FROM TORRENTS "
+		"ORDER BY (QUEUE_POSITION IS NULL OR QUEUE_POSITION < 0), QUEUE_POSITION;",
+		-1,
+		&stmt,
+		nullptr
+	);
 	if (ret != SQLITE_OK) {
 		// TODO: improve error reporting
 		fprintf(stderr, "failed to prepare select statement: %s\n", sqlite3_errmsg(m_db));
@@ -298,7 +399,19 @@ void save_resume::load(lt::error_code& ec)
 			lt::error_code ec;
 			lt::add_torrent_params p =
 				lt::read_resume_data({static_cast<char const*>(buffer), bytes}, ec);
-			if (ec) continue;
+			if (ec) {
+				ret = sqlite3_step(stmt);
+				continue;
+			}
+
+			// populate m_last_queue_pos so the first state_update_alert
+			// compares against the persisted value. Skip NULL (unknown)
+			// and negative sentinels (seeds have no position to track).
+			if (sqlite3_column_type(stmt, 1) == SQLITE_INTEGER) {
+				int const qp = sqlite3_column_int(stmt, 1);
+				if (qp >= 0) m_last_queue_pos.emplace(p.info_hashes.get_best(), qp);
+			}
+
 			m_ses.async_add_torrent(std::move(p));
 		}
 
