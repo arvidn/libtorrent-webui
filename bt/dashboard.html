@@ -119,8 +119,10 @@
       return;
     }
 
-    var now = new Date().getTime() - first_time;
-    var start_time = now - 300 * 1000;
+    // Use seconds so render_graph()'s pixels_per_time_unit is literal.
+    var now = (new Date().getTime() - first_time) / 1000;
+    // Buffer retention boundary; older samples are spliced off.
+    var oldest_kept = now - 300;
 
     var data_point = {};
     var last = null;
@@ -146,10 +148,10 @@
       // if this is a counter, plot the diff from the previous sample
       if (all_types[i] == 0) {
         data_point[i + "_absolute"] = updates[i];
-        // times 1000 is to convert from /milliseconds to /s
+        // now and last.time are seconds, so this yields units per second
         if (last && last.hasOwnProperty(i + "_absolute"))
           data_point[i] =
-            ((updates[i] - last[i + "_absolute"]) * 1000) / (now - last.time);
+            (updates[i] - last[i + "_absolute"]) / (now - last.time);
         else data_point[i] = 0;
       } else {
         data_point[i] = updates[i];
@@ -161,7 +163,7 @@
     // keep one so that we can draw a line from there to
     // the next point within the window
     var prune = 0;
-    while (prune < data.length && data[prune].time < start_time) ++prune;
+    while (prune < data.length && data[prune].time < oldest_kept) ++prune;
     if (prune > 1) data.splice(0, prune - 1);
 
     for (var g in graphs) {
@@ -169,8 +171,8 @@
         g,
         data,
         graphs[g].lines,
-        start_time,
         now,
+        5,
         graphs[g].unit,
         "auto",
         graphs[g].multiplier,
@@ -195,7 +197,7 @@
             g +
             '<br/><canvas id="' +
             g +
-            '" width="600" height="350"/></div>';
+            '" width="600" height="350" style="width:600px;height:350px"></canvas></div>';
         }
 
         for (var s in stats) {

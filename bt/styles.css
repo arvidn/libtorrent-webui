@@ -11,6 +11,8 @@
   --accent-action: #4a7;
   --accent-action-hover: #5b8;
   --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.15);
+  --border-strong: #3a3f47;
+  --bg-legend: rgba(255, 255, 255, 0.7);
 }
 body {
   font-family: var(--font-sans);

@@ -22,8 +22,10 @@
       return;
     }
 
-    var now = new Date().getTime() - first_time;
-    var start_time = now - 500 * 1000;
+    // Use seconds so render_graph()'s pixels_per_time_unit is literal.
+    var now = (new Date().getTime() - first_time) / 1000;
+    // Buffer retention boundary; older samples are spliced off.
+    var oldest_kept = now - 500;
 
     var data_point = {};
     if (data.length > 0) {
@@ -46,12 +48,12 @@
     // keep one so that we can draw a line from there to
     // the next point within the window
     var prune = 0;
-    while (prune < data.length && data[prune].time < start_time) ++prune;
+    while (prune < data.length && data[prune].time < oldest_kept) ++prune;
     if (prune > 1) data.splice(0, prune - 1);
 
     for (const name of all_names) {
       var defs = [{ name: name, color: "#e44" }];
-      render_graph(name, data, defs, start_time, now, "", "auto");
+      render_graph(name, data, defs, now, 5, "", "auto");
     }
   };
 
@@ -71,7 +73,7 @@
             s +
             '<br/><canvas id="' +
             s +
-            '" width="300" height="200"/></div>';
+            '" width="300" height="200" style="width:300px;height:200px"></canvas></div>';
           all_stats.push(stats[s].id);
           all_names.push(s);
         }
