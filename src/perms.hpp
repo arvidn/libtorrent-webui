@@ -11,6 +11,7 @@ see LICENSE file.
 #define LTWEB_PERMS_HPP
 
 #include <cstdint>
+#include "wire_flags.hpp"
 
 namespace ltweb {
 
@@ -73,6 +74,13 @@ struct permissions_interface {
 	// category bits while being denied write access to bits the daemon
 	// maintains itself.
 	virtual std::uint64_t allow_set_tag() const = 0;
+
+	// Returns the bitmask of wire-protocol torrent flag bits this user is
+	// permitted to set via add-torrent. The handler silently clears any
+	// request bits absent from this mask before applying them. Bits
+	// correspond to the aux::wire::* constants in wire_flags.hpp.
+	// wire_flags_t{} denies all; wire_flags_t::all() allows every bit.
+	virtual aux::wire_flags_t allow_set_flags() const = 0;
 };
 
 // an implementation of permissions_interface that rejects all access
@@ -91,6 +99,7 @@ struct no_permissions : permissions_interface {
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
 	std::uint64_t allow_set_tag() const override;
+	aux::wire_flags_t allow_set_flags() const override;
 };
 
 // an implementation of permissions_interface that only allow inspecting
@@ -111,6 +120,7 @@ struct read_only_permissions : permissions_interface {
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
 	std::uint64_t allow_set_tag() const override;
+	aux::wire_flags_t allow_set_flags() const override;
 };
 
 // an implementation of permissions_interface that permit all access.
@@ -129,6 +139,7 @@ struct full_permissions : permissions_interface {
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
 	std::uint64_t allow_set_tag() const override;
+	aux::wire_flags_t allow_set_flags() const override;
 };
 
 // an implementation of permissions_interface for users connecting from a
@@ -154,6 +165,7 @@ struct remote_user : permissions_interface {
 	bool allow_get_data() const override;
 	bool allow_session_status() const override;
 	std::uint64_t allow_set_tag() const override;
+	aux::wire_flags_t allow_set_flags() const override;
 };
 
 } // namespace ltweb

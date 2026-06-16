@@ -5,7 +5,7 @@
 
 <!-- TODO: factor out this script into a separate file from the HTML -->
 <script>
-  /* global libtorrent_connection, fields, render_graph */
+  /* global libtorrent_connection, fields, render_graph, add_torrent_flags */
   "use strict";
 
   var conn = null;
@@ -128,9 +128,23 @@
     setTimeout(get_torrent_updates, 300);
   };
 
+  // Read every checked add-torrent flag checkbox into the protocol's
+  // uint32 bitmask. data-flag values name keys in the library-exported
+  // add_torrent_flags constants, so this helper grows automatically when
+  // the spec adds a new flag -- only the markup needs a new <label>.
+  var collect_add_options = function () {
+    var flags = 0;
+    document
+      .querySelectorAll("input[type=checkbox][data-flag]")
+      .forEach(function (el) {
+        if (el.checked) flags |= add_torrent_flags[el.dataset.flag];
+      });
+    return { flags: flags };
+  };
+
   var add_torrent = function () {
     var link_box = document.getElementById("magnet");
-    conn.add_torrent(link_box.value, function (e) {
+    conn.add_torrent(link_box.value, collect_add_options(), function (e) {
       console.log("added torrent: " + e);
     });
     link_box.value = "";
@@ -182,6 +196,40 @@
 <a href="test_stats.html">stats (numbers)</a>
 <textarea id="magnet" rows="1"></textarea
 ><a href="javascript:add_torrent()">add torrent</a>
+
+<!-- add-torrent options: one checkbox per protocol flag. data-flag values
+     are looked up in the library's add_torrent_flags constants by
+     collect_add_options(). -->
+<fieldset id="add-options">
+  <legend>add-torrent options</legend>
+  <label><input type="checkbox" data-flag="stopped" /> stopped</label>
+  <label><input type="checkbox" data-flag="auto_managed" /> auto_managed</label>
+  <label
+    ><input type="checkbox" data-flag="sequential_download" />
+    sequential_download</label
+  >
+  <label><input type="checkbox" data-flag="seed_mode" /> seed_mode</label>
+  <label><input type="checkbox" data-flag="upload_mode" /> upload_mode</label>
+  <label><input type="checkbox" data-flag="share_mode" /> share_mode</label>
+  <label
+    ><input type="checkbox" data-flag="super_seeding" /> super_seeding</label
+  >
+  <label><input type="checkbox" data-flag="disable_pex" /> disable_pex</label>
+  <label><input type="checkbox" data-flag="disable_dht" /> disable_dht</label>
+  <label><input type="checkbox" data-flag="disable_lsd" /> disable_lsd</label>
+  <label
+    ><input type="checkbox" data-flag="disable_v1_hashes" />
+    disable_v1_hashes</label
+  >
+  <label><input type="checkbox" data-flag="i2p_torrent" /> i2p_torrent</label>
+  <label
+    ><input type="checkbox" data-flag="default_dont_download" />
+    default_dont_download</label
+  >
+  <label
+    ><input type="checkbox" data-flag="metadata_only" /> metadata_only</label
+  >
+</fieldset>
 
 <!-- STYLE TORRENT TABLE -->
 <table

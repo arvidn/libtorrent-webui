@@ -178,6 +178,9 @@ struct torrent_history_entry {
 		, added_frame(f)
 	{
 		frame.fill(f);
+		// tag is always included in the first delta query regardless of
+		// whether the client requested one at add-time.
+		frame[tag] = ~frame_t{0};
 	}
 
 	// True iff the inputs to status_bits() and tag have all been stable
@@ -186,7 +189,10 @@ struct torrent_history_entry {
 	// as not having had the entry.
 	bool filter_inputs_stable_since(frame_t K) const
 	{
-		return frame[state] <= K && frame[status_flags] <= K && frame[errc] <= K && frame[tag] <= K;
+		// sentinel (~frame_t{0}): tag was never explicitly set; treat as frame 0
+		// so an untagged entry does not look unstable relative to any real K.
+		frame_t const tag_f = (frame[tag] == ~frame_t{0}) ? frame_t{0} : frame[tag];
+		return frame[state] <= K && frame[status_flags] <= K && frame[errc] <= K && tag_f <= K;
 	}
 
 	void debug_print(frame_t current_frame) const;

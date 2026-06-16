@@ -1252,14 +1252,31 @@
     this._socket.send(call);
   };
 
+  // Add a torrent from a magnet link, along with the new torrent's
+  // initial configuration flags and tag bitfield.
+  //
+  // options is an object accepting:
+  //   flags:    uint32 bitmask of add_torrent_flags.* values (see bottom
+  //             of this file). Defaults to 0.
+  //   tag_high: upper 32 bits of the initial tag value. Defaults to 0.
+  //   tag_low:  lower 32 bits of the initial tag value. Defaults to 0.
+  // The tag splits into two halves for the same reason set_tag does --
+  // JS Numbers cannot represent a 64-bit bitfield losslessly.
   libtorrent_connection.prototype["add_torrent"] = function (
     magnet_link,
+    options,
     callback,
   ) {
+    options = options || {};
+    var flags = options.flags || 0;
+    var tag_high = options.tag_high || 0;
+    var tag_low = options.tag_low || 0;
+
     const encoder = new TextEncoder();
     const link = encoder.encode(magnet_link);
 
-    var call = new ArrayBuffer(3 + 2 + link.length);
+    // 3 RPC header + 2 magnet length + magnet bytes + 4 flags + 8 tag
+    var call = new ArrayBuffer(3 + 2 + link.length + 12);
     var view = new DataView(call);
 
     var tid = this._tid++;
@@ -1277,6 +1294,14 @@
       view.setUint8(offset, link[i]);
       offset++;
     }
+
+    // flags + tag trailer (uint32 flags, then uint64 tag as high/low halves)
+    view.setUint32(offset, flags);
+    offset += 4;
+    view.setUint32(offset, tag_high);
+    offset += 4;
+    view.setUint32(offset, tag_low);
+    offset += 4;
 
     //	console.log('CALL 20 ("' + magnet_link + '") tid = ' + tid);
 
@@ -1728,10 +1753,32 @@
     total_upload: 1 << 19,
   };
 
+  // Initial-state bits for the add_torrent options.flags field. Bits
+  // 0-15 share positions with the flags field of get-torrent-updates;
+  // bits 17+ are add-torrent-only (no observable get-torrent-updates
+  // counterpart).
+  var add_torrent_flags = {
+    stopped: 0x000001,
+    auto_managed: 0x000002,
+    sequential_download: 0x000004,
+    seed_mode: 0x000100,
+    upload_mode: 0x000200,
+    share_mode: 0x000400,
+    super_seeding: 0x000800,
+    disable_pex: 0x010000,
+    disable_dht: 0x020000,
+    disable_lsd: 0x040000,
+    disable_v1_hashes: 0x080000,
+    i2p_torrent: 0x100000,
+    default_dont_download: 0x200000,
+    metadata_only: 0x400000,
+  };
+
   // prevent the compiler from optimizing these away
   window["libtorrent_connection"] = libtorrent_connection;
   window["fields"] = fields;
   window["file_fields"] = file_fields;
   window["peer_fields"] = peer_fields;
   window["tracker_fields"] = tracker_fields;
+  window["add_torrent_flags"] = add_torrent_flags;
 })();
