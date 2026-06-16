@@ -55,13 +55,20 @@
           conn.list_stats(function (stats) {
             var tables = stat_tables();
             var template = document.getElementById("stat-row");
+            // Derive the per-table chunk size from the actual stat
+            // count so the page scales as libtorrent adds new
+            // counters. The previous hardcoded 60 broke once the
+            // total exceeded 5 * 60 = 300 stats: Math.floor(300 / 60)
+            // is 5, and tables[5] is undefined.
+            var total = Object.keys(stats).length;
+            var per_table = Math.ceil(total / tables.length);
             var i = 0;
             for (var s in stats) {
               var row = template.content.firstElementChild.cloneNode(true);
               row.id = s;
               row.cells[1].textContent =
                 s + (stats[s].type == 0 ? " (c)" : " (g)");
-              tables[Math.floor(i / 60)].tBodies[0].appendChild(row);
+              tables[Math.floor(i / per_table)].tBodies[0].appendChild(row);
 
               all_stats.push(stats[s].id);
               ++i;
