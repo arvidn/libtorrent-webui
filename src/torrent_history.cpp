@@ -362,12 +362,20 @@ void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t c
 	CMP_SET(is_seeding);
 	CMP_SET(is_finished);
 	CMP_SET(has_metadata);
+	// name, total, and piece_length come from the .torrent file itself, so
+	// they only take on their real value once metadata is available; a
+	// diff seen afterwards would just be resolving to the same immutable
+	// value, so only the has_metadata transition counts as a change.
+	if (s.has_metadata != status.has_metadata) {
+		frame[int(name)] = f;
+		frame[int(total)] = f;
+		frame[int(piece_length)] = f;
+	}
 	CMP_SET(progress);
 	CMP_SET(progress_ppm);
 	CMP_SET(errc);
 	CMP_SET(error_file);
 	CMP_SET(save_path);
-	CMP_SET(name);
 	CMP_SET(next_announce);
 	CMP_SET(current_tracker);
 	CMP_SET(total_download);
@@ -389,7 +397,6 @@ void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t c
 	CMP_SET(connect_candidates);
 	CMP_SET(num_pieces);
 	CMP_SET(total_done);
-	CMP_SET(total);
 	CMP_SET(total_wanted_done);
 	CMP_SET(total_wanted);
 	CMP_SET(distributed_full_copies);
