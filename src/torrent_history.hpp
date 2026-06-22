@@ -162,6 +162,17 @@ struct torrent_history_entry {
 		// machinery (relocate-on-update in m_queue).
 		tag,
 
+		// Static info-hash fields. Frame is set once at added_frame and never
+		// updated (info-hashes never change). The serializer suppresses v1 if
+		// !has_v1() and v2 if !has_v2().
+		info_hash_v1,
+		info_hash_v2,
+
+		// Piece length from torrent_info. Frame is bumped when has_metadata
+		// transitions false->true; the serializer suppresses it when
+		// !has_metadata so the client only sees it once data is available.
+		piece_length,
+
 		num_fields,
 	};
 

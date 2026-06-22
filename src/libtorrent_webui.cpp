@@ -127,7 +127,7 @@ struct rpc_entry {
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 };
 
-static std::array<rpc_entry, 27> const functions = {{
+static std::array<rpc_entry, 28> const functions = {{
 	{"get-torrent-updates", &libtorrent_webui::get_torrent_updates},
 	{"start", &libtorrent_webui::start},
 	{"stop", &libtorrent_webui::stop},
@@ -155,6 +155,7 @@ static std::array<rpc_entry, 27> const functions = {{
 	{"get-tracker-updates", &libtorrent_webui::get_tracker_updates},
 	{"get-piece-states", &libtorrent_webui::get_piece_states},
 	{"set-tag", &libtorrent_webui::set_tag},
+	{"set-flags", &libtorrent_webui::set_flags},
 }};
 
 // maps torrent field to RPC field. These fields are the ones defined in
@@ -193,7 +194,7 @@ std::array<int const, torrent_history_entry::num_fields> const torrent_field_map
 	-1, // connect_candidates,
 	12, // num_pieces,
 	-1, // total_done,
-	-1, // total,
+	27, // total,
 	13, // total_wanted_done,
 	-1, // total_wanted,
 	14, // distributed_full_copies,
@@ -225,6 +226,9 @@ std::array<int const, torrent_history_entry::num_fields> const torrent_field_map
 	0, // announcing_to_lsd,
 	0, // announcing_to_dht,
 	23, // tag
+	24, // info_hash_v1
+	25, // info_hash_v2
+	26, // piece_length
 }};
 
 struct add_torrent_user_data {
@@ -313,6 +317,28 @@ inline wire_flags_t wire_flags_from_status(lt::torrent_status const& s)
 	if (s.flags & lt::torrent_flags::disable_lsd) f |= disable_lsd;
 	if (s.flags & lt::torrent_flags::disable_v1_hashes) f |= disable_v1_hashes;
 	if (s.flags & lt::torrent_flags::i2p_torrent) f |= i2p_torrent;
+	return f;
+}
+
+// Translate wire-protocol flag bits (field 0 encoding) into libtorrent
+// torrent_flags_t. Used by set-flags; read-only status bits are silently ignored.
+inline lt::torrent_flags_t translate_wire_to_torrent_flags(std::uint64_t const w)
+{
+	wire_flags_t const wf{static_cast<std::uint32_t>(w)};
+	using namespace wire;
+	lt::torrent_flags_t f = {};
+	if (wf & stopped) f |= lt::torrent_flags::paused;
+	if (wf & auto_managed) f |= lt::torrent_flags::auto_managed;
+	if (wf & sequential_download) f |= lt::torrent_flags::sequential_download;
+	if (wf & seed_mode) f |= lt::torrent_flags::seed_mode;
+	if (wf & upload_mode) f |= lt::torrent_flags::upload_mode;
+	if (wf & share_mode) f |= lt::torrent_flags::share_mode;
+	if (wf & super_seeding) f |= lt::torrent_flags::super_seeding;
+	if (wf & disable_pex) f |= lt::torrent_flags::disable_pex;
+	if (wf & disable_dht) f |= lt::torrent_flags::disable_dht;
+	if (wf & disable_lsd) f |= lt::torrent_flags::disable_lsd;
+	if (wf & disable_v1_hashes) f |= lt::torrent_flags::disable_v1_hashes;
+	if (wf & i2p_torrent) f |= lt::torrent_flags::i2p_torrent;
 	return f;
 }
 
@@ -484,6 +510,13 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 		// only return fields the caller asked for
 		bitmask &= user_mask;
 
+		// suppress fields whose backing data is not yet available
+		lt::torrent_status const& s = entry.status;
+		if (!s.info_hashes.has_v1()) bitmask &= ~(1ULL << 24);
+		if (!s.info_hashes.has_v2()) bitmask &= ~(1ULL << 25);
+		if (!s.has_metadata) bitmask &= ~(1ULL << 26);
+		if (!s.has_metadata) bitmask &= ~(1ULL << 27);
+
 		if (bitmask == 0) continue;
 
 		++num_torrents;
@@ -494,9 +527,7 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 		// are included in the update for this torrent
 		write_uint64(bitmask, ptr);
 
-		lt::torrent_status const& s = entry.status;
-
-		for (int f = 0; f < 24; ++f) {
+		for (int f = 0; f < 28; ++f) {
 			if ((bitmask & (1ULL << f)) == 0) continue;
 
 			// write field f to buffer
@@ -603,6 +634,27 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 					break;
 				case 23: // tag (application-defined per-torrent 64-bit bitfield)
 					write_uint64(m_hist.get_tag(s.handle), ptr);
+					break;
+				case 24: // info-hash-v1 (20 bytes; only sent when has_v1())
+				{
+					auto const& v1 = s.info_hashes.v1;
+					ptr = std::copy(v1.begin(), v1.end(), ptr);
+					break;
+				}
+				case 25: // info-hash-v2 (32 bytes; only sent when has_v2())
+				{
+					auto const& v2 = s.info_hashes.v2;
+					ptr = std::copy(v2.begin(), v2.end(), ptr);
+					break;
+				}
+				case 26: // piece-size (uint32; only sent when has_metadata)
+				{
+					auto const ti = s.handle.torrent_file();
+					write_uint32(ti ? static_cast<std::uint32_t>(ti->piece_length()) : 0u, ptr);
+					break;
+				}
+				case 27: // total-size (uint64; only sent when has_metadata)
+					write_uint64(static_cast<std::uint64_t>(s.total), ptr);
 					break;
 				default:
 					TORRENT_ASSERT(false);
@@ -1970,4 +2022,39 @@ bool libtorrent_webui::error(websocket_conn* st, function_call f, int error)
 	auto response = make_rpc_response(f.function_id, f.transaction_id, error);
 	return st->send_packet(std::move(response));
 }
+
+bool libtorrent_webui::set_flags(websocket_conn* st, function_call f)
+{
+	if (!st->perms()->allow_start()) return error(st, f, permission_denied);
+
+	char const* iptr = f.data;
+	if (f.len < 2) return error(st, f, invalid_number_of_args);
+
+	std::uint16_t const num_entries = read_uint16(iptr);
+
+	// each entry: 20-byte info-hash + 8-byte value + 8-byte mask = 36 bytes
+	if (f.len != 2 + int(num_entries) * 36) return error(st, f, invalid_number_of_args);
+
+	int counter = 0;
+	for (std::uint16_t i = 0; i < num_entries; ++i) {
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		std::uint64_t const wire_value = read_uint64(iptr);
+		std::uint64_t const wire_mask = read_uint64(iptr);
+
+		if (wire_mask == 0) continue;
+
+		lt::torrent_status const ts = m_hist.get_torrent_status(ih);
+		if (!ts.handle.is_valid()) continue;
+
+		ts.handle.set_flags(
+			aux::translate_wire_to_torrent_flags(wire_value),
+			aux::translate_wire_to_torrent_flags(wire_mask)
+		);
+		++counter;
+	}
+
+	return respond(st, f, no_error, counter);
+}
+
 } // namespace ltweb
