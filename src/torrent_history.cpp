@@ -12,10 +12,23 @@ see LICENSE file.
 #include "alert_handler.hpp"
 #include "libtorrent/units.hpp"
 #include "libtorrent/flags.hpp"
+#include "libtorrent/torrent_flags.hpp"
 #include <chrono>
 #include <iostream>
 
 namespace ltweb {
+
+namespace {
+// The subset of lt::torrent_status::flags whose changes advance the
+// frame counter for the status_flags slot. update_status uses this to
+// drive the narrower comparison for frame[status_flags], and
+// debug_print uses it to show the masked subset alongside its own
+// frame counter. Any future code that wants its stability tied to a
+// specific flag bit must include that bit here.
+constexpr lt::torrent_flags_t status_flags_mask =
+	lt::torrent_flags::paused | lt::torrent_flags::auto_managed;
+} // anonymous namespace
+
 torrent_history::torrent_history(alert_handler* h, std::size_t max_tombstones)
 	: m_alerts(h)
 	, m_frame(1)
@@ -44,6 +57,11 @@ try {
 		m_deferred_frame_count = true;
 	} else if (lt::torrent_removed_alert const* td = lt::alert_cast<lt::torrent_removed_alert>(a)) {
 		std::unique_lock<std::mutex> l(m_mutex);
+
+		// Drop any tag entry the torrent had. The handle's underlying
+		// shared_ptr is what unordered_map hashes on, so the erase works
+		// even though the torrent itself is going away.
+		m_tags.erase(td->handle);
 
 		torrent_history_entry st;
 		st.status.info_hashes = td->info_hashes;
@@ -138,6 +156,57 @@ lt::torrent_status torrent_history::get_torrent_status(lt::sha1_hash const& ih) 
 	return st.status;
 }
 
+bool torrent_history::set_tag(
+	lt::sha1_hash const& ih, std::uint64_t const value, std::uint64_t const mask
+)
+{
+	if (mask == 0) return false;
+
+	torrent_history_entry key;
+	key.status.info_hashes.v1 = ih;
+
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	auto it = m_queue.right.find(key);
+	if (it == m_queue.right.end()) return false;
+
+	lt::torrent_handle const h = it->first.status.handle;
+
+	auto tag_it = m_tags.find(h);
+	std::uint64_t const old_tag = (tag_it != m_tags.end()) ? tag_it->second : 0;
+	std::uint64_t const new_tag = (old_tag & ~mask) | (value & mask);
+	if (new_tag == old_tag) return false;
+
+	// Drop the entry from m_tags when the value goes back to 0 (the default).
+	// Keeps the map sparse and matches the "absent == 0" convention used by
+	// get_tag().
+	if (new_tag == 0) {
+		if (tag_it != m_tags.end()) m_tags.erase(tag_it);
+	} else {
+		m_tags[h] = new_tag;
+	}
+
+	// Bump the per-field frame for tag and relocate the entry to the head of
+	// m_queue.left, matching the pattern used by state_update_alert. Frame
+	// advancement is deferred (m_frame + 1) so multiple set_tag calls and the
+	// next state_update_alert coalesce into a single frame, matching the
+	// add/remove convention.
+	frame_t const f = m_frame + 1;
+	const_cast<torrent_history_entry&>(it->first).frame[torrent_history_entry::tag] = f;
+	m_queue.right.replace_data(it, f);
+	m_queue.left.relocate(m_queue.left.begin(), m_queue.project_left(it));
+
+	m_deferred_frame_count = true;
+	return true;
+}
+
+std::uint64_t torrent_history::get_tag(lt::torrent_handle const& h) const
+{
+	std::unique_lock<std::mutex> l(m_mutex);
+	auto const it = m_tags.find(h);
+	return (it != m_tags.end()) ? it->second : 0;
+}
+
 frame_t torrent_history::frame() const
 {
 	std::unique_lock<std::mutex> l(m_mutex);
@@ -159,7 +228,10 @@ void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t c
 	if (s.x != status.x) frame[int(x)] = f
 
 	CMP_SET(state);
-	CMP_SET(flags);
+	if ((s.flags & status_flags_mask) != (status.flags & status_flags_mask))
+		frame[int(status_flags)] = f;
+	if ((s.flags & ~status_flags_mask) != (status.flags & ~status_flags_mask))
+		frame[int(other_flags)] = f;
 	CMP_SET(is_seeding);
 	CMP_SET(is_finished);
 	CMP_SET(has_metadata);
@@ -253,7 +325,20 @@ void torrent_history_entry::debug_print(frame_t const current_frame) const
 	} while (0)
 
 	PRINT(state);
-	PRINT(flags);
+	// status_flags and other_flags both project from status.flags through
+	// complementary masks, so the macro -- which expects a status.<name>
+	// field -- doesn't apply. Print each masked subset alongside its own
+	// frame counter.
+	{
+		int const frame_diff = (std::min)(current_frame - frame[status_flags], 20u);
+		os << (frame[status_flags] >= current_frame ? "\x1b[41m" : "") << "\x1b[38;5;"
+		   << (255 - frame_diff) << 'm' << (status.flags & status_flags_mask) << "\x1b[0m ";
+	}
+	{
+		int const frame_diff = (std::min)(current_frame - frame[other_flags], 20u);
+		os << (frame[other_flags] >= current_frame ? "\x1b[41m" : "") << "\x1b[38;5;"
+		   << (255 - frame_diff) << 'm' << (status.flags & ~status_flags_mask) << "\x1b[0m ";
+	}
 	PRINT(is_seeding);
 	PRINT(is_finished);
 	PRINT(has_metadata);

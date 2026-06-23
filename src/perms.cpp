@@ -119,6 +119,7 @@ bool no_permissions::allow_get_settings(int) const { return false; }
 bool no_permissions::allow_set_settings(int) const { return false; }
 bool no_permissions::allow_get_data() const { return false; }
 bool no_permissions::allow_session_status() const { return false; }
+std::uint64_t no_permissions::allow_set_tag() const { return 0; }
 
 bool read_only_permissions::allow_start() const { return false; }
 bool read_only_permissions::allow_stop() const { return false; }
@@ -133,6 +134,7 @@ bool read_only_permissions::allow_get_settings(int) const { return true; }
 bool read_only_permissions::allow_set_settings(int) const { return false; }
 bool read_only_permissions::allow_get_data() const { return true; }
 bool read_only_permissions::allow_session_status() const { return true; }
+std::uint64_t read_only_permissions::allow_set_tag() const { return 0; }
 
 bool full_permissions::allow_start() const { return true; }
 bool full_permissions::allow_stop() const { return true; }
@@ -147,6 +149,7 @@ bool full_permissions::allow_get_settings(int) const { return true; }
 bool full_permissions::allow_set_settings(int) const { return true; }
 bool full_permissions::allow_get_data() const { return true; }
 bool full_permissions::allow_session_status() const { return true; }
+std::uint64_t full_permissions::allow_set_tag() const { return ~std::uint64_t(0); }
 
 bool remote_user::allow_start() const { return true; }
 bool remote_user::allow_stop() const { return true; }
@@ -172,5 +175,6 @@ bool remote_user::allow_set_settings(int name) const
 }
 bool remote_user::allow_get_data() const { return true; }
 bool remote_user::allow_session_status() const { return true; }
+std::uint64_t remote_user::allow_set_tag() const { return ~std::uint64_t(0); }
 
 } // namespace ltweb

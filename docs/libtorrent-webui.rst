@@ -236,7 +236,13 @@ The fields on torrents, in bitmask bit-order (LSB is bit 0), are:
 +----------+---------------------+------------------------------------------+
 | 22       | uint64_t            | ``redundant-bytes`` (Bytes)              |
 +----------+---------------------+------------------------------------------+
-|          |                     |                                          |
+| 23       | uint64_t            | ``tag``. An application-defined 64-bit   |
+|          |                     | bitfield set via the `set-tag`_ RPC. The |
+|          |                     | semantics of individual bits are not     |
+|          |                     | defined by this protocol; the client     |
+|          |                     | application chooses what each bit means  |
+|          |                     | (eg. labels, categories). A torrent with |
+|          |                     | no tag set reports 0.                    |
 +----------+---------------------+------------------------------------------+
 
 For example, an update with the bitmask ``0x1`` means that the only thing that
@@ -1153,6 +1159,72 @@ If the torrent referred to by ``info-hash`` does not exist (for example
 because it was just removed), the server responds with error code 6
 (resource not found) and no payload.
 
+set-tag
+.......
+
+function id 26.
+
+This function sets the application-defined ``tag`` bitfield on one or more
+torrents. The tag is the same 64-bit value that is reported as field 23 of
+`get-torrent-updates`_; its individual bits are opaque to the protocol and
+their meaning is chosen by the client application.
+
+Each entry specifies the torrent (by info-hash), a ``value`` and a ``mask``.
+The mask selects which bits of the tag the entry modifies. The resulting
+tag is computed as::
+
+   new_tag = (old_tag & ~mask) | (value & mask)
+
+Bits outside the mask are preserved. This lets two clients (or two browser
+tabs of the same client) each toggle their own bits without a read-modify-
+write race over the others.
+
+The call arguments (offset includes RPC call header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint16_t           | ``num-tags`` the number of entries to     |
+|          |                    | follow.                                   |
++----------+--------------------+-------------------------------------------+
+| 5        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 25       | uint64_t           | ``value`` the desired bit values.         |
++----------+--------------------+-------------------------------------------+
+| 33       | uint64_t           | ``mask`` selects which bits to modify.    |
+|          |                    | ``mask = 0`` is a deliberate no-op; ``mask|
+|          |                    | = 0xffffffffffffffff`` overwrites the tag.|
++----------+--------------------+-------------------------------------------+
+
+The ``info-hash``, ``value``, ``mask`` triple is repeated ``num-tags``
+times (stride 36 bytes per entry).
+
+The server enforces a per-bit permission mask: it ANDs each entry's
+``mask`` with the bits the authenticated user is permitted to write.
+Entries whose mask survives the AND apply the resulting effective mask;
+entries whose mask is wiped out are silently skipped. The whole call
+returns error code 8 (permission denied) only when every entry that
+actually wanted to write (``mask != 0``) had all of its bits denied.
+Pure-no-op calls (``mask == 0`` everywhere, or empty ``num-tags == 0``)
+succeed regardless of permissions.
+
+The return value is:
+
++----------+--------------------+-----------------------------------------+
+| offset   | type               | name                                    |
++==========+====================+=========================================+
+| 4        | uint16_t           | ``num-success`` the number of entries   |
+|          |                    | whose tag value actually changed.       |
++----------+--------------------+-----------------------------------------+
+
+Entries that did not change the tag (unknown info-hash, ``mask`` fully
+denied, requested bits already at the requested values) are not counted
+in ``num-success``. A successful tag change is reflected in the next
+`get-torrent-updates`_ response as a delta on field 23.
+
+Tag values are persisted across server restarts alongside each torrent's
+add-torrent parameters.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -1222,6 +1294,9 @@ Function IDs
 |  24 | get-tracker-updates       | info-hash, frame-number (uint32_t)      |
 +-----+---------------------------+-----------------------------------------+
 |  25 | get-piece-states          | info-hash, frame-number (uint32_t)      |
++-----+---------------------------+-----------------------------------------+
+|  26 | set-tag                   | num-tags, info-hash, value (uint64_t),  |
+|     |                           | mask (uint64_t), ...                    |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf

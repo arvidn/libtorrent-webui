@@ -124,7 +124,7 @@ struct rpc_entry {
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 };
 
-static std::array<rpc_entry, 26> const functions = {{
+static std::array<rpc_entry, 27> const functions = {{
 	{"get-torrent-updates", &libtorrent_webui::get_torrent_updates},
 	{"start", &libtorrent_webui::start},
 	{"stop", &libtorrent_webui::stop},
@@ -151,20 +151,22 @@ static std::array<rpc_entry, 26> const functions = {{
 	{"set-file-priority", &libtorrent_webui::set_file_priority},
 	{"get-tracker-updates", &libtorrent_webui::get_tracker_updates},
 	{"get-piece-states", &libtorrent_webui::get_piece_states},
+	{"set-tag", &libtorrent_webui::set_tag},
 }};
 
 // maps torrent field to RPC field. These fields are the ones defined in
 // torrent_history_entry
 std::array<int const, torrent_history_entry::num_fields> const torrent_field_map = {{
 	20, // state,
-	0, // flags,
+	0, // status_flags,
+	0, // other_flags,
 	0, // is_seeding,
 	0, // is_finished,
 	0, // has_metadata,
 	-1, // progress,
 	8, // progress_ppm,
 	9, // errc,
-	23, // error_file,
+	-1, // error_file
 	-1, // save_path,
 	1, // name,
 	-1, // next_announce,
@@ -219,6 +221,7 @@ std::array<int const, torrent_history_entry::num_fields> const torrent_field_map
 	0, // announcing_to_trackers,
 	0, // announcing_to_lsd,
 	0, // announcing_to_dht,
+	23, // tag
 }};
 
 struct add_torrent_user_data {
@@ -253,7 +256,7 @@ struct function_call {
 
 libtorrent_webui::libtorrent_webui(
 	lt::session& ses,
-	torrent_history const& hist,
+	torrent_history& hist,
 	auth_interface const& auth,
 	alert_handler& alert,
 	save_settings_interface& sett,
@@ -404,7 +407,7 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 
 		lt::torrent_status const& s = i->status;
 
-		for (int f = 0; f < 23; ++f) {
+		for (int f = 0; f < 24; ++f) {
 			if ((bitmask & (1ULL << f)) == 0) continue;
 
 			// write field f to buffer
@@ -525,6 +528,9 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 					break;
 				case 22: // redundant-bytes
 					write_uint64(s.total_redundant_bytes, ptr);
+					break;
+				case 23: // tag (application-defined per-torrent 64-bit bitfield)
+					write_uint64(m_hist.get_tag(s.handle), ptr);
 					break;
 				default:
 					TORRENT_ASSERT(false);
@@ -1471,6 +1477,63 @@ bool libtorrent_webui::get_piece_states(websocket_conn* st, function_call f)
 	}
 
 	return st->send_packet(std::move(response));
+}
+
+bool libtorrent_webui::set_tag(websocket_conn* st, function_call f)
+{
+	// The permissions object returns a mask of writable bits. Each entry's
+	// requested mask is ANDed with this; entries whose mask survives the AND
+	// are applied, entries whose mask is wiped out are silently skipped.
+	// The whole RPC only fails with permission_denied when every entry that
+	// actually wanted to write (mask != 0) had all its bits denied. A
+	// mixed request (some allowed, some denied) applies the allowed parts
+	// and silently drops the rest, matching the best-effort contract used
+	// by apply_torrent_fun for unknown info-hashes.
+	std::uint64_t const permitted = st->perms()->allow_set_tag();
+
+	char const* iptr = f.data;
+
+	// minimum: 2-byte num-tags
+	if (f.len < 2) return error(st, f, invalid_number_of_args);
+
+	std::uint16_t const num_tags = read_uint16(iptr);
+
+	// each entry is 36 bytes: uint8[20] info-hash + uint64 value + uint64 mask
+	if (f.len != 2 + int(num_tags) * 36) return error(st, f, invalid_number_of_args);
+
+	int counter = 0;
+	int attempted = 0; // entries with mask != 0 (real write intent)
+	int denied = 0; // entries whose write intent had no permitted bits left
+
+	for (std::uint16_t i = 0; i < num_tags; ++i) {
+		lt::sha1_hash const ih(iptr);
+		iptr += 20;
+		std::uint64_t const value = read_uint64(iptr);
+		std::uint64_t const mask = read_uint64(iptr);
+
+		// mask == 0 is a deliberate no-op: not an attempt, not a denial.
+		if (mask == 0) continue;
+
+		++attempted;
+		std::uint64_t const effective_mask = mask & permitted;
+		if (effective_mask == 0) {
+			++denied;
+			continue;
+		}
+
+		// set_tag returns false for unknown info-hash or no-op writes.
+		// Those silently contribute 0 to counter, matching the convention
+		// used by apply_torrent_fun for batched mutations.
+		if (m_hist.set_tag(ih, value, effective_mask)) ++counter;
+	}
+
+	// Only deny the whole RPC if every entry that wanted to write was
+	// fully blocked. A pure-no-op request (attempted == 0) succeeds with
+	// counter == 0; a mixed request reports the count of changes that
+	// did land.
+	if (attempted > 0 && attempted == denied) return error(st, f, permission_denied);
+
+	return respond(st, f, no_error, counter);
 }
 
 bool libtorrent_webui::set_file_priority(websocket_conn* st, function_call f)
