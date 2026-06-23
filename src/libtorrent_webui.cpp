@@ -386,7 +386,7 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 			if (i->frame[k] <= frame && !r.is_snapshot) continue;
 
 			// this field has changed and should be included in this update
-			bitmask |= 1 << f;
+			bitmask |= 1ULL << f;
 		}
 
 		// only return fields the caller asked for
@@ -405,7 +405,7 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 		lt::torrent_status const& s = i->status;
 
 		for (int f = 0; f < 23; ++f) {
-			if ((bitmask & (1 << f)) == 0) continue;
+			if ((bitmask & (1ULL << f)) == 0) continue;
 
 			// write field f to buffer
 			switch (f) {

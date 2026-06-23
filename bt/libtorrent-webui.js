@@ -34,7 +34,18 @@
     return ret;
   }
 
-  // read a 64 bit value
+  function write_infohash(view, offset, ih) {
+    for (var i = 0; i < 40; i += 2) {
+      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
+      offset += 1;
+    }
+    return offset;
+  }
+
+  // read a 64 bit value as a single JS Number. Safe for counters/byte
+  // totals that realistically stay below 2^53; not safe for full-width
+  // 64-bit bitfields where every bit is meaningful. For the latter,
+  // read the two 32-bit halves directly into _high / _low fields.
   function read_uint64(view, offset) {
     var high = view.getUint32(offset);
     offset += 4;
@@ -714,11 +725,7 @@
     view.setUint16(1, tid);
 
     var offset = 3;
-    for (var i = 0; i < 40; i += 2) {
-      var b = parseInt(ih.substring(i, i + 2), 16);
-      view.setUint8(offset, b);
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
 
     // frame-number
     view.setUint32(offset, last_frame);
@@ -1080,10 +1087,7 @@
     view.setUint16(1, tid);
 
     var offset = 3;
-    for (var i = 0; i < 40; i += 2) {
-      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
     // frame-number
     view.setUint32(offset, last_frame);
     offset += 4;
@@ -1174,10 +1178,7 @@
     view.setUint16(1, tid);
 
     let offset = 3;
-    for (let i = 0; i < 40; i += 2) {
-      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
     view.setUint32(offset, last_frame);
     offset += 4;
 
@@ -1248,10 +1249,7 @@
     view.setUint16(1, tid);
 
     var offset = 3;
-    for (var i = 0; i < 40; i += 2) {
-      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
     view.setUint32(offset, updates.length);
     offset += 4;
 
@@ -1416,10 +1414,7 @@
     view.setUint16(1, tid);
 
     var offset = 3;
-    for (var i = 0; i < 40; i += 2) {
-      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
     view.setUint32(offset, last_frame);
 
     this._socket.send(call);
@@ -1512,10 +1507,7 @@
     view.setUint16(1, tid);
 
     var offset = 3;
-    for (var i = 0; i < 40; i += 2) {
-      view.setUint8(offset, parseInt(ih.substring(i, i + 2), 16));
-      offset += 1;
-    }
+    offset = write_infohash(view, offset, ih);
     view.setUint32(offset, last_frame);
 
     this._socket.send(call);
