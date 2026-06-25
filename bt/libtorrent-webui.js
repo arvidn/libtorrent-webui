@@ -122,6 +122,11 @@
     this._stats_frame = 0;
     this._transactions = {};
     this._tid = 0;
+    // The spec the client used on the previous get_updates poll. The
+    // library remembers it so the caller only has to pass the spec they
+    // want now; the server-side filter pairs this with the new spec to
+    // decide which torrents have entered or left the client's view.
+    this._filter = null;
   };
 
   libtorrent_connection.prototype["list_settings"] = function (callback) {
@@ -357,7 +362,20 @@
     this._socket.send(call);
   };
 
-  libtorrent_connection.prototype["get_updates"] = function (mask, callback) {
+  // Optional filter argument scopes the response server-side. Status axis
+  // is exact-match within masked bits (lets a single button require "bit X
+  // set AND bit Y cleared"); tag axis is any-of. A zero mask on an axis
+  // disables it. The library remembers the spec sent on the previous call
+  // and pairs it with this one on the wire, so the caller only ever passes
+  // the desired (current) spec. Filter shape:
+  //   { status_mask, status_value, tag_mask_high, tag_mask_low }
+  // Omitting filter (or passing all-zero) sends the unfiltered 12-byte
+  // request, which is the original protocol shape.
+  libtorrent_connection.prototype["get_updates"] = function (
+    mask,
+    callback,
+    filter,
+  ) {
     if (this._socket.readyState != WebSocket.OPEN) {
       window.setTimeout(function () {
         callback("socket closed");
@@ -368,6 +386,28 @@
     var tid = this._tid++;
     if (this._tid > 65535) this._tid = 0;
 
+    // Resolve old and new filter specs up front so f_new is in scope for
+    // the response-handler closure below. Both default to all-zero (no
+    // restriction). If both have all-zero masks we send a 12-byte request
+    // (the original unfiltered protocol shape); otherwise we append the
+    // 20-byte filter block.
+    var EMPTY = {
+      status_mask: 0,
+      status_value: 0,
+      tag_mask_high: 0,
+      tag_mask_low: 0,
+    };
+    var f_new = filter || EMPTY;
+    var f_old = this._filter || EMPTY;
+    var any_mask =
+      f_old.status_mask |
+      f_old.tag_mask_high |
+      f_old.tag_mask_low |
+      f_new.status_mask |
+      f_new.tag_mask_high |
+      f_new.tag_mask_low;
+    var trailing = any_mask !== 0 ? 20 : 0;
+
     // this is the handler of the response for this call. It first
     // parses out the return value, the passes it on to the user
     // supplied callback.
@@ -375,7 +415,14 @@
     this._transactions[tid] = function (view, fun, e) {
       if (_check_error(e, callback)) return;
 
+      // Anchor both the frame cursor and the filter spec to what the
+      // server actually returned, not to what we sent. With this we
+      // can safely send another request before this one's response
+      // lands: each in-flight request reads the same anchor, and the
+      // server is told the truth about the spec the client's current
+      // local view was built under.
       self._frame = view.getUint32(4);
+      self._filter = f_new;
       var num_torrents = view.getUint32(8);
       var num_removed_torrents = view.getUint32(12);
       //		console.log('frame: ' + self._frame + ' num-torrents: ' + num_torrents + ' num-removed-torrents: ' + num_removed_torrents);
@@ -525,7 +572,7 @@
       if (typeof callback !== "undefined") callback(ret);
     };
 
-    var call = new ArrayBuffer(15);
+    var call = new ArrayBuffer(15 + trailing);
     var view = new DataView(call);
     // function 0
     view.setUint8(0, 0);
@@ -535,6 +582,17 @@
     view.setUint32(3, this._frame);
     view.setUint32(7, 0);
     view.setUint32(11, mask);
+
+    if (trailing > 0) {
+      view.setUint8(15, f_old.status_mask);
+      view.setUint8(16, f_old.status_value);
+      view.setUint32(17, f_old.tag_mask_high);
+      view.setUint32(21, f_old.tag_mask_low);
+      view.setUint8(25, f_new.status_mask);
+      view.setUint8(26, f_new.status_value);
+      view.setUint32(27, f_new.tag_mask_high);
+      view.setUint32(31, f_new.tag_mask_low);
+    }
 
     //	console.log('CALL get_updates( frame: ' + this._frame + ' mask: ' + mask.toString(16) + ' ) tid = ' + tid);
     this._socket.send(call);

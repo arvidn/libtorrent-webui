@@ -35,6 +35,39 @@ struct alert_handler;
 
 using frame_t = std::uint32_t;
 
+// 8-bit projection of an lt::torrent_status for the server-side filter.
+// Flicker-prone fields (announcing_to_*, has_incoming, moving_storage)
+// are excluded so filter_inputs_stable_since stays useful.
+std::uint8_t status_bits(lt::torrent_status const& s);
+
+// Filter spec sent by the client in get-torrent-updates. The two axes
+// match differently because they're used differently:
+//
+//   status axis: (sbits & status_mask) == (status_value & status_mask)
+//                bits in status_mask must match status_value; bits
+//                outside the mask are don't-care. Lets a single button
+//                require "bit X set AND bit Y cleared" without inventing
+//                composite-meaning bits in status_bits().
+//   tag axis:    (tag & tag_mask) != 0
+//                any-of within the mask. Matches the additive UX where
+//                multiple tag toggles OR together.
+//
+// Both axes are ANDed. status_mask == 0 disables the status axis;
+// tag_mask == 0 disables the tag axis. status_value is ignored when
+// status_mask == 0.
+struct filter_spec {
+	std::uint8_t status_mask = 0;
+	std::uint8_t status_value = 0;
+	std::uint64_t tag_mask = 0;
+
+	bool empty() const { return status_mask == 0 && tag_mask == 0; }
+	bool operator==(filter_spec const& o) const
+	{
+		return status_mask == o.status_mask && status_value == o.status_value
+			&& tag_mask == o.tag_mask;
+	}
+};
+
 // this is the type that keeps track of frame counters for each
 // field in lt::torrent_status. The frame counters indicate which frame
 // they were last modified in. This is used to send minimal updates
@@ -52,17 +85,11 @@ struct torrent_history_entry {
 
 	enum {
 		state,
-		// lt::torrent_status::flags is split into two frame-tracking slots
-		// so that toggling a flag bit other code does not care about (eg
-		// upload_mode after a disk error) does not advance the frame for
-		// callers that only care about paused and auto_managed. Both
-		// slots still map to wire field 0 in torrent_field_map, so the
-		// client still receives a flags update when any bit changes;
-		// only the per-field frame counters are split.
-		//
-		//   status_flags: paused, auto_managed
-		//   other_flags : sequential_download, seed_mode, upload_mode,
-		//                 share_mode, super_seeding
+		// lt::torrent_status::flags is split so that toggling a flag the
+		// filter does not care about (eg upload_mode after a disk error)
+		// does not invalidate the stability check. status_flags covers
+		// paused and auto_managed (consulted by filter_inputs_stable_since);
+		// other_flags covers the rest. Both map to wire field 0.
 		status_flags,
 		other_flags,
 		is_seeding,
@@ -152,6 +179,15 @@ struct torrent_history_entry {
 		frame.fill(f);
 	}
 
+	// True iff the inputs to status_bits() and tag have all been stable
+	// since K, so the previous filter can be evaluated against the live
+	// entry. When false, the caller must conservatively treat the client
+	// as not having had the entry.
+	bool filter_inputs_stable_since(frame_t K) const
+	{
+		return frame[state] <= K && frame[status_flags] <= K && frame[errc] <= K && frame[tag] <= K;
+	}
+
 	void debug_print(frame_t current_frame) const;
 };
 
@@ -178,6 +214,15 @@ struct torrent_history : alert_observer {
 	// If since_frame < horizon(), the result is promoted to a full snapshot:
 	// is_snapshot is true, updated contains all live torrents, removed is empty.
 	query_result query(frame_t since_frame) const;
+
+	// Delta query that applies the filter inline so non-matching entries
+	// are never copied. f_old is the spec used at since_frame, f_new is
+	// the spec now; entries that fell out of the filter view join the
+	// session-tombstone list in removed. Newly-matched entries are
+	// returned with frame[] filled to current_frame so the serializer
+	// includes every requested field. Both empty degenerates to query().
+	query_result
+	query_filtered(frame_t since_frame, filter_spec const& f_old, filter_spec const& f_new) const;
 
 	lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
 
@@ -212,6 +257,12 @@ private:
 	// returned frame matches the frames stored on those entries.
 	frame_t current_frame_locked() const;
 
+	// Appends tombstones newer than since_frame that were visible at
+	// since_frame (added_frame <= since_frame) and matched `filter` at
+	// removal time. An empty filter matches everything. Skips the scan
+	// when result.is_snapshot is true (no removes in a full snapshot).
+	void append_removed(frame_t since_frame, filter_spec const& filter, query_result& result) const;
+
 	// first is the frame this torrent was last
 	// seen modified in, second is the information
 	// about the torrent that was modified
@@ -234,6 +285,8 @@ private:
 		frame_t removed_frame;
 		frame_t added_frame;
 		lt::sha1_hash ih;
+		std::uint8_t sbits = 0;
+		std::uint64_t tag = 0;
 	};
 	std::deque<removed_entry> m_removed;
 

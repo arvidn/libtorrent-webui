@@ -19,14 +19,51 @@ see LICENSE file.
 namespace ltweb {
 
 namespace {
-// The subset of lt::torrent_status::flags whose changes advance the
-// frame counter for the status_flags slot. update_status uses this to
-// drive the narrower comparison for frame[status_flags], and
-// debug_print uses it to show the masked subset alongside its own
-// frame counter. Any future code that wants its stability tied to a
-// specific flag bit must include that bit here.
+// Flag bits projected into status_bits. Must stay in sync with status_bits:
+// any bit that contributes to the projection must also be inside this mask,
+// or frame[status_flags] won't bump when it toggles and the stability check
+// will see stale state.
 constexpr lt::torrent_flags_t status_flags_mask =
 	lt::torrent_flags::paused | lt::torrent_flags::auto_managed;
+} // anonymous namespace
+
+std::uint8_t status_bits(lt::torrent_status const& s)
+{
+	std::uint8_t b = 0;
+	if (s.flags & lt::torrent_flags::paused) b |= 0x01;
+	if (s.flags & lt::torrent_flags::auto_managed) b |= 0x02;
+	// 0x04 reserved for a future flag bit.
+	if (s.errc) b |= 0x08;
+	switch (s.state) {
+		case lt::torrent_status::checking_files:
+		case lt::torrent_status::checking_resume_data:
+			b |= 0x10;
+			break;
+		case lt::torrent_status::downloading_metadata:
+			b |= 0x20;
+			break;
+		case lt::torrent_status::downloading:
+		default:
+			b |= 0x40;
+			break;
+		case lt::torrent_status::finished:
+		case lt::torrent_status::seeding:
+			b |= 0x80;
+			break;
+	}
+	return b;
+}
+
+namespace {
+// Status axis is mask-and-value (exact-match within masked bits); tag axis
+// stays any-of. mask == 0 disables an axis.
+bool matched(filter_spec const& f, std::uint8_t const sbits, std::uint64_t const tag)
+{
+	bool const status_ok =
+		(f.status_mask == 0) || ((sbits & f.status_mask) == (f.status_value & f.status_mask));
+	bool const tag_ok = (f.tag_mask == 0) || ((tag & f.tag_mask) != 0);
+	return status_ok && tag_ok;
+}
 } // anonymous namespace
 
 torrent_history::torrent_history(alert_handler* h, std::size_t max_tombstones)
@@ -58,6 +95,11 @@ try {
 	} else if (lt::torrent_removed_alert const* td = lt::alert_cast<lt::torrent_removed_alert>(a)) {
 		std::unique_lock<std::mutex> l(m_mutex);
 
+		// Read filter inputs before erasing so query_filtered can apply f_old
+		// to tombstones and avoid sending spurious removes to filtered clients.
+		auto const tag_it = m_tags.find(td->handle);
+		std::uint64_t const tag_val = (tag_it != m_tags.end()) ? tag_it->second : 0;
+
 		// Drop any tag entry the torrent had. The handle's underlying
 		// shared_ptr is what unordered_map hashes on, so the erase works
 		// even though the torrent itself is going away.
@@ -69,13 +111,17 @@ try {
 		// Determine when this torrent was first seen, so that removed_since()
 		// can skip notifying clients that never received an add for it.
 		frame_t added_frame = m_frame + 1;
+		std::uint8_t sbits_val = 0;
 		auto const it = m_queue.right.find(st);
 		if (it != m_queue.right.end()) {
 			added_frame = it->first.added_frame;
+			sbits_val = status_bits(it->first.status);
 			m_queue.right.erase(it);
 		}
 
-		m_removed.push_front({m_frame + 1, added_frame, td->info_hashes.get_best()});
+		m_removed.push_front(
+			{m_frame + 1, added_frame, td->info_hashes.get_best(), sbits_val, tag_val}
+		);
 
 		// Evict oldest tombstones when over the limit. The deque is
 		// newest-first, so back() is always the oldest entry.
@@ -115,6 +161,18 @@ try {
 } catch (std::exception const&) {
 }
 
+void torrent_history::append_removed(
+	frame_t const since_frame, filter_spec const& filter, query_result& result
+) const
+{
+	if (result.is_snapshot) return;
+	for (auto const& e : m_removed) {
+		if (e.removed_frame <= since_frame) break;
+		if (e.added_frame <= since_frame && matched(filter, e.sbits, e.tag))
+			result.removed.push_back(e.ih);
+	}
+}
+
 torrent_history::query_result torrent_history::query(frame_t since_frame) const
 {
 	query_result result;
@@ -128,12 +186,64 @@ torrent_history::query_result torrent_history::query(frame_t since_frame) const
 		result.updated.push_back(e.second);
 	}
 
-	if (!result.is_snapshot) {
-		for (auto const& e : m_removed) {
-			if (e.removed_frame <= since_frame) break;
-			if (e.added_frame <= since_frame) result.removed.push_back(e.ih);
+	append_removed(since_frame, filter_spec{}, result);
+
+	return result;
+}
+
+torrent_history::query_result torrent_history::query_filtered(
+	frame_t since_frame, filter_spec const& f_old, filter_spec const& f_new
+) const
+{
+	if (f_old.empty() && f_new.empty()) return query(since_frame);
+
+	// Filter change can pull in torrents stable since K (they may have
+	// crossed the boundary); the early break is only safe when stable.
+	bool const break_on_old = (f_old == f_new);
+
+	query_result result;
+	std::unique_lock<std::mutex> l(m_mutex);
+	result.current_frame = current_frame_locked();
+	if (since_frame < m_horizon) since_frame = 0;
+	result.is_snapshot = (since_frame == 0);
+
+	for (auto const& bimap_entry : m_queue.left) {
+		if (break_on_old && bimap_entry.first <= since_frame) break;
+
+		torrent_history_entry const& e = bimap_entry.second;
+
+		// Already holding m_mutex; read m_tags directly to avoid the
+		// get_tag() re-lock.
+		auto const tag_it = m_tags.find(e.status.handle);
+		std::uint64_t const tag_val = (tag_it != m_tags.end()) ? tag_it->second : 0;
+		std::uint8_t const sbits = status_bits(e.status);
+
+		bool const now = matched(f_new, sbits, tag_val);
+
+		// matched(f_old,...) is reliable when inputs haven't moved since K,
+		// or f_old is empty (result is unconditionally true regardless).
+		bool const inputs_certain = f_old.empty() || e.filter_inputs_stable_since(since_frame);
+		bool const then = !result.is_snapshot && inputs_certain && matched(f_old, sbits, tag_val);
+
+		if (!now) {
+			// Spurious removals are harmless; a missed removal leaves the
+			// client with a permanently stale view. Emit removal when we
+			// know (then) or cannot rule out (!inputs_certain) that the
+			// entry was in the client's prior view. added_frame > since_frame
+			// means the client never received this entry, so no removal needed.
+			if (!result.is_snapshot && e.added_frame <= since_frame && (then || !inputs_certain))
+				result.removed.push_back(e.status.info_hashes.get_best());
+			continue;
 		}
+		result.updated.push_back(e);
+		// Use since_frame + 1 (not current_frame): an idle session can have
+		// current_frame == since_frame, and the serializer's check is
+		// `frame[k] <= since_frame` -- equal would still drop the field.
+		// The original entry in m_queue is untouched; only this copy changes.
+		if (!then) result.updated.back().frame.fill(since_frame + 1);
 	}
+
+	append_removed(since_frame, f_old, result);
 
 	return result;
 }

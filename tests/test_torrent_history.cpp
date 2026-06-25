@@ -384,9 +384,9 @@ BOOST_AUTO_TEST_CASE(tag_delta_visible_in_query)
 			// frame[tag] must be strictly greater than the caller's frame —
 			// that's what makes the entry "new" from the client's perspective.
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::tag] > f_client);
-			// No other per-field counter should have advanced as a side-effect
-			// of set_tag. The flag bits are tracked across two slots
-			// (status_flags + other_flags); check both.
+			// of set_tag. The flag slot is now split into status_flags +
+			// other_flags so the filter stability check can ignore changes
+			// to flag bits it doesn't care about; check both slots here.
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::state] <= f_client);
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::status_flags] <= f_client);
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::other_flags] <= f_client);
@@ -490,4 +490,343 @@ BOOST_AUTO_TEST_CASE(horizon_after_tombstone_eviction)
 		BOOST_TEST(r.is_snapshot);
 		BOOST_TEST(r.updated.size() == 1u);
 	}
+}
+
+// status_bits projects the chosen 8 bits from torrent_status. Exercised here
+// without a session because it's a pure projection on the input struct.
+BOOST_AUTO_TEST_CASE(status_bits_projection)
+{
+	lt::torrent_status s;
+
+	// Each wire-state value lights exactly one bit in the high nibble.
+	s.state = lt::torrent_status::checking_files;
+	BOOST_TEST(ltweb::status_bits(s) == 0x10);
+	s.state = lt::torrent_status::downloading_metadata;
+	BOOST_TEST(ltweb::status_bits(s) == 0x20);
+	s.state = lt::torrent_status::downloading;
+	BOOST_TEST(ltweb::status_bits(s) == 0x40);
+	s.state = lt::torrent_status::seeding;
+	BOOST_TEST(ltweb::status_bits(s) == 0x80);
+
+	// checking_resume_data collapses to the checking-files bit, finished
+	// collapses to seeding -- the same enum-pair mapping the case-20
+	// response serializer uses.
+	s.state = lt::torrent_status::checking_resume_data;
+	BOOST_TEST(ltweb::status_bits(s) == 0x10);
+	s.state = lt::torrent_status::finished;
+	BOOST_TEST(ltweb::status_bits(s) == 0x80);
+
+	// Flag bits OR with the state bit.
+	s.state = lt::torrent_status::downloading;
+	s.flags = lt::torrent_flags::paused;
+	BOOST_TEST(ltweb::status_bits(s) == (0x01 | 0x40));
+	s.flags = lt::torrent_flags::auto_managed;
+	BOOST_TEST(ltweb::status_bits(s) == (0x02 | 0x40));
+	s.flags = lt::torrent_flags::paused | lt::torrent_flags::auto_managed;
+	BOOST_TEST(ltweb::status_bits(s) == (0x01 | 0x02 | 0x40));
+
+	// 0x04 is reserved and must never be set, even with every flag bit on.
+	s.flags = ~lt::torrent_flags_t{};
+	BOOST_TEST((ltweb::status_bits(s) & 0x04) == 0);
+
+	// Any non-zero errc lights bit 3.
+	s.flags = {};
+	s.state = lt::torrent_status::downloading;
+	s.errc = lt::error_code(1, boost::system::generic_category());
+	BOOST_TEST(ltweb::status_bits(s) & 0x08);
+}
+
+// query_filtered with two empty filter specs must return the same shape as
+// the plain query() at the same frame.
+BOOST_AUTO_TEST_CASE(query_filtered_empty_degenerates_to_query)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	p.info_hashes = lt::info_hash_t(make_v1(0x70));
+	ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	auto const r_q = history.query(0);
+	auto const r_f = history.query_filtered(0, ltweb::filter_spec{}, ltweb::filter_spec{});
+	BOOST_TEST(r_q.is_snapshot == r_f.is_snapshot);
+	BOOST_TEST(r_q.current_frame == r_f.current_frame);
+	BOOST_TEST(r_q.updated.size() == r_f.updated.size());
+	BOOST_TEST(r_q.removed.size() == r_f.removed.size());
+}
+
+// Widening the filter (or changing it such that a previously-excluded
+// torrent now matches) puts that torrent in updated with frame[] filled to
+// current_frame, so the serializer treats every requested field as new.
+// Verifies the four-outcome rule's "false -> true" branch.
+BOOST_AUTO_TEST_CASE(query_filtered_widening_forces_full_update)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0x50);
+	lt::sha1_hash const ih_b = make_v1(0x51);
+	p.info_hashes = lt::info_hash_t(ih_a);
+	ses.add_torrent(p);
+	p.info_hashes = lt::info_hash_t(ih_b);
+	ses.add_torrent(p);
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	BOOST_TEST(history.set_tag(ih_a, 0x1, ~std::uint64_t(0)));
+
+	// Drain to a known frame the client has already seen.
+	auto const initial = history.query(0);
+	BOOST_TEST(initial.updated.size() == 2u);
+	ltweb::frame_t const f_client = initial.current_frame;
+
+	// f_old matches nothing (bit 1, which neither torrent carries),
+	// f_new matches A. Filter changed -> slow path.
+	ltweb::filter_spec f_old;
+	f_old.tag_mask = 0x2;
+	ltweb::filter_spec f_new;
+	f_new.tag_mask = 0x1;
+
+	auto const r = history.query_filtered(f_client, f_old, f_new);
+
+	BOOST_TEST(r.updated.size() == 1u);
+	if (r.updated.size() == 1u) {
+		BOOST_TEST((r.updated[0].status.info_hashes == lt::info_hash_t(ih_a)));
+		// Every per-field frame counter should be strictly greater than the
+		// caller's since_frame, so the serializer's "field changed since K"
+		// check (frame[k] <= since_frame -> skip) includes every requested
+		// field. Strictly-greater is what makes this work even when an idle
+		// session has current_frame == since_frame.
+		for (auto const fr : r.updated[0].frame)
+			BOOST_TEST(fr > f_client);
+	}
+	// B was never matched -- skipped, not put in removed.
+	BOOST_TEST(r.removed.empty());
+}
+
+// Narrowing the filter pushes torrents that fall out of view into the
+// removed list (sharing the on-wire stream with session-level tombstones).
+// Verifies the "true -> false" branch of the four-outcome rule.
+BOOST_AUTO_TEST_CASE(query_filtered_narrowing_emits_removal)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0x60);
+	lt::sha1_hash const ih_b = make_v1(0x61);
+	p.info_hashes = lt::info_hash_t(ih_a);
+	ses.add_torrent(p);
+	p.info_hashes = lt::info_hash_t(ih_b);
+	ses.add_torrent(p);
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	BOOST_TEST(history.set_tag(ih_a, 0x1, ~std::uint64_t(0)));
+	BOOST_TEST(history.set_tag(ih_b, 0x2, ~std::uint64_t(0)));
+
+	auto const initial = history.query(0);
+	ltweb::frame_t const f_client = initial.current_frame;
+
+	// f_old matches both (bits 0 or 1), f_new only matches A.
+	ltweb::filter_spec f_old;
+	f_old.tag_mask = 0x3;
+	ltweb::filter_spec f_new;
+	f_new.tag_mask = 0x1;
+
+	auto const r = history.query_filtered(f_client, f_old, f_new);
+
+	BOOST_TEST(r.removed.size() == 1u);
+	if (r.removed.size() == 1u) BOOST_TEST((r.removed[0] == ih_b));
+
+	// A remained matched -- present in updated as a stable delta.
+	BOOST_TEST(r.updated.size() == 1u);
+	if (r.updated.size() == 1u)
+		BOOST_TEST((r.updated[0].status.info_hashes == lt::info_hash_t(ih_a)));
+}
+
+// filter_inputs_stable_since(K) tracks the four contributing fields. A
+// tag change advances frame[tag] past K, flipping the predicate from true
+// to false until K catches up to the new current_frame.
+BOOST_AUTO_TEST_CASE(filter_inputs_stable_since_tracks_tag)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih = make_v1(0x80);
+	p.info_hashes = lt::info_hash_t(ih);
+	ses.add_torrent(p);
+	wait_for(ses, handler, 1, lt::add_torrent_alert::alert_type);
+
+	auto const initial = history.query(0);
+	ltweb::frame_t const f0 = initial.current_frame;
+	BOOST_TEST(initial.updated.size() == 1u);
+	if (!initial.updated.empty()) BOOST_TEST(initial.updated[0].filter_inputs_stable_since(f0));
+
+	BOOST_TEST(history.set_tag(ih, 0x1, ~std::uint64_t(0)));
+
+	auto const after = history.query(0);
+	BOOST_TEST(after.updated.size() == 1u);
+	if (!after.updated.empty()) {
+		BOOST_TEST(!after.updated[0].filter_inputs_stable_since(f0));
+		// Stable again once K catches up to the new frame.
+		BOOST_TEST(after.updated[0].filter_inputs_stable_since(after.current_frame));
+	}
+}
+
+// A removed torrent that never matched f_old must not appear in the removed
+// list -- the client was never told about it so it cannot remove it locally.
+// A removed torrent that did match f_old must still appear.
+BOOST_AUTO_TEST_CASE(query_filtered_tombstone_respects_f_old)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0x90); // will carry tag 0x1 -- in filter
+	lt::sha1_hash const ih_b = make_v1(0x91); // no tag          -- outside filter
+	p.info_hashes = lt::info_hash_t(ih_a);
+	lt::torrent_handle ha = ses.add_torrent(p);
+	p.info_hashes = lt::info_hash_t(ih_b);
+	lt::torrent_handle hb = ses.add_torrent(p);
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	BOOST_TEST(history.set_tag(ih_a, 0x1, ~std::uint64_t(0)));
+
+	// Drain to a stable frame the client has already seen.
+	auto const initial = history.query(0);
+	ltweb::frame_t const f_client = initial.current_frame;
+
+	// Remove both torrents.
+	ses.remove_torrent(ha);
+	ses.remove_torrent(hb);
+	wait_for(ses, handler, 2, lt::torrent_removed_alert::alert_type);
+
+	// Filter: only torrents with tag bit 0.
+	ltweb::filter_spec f;
+	f.tag_mask = 0x1;
+
+	auto const r = history.query_filtered(f_client, f, f);
+
+	// A (tag=1) matched f_old -- client must be told it was removed.
+	auto const has_a = std::find(r.removed.begin(), r.removed.end(), ih_a) != r.removed.end();
+	BOOST_TEST(has_a);
+
+	// B (tag=0) never matched f_old -- must not appear in removed.
+	auto const has_b = std::find(r.removed.begin(), r.removed.end(), ih_b) != r.removed.end();
+	BOOST_TEST(!has_b);
+}
+
+// When the filter is unchanged and a live torrent's inputs change after
+// since_frame such that it exits the filter view, the client must receive a
+// removal. The entry IS visited on the first poll (bimap_key > since_frame),
+// but the old code skipped it when inputs_certain was false rather than
+// emitting a removal. On the next poll since_frame has caught up so the
+// early-break fires and the entry is never visited again -- permanent stale view.
+BOOST_AUTO_TEST_CASE(query_filtered_unchanged_filter_exit_emits_removal)
+{
+	lt::session ses(make_settings_pack());
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0xb0); // starts matching, then leaves
+	lt::sha1_hash const ih_b = make_v1(0xb1); // never matches -- must not appear in removed
+	p.info_hashes = lt::info_hash_t(ih_a);
+	ses.add_torrent(p);
+	p.info_hashes = lt::info_hash_t(ih_b);
+	ses.add_torrent(p);
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	BOOST_TEST(history.set_tag(ih_a, 0x1, ~std::uint64_t(0)));
+
+	// Drain to a stable frame where A is in the tag-0x1 filter view.
+	auto const initial = history.query(0);
+	ltweb::frame_t const f_client = initial.current_frame;
+
+	// Clear A's tag AFTER f_client so filter_inputs_stable_since(f_client)
+	// is false for A -- this is the unstable-exit path.
+	BOOST_TEST(history.set_tag(ih_a, 0x0, ~std::uint64_t(0)));
+
+	ltweb::filter_spec f;
+	f.tag_mask = 0x1;
+
+	auto const r = history.query_filtered(f_client, f, f);
+
+	// A was in the filter view at f_client and has now left it; must be removed.
+	auto const has_a = std::find(r.removed.begin(), r.removed.end(), ih_a) != r.removed.end();
+	BOOST_TEST(has_a);
+
+	// B (tag=0) never matched -- must not appear in removed.
+	auto const has_b = std::find(r.removed.begin(), r.removed.end(), ih_b) != r.removed.end();
+	BOOST_TEST(!has_b);
+}
+
+// An all-zero f_old (match-all) implies the client held every live torrent
+// in their view. A torrent whose filter inputs changed after since_frame (so
+// filter_inputs_stable_since() is false) must still appear in removed when it
+// does not match f_new -- the stability guard must not suppress the match for
+// an empty f_old because matched(f_old,...) is unconditionally true for it.
+BOOST_AUTO_TEST_CASE(query_filtered_empty_f_old_skips_stability_guard)
+{
+	lt::session ses(make_settings_pack());
+
+	ltweb::alert_handler handler(ses);
+	ltweb::torrent_history history(&handler);
+
+	lt::add_torrent_params p;
+	p.save_path = ".";
+	lt::sha1_hash const ih_a = make_v1(0xa0); // tag 0x1 -- matches f_new
+	lt::sha1_hash const ih_b = make_v1(0xa1); // tag 0x2 -- outside f_new
+	p.info_hashes = lt::info_hash_t(ih_a);
+	ses.add_torrent(p);
+	p.info_hashes = lt::info_hash_t(ih_b);
+	ses.add_torrent(p);
+	wait_for(ses, handler, 2, lt::add_torrent_alert::alert_type);
+
+	// Drain to a stable frame representing the client's last-seen state.
+	auto const initial = history.query(0);
+	ltweb::frame_t const f_client = initial.current_frame;
+	BOOST_TEST(initial.updated.size() == 2u);
+
+	// Set both tags AFTER f_client so frame[tag] > f_client for both entries,
+	// making filter_inputs_stable_since(f_client) false.
+	BOOST_TEST(history.set_tag(ih_a, 0x1, ~std::uint64_t(0)));
+	BOOST_TEST(history.set_tag(ih_b, 0x2, ~std::uint64_t(0)));
+
+	// f_old is all-zero (the initial _filter state -- no prior filter was active).
+	// f_new restricts to tag bit 0 only.
+	ltweb::filter_spec const f_old; // all-zero
+	ltweb::filter_spec f_new;
+	f_new.tag_mask = 0x1;
+
+	auto const r = history.query_filtered(f_client, f_old, f_new);
+
+	// B (tag=0x2) was in the unfiltered view at f_client but does not match
+	// f_new. Its inputs are unstable. The fix ensures f_old.empty() forces
+	// then=true without consulting the stability guard.
+	auto const has_b = std::find(r.removed.begin(), r.removed.end(), ih_b) != r.removed.end();
+	BOOST_TEST(has_b);
+
+	// A (tag=0x1) matches f_new -- must appear in updated.
+	BOOST_TEST(r.updated.size() == 1u);
+	if (r.updated.size() == 1u)
+		BOOST_TEST((r.updated[0].status.info_hashes == lt::info_hash_t(ih_a)));
 }
