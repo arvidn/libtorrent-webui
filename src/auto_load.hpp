@@ -10,18 +10,23 @@ see LICENSE file.
 #ifndef LTWEB_AUTO_LOAD_HPP
 #define LTWEB_AUTO_LOAD_HPP
 
+#include "alert_observer.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/io_context.hpp"
 #include "boost/asio/high_resolution_timer.hpp"
+#include <cstdint>
+#include <filesystem>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <chrono>
 
 namespace ltweb {
+struct alert_handler;
 struct save_settings_interface;
 
-struct auto_load {
-	auto_load(lt::session& s, save_settings_interface* sett = NULL);
+struct auto_load : alert_observer {
+	auto_load(lt::session& s, alert_handler* h, save_settings_interface* sett = nullptr);
 	~auto_load();
 
 	void set_auto_load_dir(std::string const& dir);
@@ -34,11 +39,13 @@ struct auto_load {
 	bool remove_files() const;
 
 private:
+	void handle_alert(lt::alert const* a) override;
 	void on_scan(lt::error_code const& ec);
 
 	void thread_fun();
 
 	lt::session& m_ses;
+	alert_handler* m_alerts;
 	boost::asio::io_context m_ios;
 	boost::asio::high_resolution_timer m_timer;
 	save_settings_interface* m_settings;
@@ -47,17 +54,20 @@ private:
 	// as they are loaded
 	bool m_remove_files;
 
-	// when not removing files, keep track of
-	// the ones we've already loaded to not
-	// add them again
+	// filenames already submitted to the session, to avoid re-adding on rescan
 	std::set<std::string> m_already_loaded;
+
+	// when remove_files is set, maps a per-add ID to the .torrent file path
+	// pending deletion once the add_torrent_alert confirms success
+	std::map<std::uintptr_t, std::filesystem::path> m_pending_files;
+	std::uintptr_t m_next_pending_id = 0;
 
 	std::string m_dir;
 	std::chrono::seconds m_scan_interval;
 	bool m_abort;
 
-	// used to protect m_abort, m_scan_interval, m_dir
-	// and m_remove_files
+	// protects m_abort, m_scan_interval, m_dir, m_remove_files,
+	// m_already_loaded, and m_pending_files
 	mutable std::mutex m_mutex;
 
 	// this needs to be last in order to be initialized

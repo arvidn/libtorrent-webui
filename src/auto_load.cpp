@@ -8,10 +8,12 @@ see LICENSE file.
 */
 
 #include "auto_load.hpp"
+#include "alert_handler.hpp"
 
 #include <functional>
 
 #include "libtorrent/add_torrent_params.hpp"
+#include "libtorrent/alert_types.hpp"
 #include "libtorrent/load_torrent.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/error_code.hpp"
@@ -22,7 +24,6 @@ see LICENSE file.
 using namespace std::placeholders;
 
 namespace ltweb {
-
 
 namespace {
 
@@ -46,8 +47,9 @@ list_dir(std::string const& path, bool (*filter_fun)(lt::string_view), lt::error
 }
 } // namespace
 
-auto_load::auto_load(lt::session& s, save_settings_interface* sett)
+auto_load::auto_load(lt::session& s, alert_handler* h, save_settings_interface* sett)
 	: m_ses(s)
+	, m_alerts(h)
 	, m_timer(m_ios)
 	, m_settings(sett)
 	, m_remove_files(true)
@@ -56,6 +58,8 @@ auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 	, m_abort(false)
 	, m_thread(std::bind(&auto_load::thread_fun, this))
 {
+	if (m_alerts) m_alerts->subscribe<lt::add_torrent_alert>(this);
+
 	if (m_settings) {
 		int const interval = m_settings->get_int("autoload_interval", -1);
 		if (interval != -1) set_scan_interval(std::chrono::seconds(interval));
@@ -68,6 +72,8 @@ auto_load::auto_load(lt::session& s, save_settings_interface* sett)
 
 auto_load::~auto_load()
 {
+	if (m_alerts) m_alerts->unsubscribe(this);
+
 	std::unique_lock<std::mutex> l(m_mutex);
 	m_abort = true;
 	l.unlock();
@@ -145,7 +151,7 @@ void auto_load::on_scan(lt::error_code const& e)
 	if (m_scan_interval == std::chrono::seconds(0)) return;
 
 	std::string path = m_dir;
-	bool remove_files = m_remove_files;
+	bool const remove_files = m_remove_files;
 	l.unlock();
 
 	lt::error_code ec;
@@ -155,15 +161,11 @@ void auto_load::on_scan(lt::error_code const& e)
 		ec
 	);
 	for (auto const& file : ents) {
-		if (m_already_loaded.count(file)) {
-			if (remove_files) {
-				std::string file_path = (std::filesystem::path(path) / file).string();
-				std::error_code fec;
-				std::filesystem::remove(file_path, fec);
-				if (!fec) m_already_loaded.erase(m_already_loaded.find(file));
-			}
-			continue;
-		}
+		l.lock();
+		bool const already_added = m_already_loaded.count(file) > 0;
+		l.unlock();
+
+		if (already_added) continue;
 
 		std::string file_path = (std::filesystem::path(path) / file).string();
 		lt::error_code tec;
@@ -177,15 +179,25 @@ void auto_load::on_scan(lt::error_code const& e)
 			p.flags = (p.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
 		else
 			p.flags = (p.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
-		m_ses.async_add_torrent(std::move(p));
-
 		// TODO: there should be a configuration option to
 		// move the torrent file into a different directory
-		if (remove_files) {
+		if (m_alerts && remove_files) {
+			l.lock();
+			std::uintptr_t const id = ++m_next_pending_id;
+			m_pending_files[id] = file_path;
+			m_already_loaded.insert(file);
+			l.unlock();
+			p.userdata = lt::client_data_t(reinterpret_cast<void*>(id));
+		} else if (remove_files) {
 			std::error_code fec;
 			std::filesystem::remove(file_path, fec);
-		} else
+		} else {
+			l.lock();
 			m_already_loaded.insert(file);
+			l.unlock();
+		}
+
+		m_ses.async_add_torrent(std::move(p));
 	}
 
 	l.lock();
@@ -197,6 +209,40 @@ void auto_load::on_scan(lt::error_code const& e)
 
 	m_timer.expires_after(interval);
 	m_timer.async_wait(std::bind(&auto_load::on_scan, this, _1));
+}
+
+void auto_load::handle_alert(lt::alert const* a)
+{
+	auto const* at = lt::alert_cast<lt::add_torrent_alert>(a);
+	if (at == nullptr) return;
+
+	void* const raw = at->params.userdata.get<void>();
+	if (raw == nullptr) return;
+	std::uintptr_t const id = reinterpret_cast<std::uintptr_t>(raw);
+
+	std::unique_lock<std::mutex> l(m_mutex);
+	auto const it = m_pending_files.find(id);
+	if (it == m_pending_files.end()) return;
+	std::filesystem::path const file_path = std::move(it->second);
+	m_pending_files.erase(it);
+	std::string const filename = file_path.filename().string();
+
+	if (at->error) {
+		m_already_loaded.erase(filename);
+		return;
+	}
+
+	bool const should_remove = m_remove_files;
+	l.unlock();
+
+	if (should_remove) {
+		std::error_code fec;
+		std::filesystem::remove(file_path, fec);
+		if (!fec) {
+			l.lock();
+			m_already_loaded.erase(filename);
+		}
+	}
 }
 
 } // namespace ltweb
