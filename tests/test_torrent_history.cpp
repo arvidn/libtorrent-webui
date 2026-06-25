@@ -384,6 +384,7 @@ BOOST_AUTO_TEST_CASE(tag_delta_visible_in_query)
 			// frame[tag] must be strictly greater than the caller's frame —
 			// that's what makes the entry "new" from the client's perspective.
 			BOOST_TEST(r.updated[0].frame[ltweb::torrent_history_entry::tag] > f_client);
+			// No other per-field counter should have advanced as a side-effect
 			// of set_tag. The flag slot is now split into status_flags +
 			// other_flags so the filter stability check can ignore changes
 			// to flag bits it doesn't care about; check both slots here.
