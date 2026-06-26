@@ -266,6 +266,19 @@ lt::torrent_status torrent_history::get_torrent_status(lt::sha1_hash const& ih) 
 	return st.status;
 }
 
+std::pair<lt::queue_position_t, lt::torrent_handle>
+torrent_history::get_queue_pos(lt::sha1_hash const& ih) const
+{
+	torrent_history_entry st;
+	st.status.info_hashes.v1 = ih;
+
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	queue_t::right_const_iterator it = m_queue.right.find(st);
+	if (it == m_queue.right.end()) return {lt::queue_position_t{}, lt::torrent_handle{}};
+	return {it->first.status.queue_position, it->first.status.handle};
+}
+
 bool torrent_history::set_tag(
 	lt::sha1_hash const& ih, std::uint64_t const value, std::uint64_t const mask
 )

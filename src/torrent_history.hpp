@@ -16,6 +16,7 @@ see LICENSE file.
 #include <mutex> // for mutex
 #include <deque>
 #include <unordered_map>
+#include <utility>
 
 #define BOOST_BIMAP_DISABLE_SERIALIZATION
 // boost/bimap/detail/user_interface_config.hpp defines
@@ -225,6 +226,12 @@ struct torrent_history : alert_observer {
 	query_filtered(frame_t since_frame, filter_spec const& f_old, filter_spec const& f_new) const;
 
 	lt::torrent_status get_torrent_status(lt::sha1_hash const& ih) const;
+
+	// lightweight alternative to get_torrent_status for callers that only
+	// need the queue position and handle. Returns {no_pos, invalid_handle}
+	// when the info-hash is unknown.
+	std::pair<lt::queue_position_t, lt::torrent_handle> get_queue_pos(lt::sha1_hash const& ih
+	) const;
 
 	// get-modify-set on the per-torrent tag bitfield.
 	//   new_tag = (old_tag & ~mask) | (value & mask)
