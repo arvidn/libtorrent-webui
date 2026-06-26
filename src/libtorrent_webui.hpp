@@ -109,6 +109,15 @@ private:
 	template <typename Fun>
 	bool apply_torrent_fun(websocket_conn* st, function_call f, Fun const& fun);
 
+	// like apply_torrent_fun, but sort the resolved torrents by queue_position
+	// (using cmp) before invoking fun. queue moves are not commutative across a
+	// set of torrents: applying queue_position_up to two adjacent torrents in the
+	// wrong order cancels the move; applying queue_position_top in input order
+	// reverses the selection's relative queue order. Sorting first makes the
+	// final state independent of the order the client listed the info-hashes in.
+	template <typename Cmp, typename Fun>
+	bool apply_torrent_fun_ordered(websocket_conn* st, function_call f, Cmp cmp, Fun const& fun);
+
 	lt::session& m_ses;
 	// TODO: all of these should be protected by individual mutexes.
 	// websockets are serviced from a thread pool
