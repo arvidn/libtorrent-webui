@@ -8,8 +8,9 @@ see LICENSE file.
 */
 
 #include "piece_history.hpp"
+#include "libtorrent/assert.hpp"
 #include <algorithm>
-#include <set>
+#include <vector>
 
 namespace ltweb {
 
@@ -19,24 +20,45 @@ piece_history::piece_history(lt::sha1_hash const& ih, std::size_t max_tombstones
 {
 }
 
-frame_t piece_history::update(std::vector<lt::partial_piece_info> const& pieces)
+frame_t piece_history::update(std::vector<lt::partial_piece_info> pieces)
 {
 	frame_t const frame = ++m_frame;
 
-	// Build the set of incoming piece indices.
-	std::set<lt::piece_index_t> incoming;
-	for (auto const& p : pieces)
-		incoming.insert(p.piece_index);
+	std::sort(
+		pieces.begin(),
+		pieces.end(),
+		[](lt::partial_piece_info const& a, lt::partial_piece_info const& b) {
+			return a.piece_index < b.piece_index;
+		}
+	);
+	// libtorrent guarantees one entry per piece in the download queue
+	TORRENT_ASSERT(
+		std::adjacent_find(
+			pieces.begin(),
+			pieces.end(),
+			[](lt::partial_piece_info const& a, lt::partial_piece_info const& b) {
+				return a.piece_index == b.piece_index;
+			}
+		)
+		== pieces.end()
+	);
 
 	// Remove pieces that are no longer in the download queue.
+	auto incoming_it = pieces.begin();
 	for (auto it = m_pieces.begin(); it != m_pieces.end();) {
-		if (incoming.count(it->first) == 0) {
+		while (incoming_it != pieces.end() && incoming_it->piece_index < it->first)
+			++incoming_it;
+		if (incoming_it == pieces.end() || incoming_it->piece_index != it->first) {
 			m_removed.push_front({frame, it->second.added_frame, it->first});
 			it = m_pieces.erase(it);
 		} else {
+			++incoming_it;
 			++it;
 		}
 	}
+
+	std::vector<lt::piece_index_t> inserted_pieces;
+	if (!m_removed.empty()) inserted_pieces.reserve(pieces.size());
 
 	// Add or update pieces.
 	for (auto const& p : pieces) {
@@ -49,13 +71,7 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> const& pieces)
 			entry.blocks.resize(p.blocks_in_piece);
 			for (int i = 0; i < p.blocks_in_piece; ++i)
 				entry.blocks[i] = {std::uint8_t(p.blocks[i].state), frame};
-
-			// If this piece re-appeared after removal, clean it from m_removed.
-			auto const rem_end =
-				std::remove_if(m_removed.begin(), m_removed.end(), [&](auto const& r) {
-					return r.piece_index == p.piece_index;
-				});
-			m_removed.erase(rem_end, m_removed.end());
+			if (!m_removed.empty()) inserted_pieces.push_back(p.piece_index);
 		} else {
 			// Grow the block array if the piece reports more blocks than stored
 			// (shouldn't normally happen, but be defensive).
@@ -67,6 +83,15 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> const& pieces)
 				if (entry.blocks[i].state != new_state) entry.blocks[i] = {new_state, frame};
 			}
 		}
+	}
+
+	if (!inserted_pieces.empty()) {
+		auto const rem_end = std::remove_if(m_removed.begin(), m_removed.end(), [&](auto const& r) {
+			return std::binary_search(
+				inserted_pieces.begin(), inserted_pieces.end(), r.piece_index
+			);
+		});
+		m_removed.erase(rem_end, m_removed.end());
 	}
 
 	// Evict oldest tombstones when over the limit (deque is newest-first).

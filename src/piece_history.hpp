@@ -48,7 +48,7 @@ struct piece_history {
 
 	// Feed a fresh download queue snapshot.
 	// Increments the internal frame counter and returns the new frame.
-	frame_t update(std::vector<lt::partial_piece_info> const& pieces);
+	frame_t update(std::vector<lt::partial_piece_info> pieces);
 
 	struct block_update {
 		lt::piece_index_t piece_index;

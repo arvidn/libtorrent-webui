@@ -1421,7 +1421,7 @@ bool libtorrent_webui::get_piece_updates(websocket_conn* st, function_call f)
 		m_piece_histories.emplace_front(ih);
 		if (m_piece_histories.size() > 10) m_piece_histories.pop_back();
 	}
-	frame_t const new_frame = m_piece_histories.front().update(pieces);
+	frame_t const new_frame = m_piece_histories.front().update(std::move(pieces));
 
 	auto const r = m_piece_histories.front().query(client_frame);
 
