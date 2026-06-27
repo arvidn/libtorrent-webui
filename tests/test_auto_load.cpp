@@ -11,6 +11,7 @@ see LICENSE file.
 #include <boost/test/included/unit_test.hpp>
 
 #include "auto_load.hpp"
+#include "alert_handler.hpp"
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/settings_pack.hpp>
@@ -50,8 +51,12 @@ void write_minimal_torrent(std::filesystem::path const& path)
 	f.write(data, sizeof(data) - 1);
 }
 
-// Wait up to `timeout` for an add_torrent_alert. Returns true if one arrives.
-bool wait_for_add(lt::session& ses, std::chrono::seconds const timeout)
+// Wait up to `timeout` for an add_torrent_alert, dispatching through `handler`
+// so that any alert subscribers (e.g. auto_load) are notified synchronously
+// before this function returns.
+bool wait_for_add(
+	lt::session& ses, ltweb::alert_handler& handler, std::chrono::seconds const timeout
+)
 {
 	auto const deadline = std::chrono::steady_clock::now() + timeout;
 	while (std::chrono::steady_clock::now() < deadline) {
@@ -62,8 +67,11 @@ bool wait_for_add(lt::session& ses, std::chrono::seconds const timeout)
 		ses.wait_for_alert(remaining);
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
+		bool found = false;
 		for (auto const* a : alerts)
-			if (a->type() == lt::add_torrent_alert::alert_type) return true;
+			if (a->type() == lt::add_torrent_alert::alert_type) found = true;
+		handler.dispatch_alerts(alerts);
+		if (found) return true;
 	}
 	return false;
 }
@@ -87,29 +95,31 @@ BOOST_AUTO_TEST_CASE(basic_pickup)
 	// to the session. set_auto_load_dir() cancels the 1-second startup timer
 	// and fires an immediate scan via expires_after(0).
 	lt::session ses = make_session();
+	ltweb::alert_handler handler(ses);
 	temp_dir dir("ltweb_auto_load_1");
 	write_minimal_torrent(dir.path / "test.torrent");
 
-	ltweb::auto_load al(ses);
+	ltweb::auto_load al(ses, &handler);
 	al.set_remove_files(false);
 	al.set_auto_load_dir(dir.path.string());
 
-	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(wait_for_add(ses, handler, std::chrono::seconds(5)));
 }
 
 BOOST_AUTO_TEST_CASE(remove_files_true)
 {
 	// remove_files=true: the .torrent file is deleted after it is loaded
 	lt::session ses = make_session();
+	ltweb::alert_handler handler(ses);
 	temp_dir dir("ltweb_auto_load_2");
 	auto const torrent_path = dir.path / "test.torrent";
 	write_minimal_torrent(torrent_path);
 
-	ltweb::auto_load al(ses);
+	ltweb::auto_load al(ses, &handler);
 	al.set_remove_files(true);
 	al.set_auto_load_dir(dir.path.string());
 
-	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(wait_for_add(ses, handler, std::chrono::seconds(5)));
 	BOOST_TEST(!std::filesystem::exists(torrent_path));
 }
 
@@ -117,15 +127,16 @@ BOOST_AUTO_TEST_CASE(remove_files_false)
 {
 	// remove_files=false: the .torrent file is kept after it is loaded
 	lt::session ses = make_session();
+	ltweb::alert_handler handler(ses);
 	temp_dir dir("ltweb_auto_load_3");
 	auto const torrent_path = dir.path / "test.torrent";
 	write_minimal_torrent(torrent_path);
 
-	ltweb::auto_load al(ses);
+	ltweb::auto_load al(ses, &handler);
 	al.set_remove_files(false);
 	al.set_auto_load_dir(dir.path.string());
 
-	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(wait_for_add(ses, handler, std::chrono::seconds(5)));
 	BOOST_TEST(std::filesystem::exists(torrent_path));
 }
 
@@ -134,6 +145,7 @@ BOOST_AUTO_TEST_CASE(non_torrent_ignored)
 	// Non-.torrent files are ignored: place a .txt file alongside a .torrent,
 	// wait for the one expected alert, then assert only one torrent was added.
 	lt::session ses = make_session();
+	ltweb::alert_handler handler(ses);
 	temp_dir dir("ltweb_auto_load_4");
 	write_minimal_torrent(dir.path / "real.torrent");
 	{
@@ -141,10 +153,10 @@ BOOST_AUTO_TEST_CASE(non_torrent_ignored)
 		f << "not a torrent\n";
 	}
 
-	ltweb::auto_load al(ses);
+	ltweb::auto_load al(ses, &handler);
 	al.set_remove_files(false);
 	al.set_auto_load_dir(dir.path.string());
 
-	BOOST_TEST(wait_for_add(ses, std::chrono::seconds(5)));
+	BOOST_TEST(wait_for_add(ses, handler, std::chrono::seconds(5)));
 	BOOST_TEST(ses.get_torrents().size() == 1);
 }
