@@ -10,7 +10,6 @@ see LICENSE file.
 #include "piece_history.hpp"
 #include "libtorrent/assert.hpp"
 #include <algorithm>
-#include <vector>
 
 namespace ltweb {
 
@@ -57,10 +56,8 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> pieces)
 		}
 	}
 
-	std::vector<lt::piece_index_t> inserted_pieces;
-	if (!m_removed.empty()) inserted_pieces.reserve(pieces.size());
-
 	// Add or update pieces.
+	bool any_inserted = false;
 	for (auto const& p : pieces) {
 		auto [it, inserted] = m_pieces.emplace(p.piece_index, piece_history_entry{});
 		piece_history_entry& entry = it->second;
@@ -71,7 +68,7 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> pieces)
 			entry.blocks.resize(p.blocks_in_piece);
 			for (int i = 0; i < p.blocks_in_piece; ++i)
 				entry.blocks[i] = {std::uint8_t(p.blocks[i].state), frame};
-			if (!m_removed.empty()) inserted_pieces.push_back(p.piece_index);
+			any_inserted = true;
 		} else {
 			// Grow the block array if the piece reports more blocks than stored
 			// (shouldn't normally happen, but be defensive).
@@ -85,11 +82,13 @@ frame_t piece_history::update(std::vector<lt::partial_piece_info> pieces)
 		}
 	}
 
-	if (!inserted_pieces.empty()) {
+	// A tombstone whose piece_index is back in m_pieces was re-inserted this
+	// call and must be cleared — a piece can only hold a tombstone if it was
+	// previously erased from m_pieces. Skip the scan when nothing was inserted
+	// since m_pieces and m_removed are always disjoint.
+	if (!m_removed.empty() && any_inserted) {
 		auto const rem_end = std::remove_if(m_removed.begin(), m_removed.end(), [&](auto const& r) {
-			return std::binary_search(
-				inserted_pieces.begin(), inserted_pieces.end(), r.piece_index
-			);
+			return m_pieces.contains(r.piece_index);
 		});
 		m_removed.erase(rem_end, m_removed.end());
 	}
