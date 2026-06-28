@@ -24,7 +24,7 @@ namespace ltweb {
 struct file_history_entry {
 	std::int64_t progress = 0;
 	lt::download_priority_t priority = lt::default_priority;
-	std::uint8_t open_mode = 0;
+	lt::file_open_mode_t open_mode{};
 
 	// frame when each dynamic field last changed (0 = never updated)
 	frame_t progress_frame = 1;
@@ -70,12 +70,15 @@ struct file_history {
 	// Value accessors — call after update(), before the next update().
 	std::int64_t progress(int fi) const { return m_files[fi].progress; }
 	lt::download_priority_t priority(int fi) const { return m_files[fi].priority; }
-	std::uint8_t open_mode(int fi) const { return m_files[fi].open_mode; }
+	lt::file_open_mode_t open_mode(int fi) const { return m_files[fi].open_mode; }
 
 private:
+	void update_open_modes(std::vector<lt::open_file_state> open_modes, frame_t frame);
+
 	lt::sha1_hash const m_ih;
 	frame_t m_frame = 1;
 	std::vector<file_history_entry> m_files; // indexed by file_index
+	std::vector<lt::file_index_t> m_open_files; // sorted, currently-open file indices
 };
 
 } // namespace ltweb

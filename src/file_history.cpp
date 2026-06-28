@@ -8,7 +8,8 @@ see LICENSE file.
 */
 
 #include "file_history.hpp"
-#include <unordered_map>
+#include <algorithm>
+#include <libtorrent/assert.hpp>
 
 namespace ltweb {
 
@@ -16,6 +17,75 @@ file_history::file_history(lt::sha1_hash const& ih, lt::file_storage const& fs)
 	: m_ih(ih)
 	, m_files(static_cast<std::size_t>(fs.num_files()))
 {
+}
+
+void file_history::update_open_modes(std::vector<lt::open_file_state> current, frame_t frame)
+{
+	int const n = static_cast<int>(m_files.size());
+
+	std::sort(
+		current.begin(),
+		current.end(),
+		[](lt::open_file_state const& a, lt::open_file_state const& b) {
+			return a.file_index < b.file_index;
+		}
+	);
+
+	TORRENT_ASSERT(
+		std::adjacent_find(
+			current.begin(),
+			current.end(),
+			[](lt::open_file_state const& a, lt::open_file_state const& b) {
+				return a.file_index == b.file_index;
+			}
+		)
+		== current.end()
+	);
+
+	std::vector<lt::file_index_t> next_open;
+	next_open.reserve(current.size());
+
+	auto old_it = m_open_files.begin();
+	auto new_it = current.begin();
+
+	while (old_it != m_open_files.end() || new_it != current.end()) {
+		bool const have_old = old_it != m_open_files.end();
+		bool const have_new = new_it != current.end();
+
+		if (have_old && have_new && *old_it == new_it->file_index) {
+			// File was open and still is: check mode change.
+			lt::file_index_t const fi = *old_it;
+			TORRENT_ASSERT(static_cast<int>(fi) >= 0 && static_cast<int>(fi) < n);
+			auto& e = m_files[static_cast<std::size_t>(static_cast<int>(fi))];
+			if (new_it->open_mode != e.open_mode) {
+				e.open_mode = new_it->open_mode;
+				e.open_mode_frame = frame;
+			}
+			next_open.push_back(fi);
+			++old_it;
+			++new_it;
+		} else if (have_old && (!have_new || *old_it < new_it->file_index)) {
+			// File was open, now closed.
+			lt::file_index_t const fi = *old_it;
+			TORRENT_ASSERT(static_cast<int>(fi) >= 0 && static_cast<int>(fi) < n);
+			auto& e = m_files[static_cast<std::size_t>(static_cast<int>(fi))];
+			e.open_mode = lt::file_open_mode_t{};
+			e.open_mode_frame = frame;
+			++old_it;
+		} else {
+			// File was closed, now open.
+			lt::file_index_t const fi = new_it->file_index;
+			if (static_cast<int>(fi) >= 0 && static_cast<int>(fi) < n) {
+				auto& e = m_files[static_cast<std::size_t>(static_cast<int>(fi))];
+				e.open_mode = new_it->open_mode;
+				e.open_mode_frame = frame;
+				next_open.push_back(fi);
+			}
+			++new_it;
+		}
+	}
+
+	m_open_files = std::move(next_open);
 }
 
 frame_t file_history::update(
@@ -45,23 +115,7 @@ frame_t file_history::update(
 		}
 	}
 
-	if (open_modes != nullptr) {
-		// open_modes is sparse: only currently-open files appear.
-		// Build a dense lookup for this update round.
-		std::unordered_map<int, std::uint8_t> om;
-		om.reserve(open_modes->size());
-		for (auto const& s : *open_modes)
-			om[static_cast<int>(s.file_index)] = static_cast<std::uint8_t>(s.open_mode);
-
-		for (int fi = 0; fi < n; ++fi) {
-			auto const it = om.find(fi);
-			std::uint8_t const new_mode = (it != om.end()) ? it->second : std::uint8_t(0);
-			if (new_mode != m_files[fi].open_mode) {
-				m_files[fi].open_mode = new_mode;
-				m_files[fi].open_mode_frame = frame;
-			}
-		}
-	}
+	if (open_modes != nullptr) update_open_modes(*open_modes, frame);
 
 	return frame;
 }
