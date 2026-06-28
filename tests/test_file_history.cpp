@@ -219,11 +219,11 @@ BOOST_AUTO_TEST_CASE(open_mode_accessor_after_close)
 
 	std::vector<lt::open_file_state> om1 = {make_open(0, 0x06)};
 	fh.update(nullptr, nullptr, &om1);
-	BOOST_TEST(fh.open_mode(0) == 0x06u);
+	BOOST_TEST(fh.open_mode(0) == lt::file_open_mode_t(0x06));
 
 	std::vector<lt::open_file_state> om2; // closed
 	fh.update(nullptr, nullptr, &om2);
-	BOOST_TEST(fh.open_mode(0) == 0u);
+	BOOST_TEST(fh.open_mode(0) == lt::file_open_mode_t{});
 }
 
 // Value accessors return the values last passed to update().
@@ -243,8 +243,8 @@ BOOST_AUTO_TEST_CASE(accessors_return_updated_values)
 	BOOST_TEST(fh.progress(1) == 2000);
 	BOOST_TEST((fh.priority(0) == lt::download_priority_t(3)));
 	BOOST_TEST((fh.priority(1) == lt::download_priority_t(6)));
-	BOOST_TEST(fh.open_mode(0) == 0x04u);
-	BOOST_TEST(fh.open_mode(1) == 0u);
+	BOOST_TEST(fh.open_mode(0) == lt::file_open_mode_t(0x04));
+	BOOST_TEST(fh.open_mode(1) == lt::file_open_mode_t{});
 }
 
 // Two clients at different frames receive the correct delta subsets.
@@ -273,6 +273,64 @@ BOOST_AUTO_TEST_CASE(multiple_clients_at_different_frames)
 	auto const b_masks = fh.query(f1, 0x08u);
 	BOOST_TEST((b_masks[0] & 0x08u) == 0u);
 	BOOST_TEST((b_masks[1] & 0x08u) == 0u);
+}
+
+// A file opened in read_only mode (open_mode value == 0, same as the default
+// "closed" sentinel) must still have its open and close transitions reported.
+BOOST_AUTO_TEST_CASE(open_mode_read_only_reported)
+{
+	auto const fs = make_fs(1);
+	ltweb::file_history fh(make_hash(0x11), fs);
+
+	ltweb::frame_t f0 = fh.frame();
+	// Open file 0 in read_only mode (= 0, same value as the closed sentinel).
+	std::vector<lt::open_file_state> om1 = {make_open(0, 0)};
+	ltweb::frame_t f1 = fh.update(nullptr, nullptr, &om1);
+
+	// Open transition must be reported.
+	auto const open_masks = fh.query(f0, 0x20u);
+	BOOST_TEST((open_masks[0] & 0x20u) != 0u);
+
+	// Close transition must also be reported.
+	std::vector<lt::open_file_state> om2;
+	fh.update(nullptr, nullptr, &om2);
+
+	auto const close_masks = fh.query(f1, 0x20u);
+	BOOST_TEST((close_masks[0] & 0x20u) != 0u);
+}
+
+// open_file_state entries with out-of-range file indices are silently ignored.
+BOOST_AUTO_TEST_CASE(open_mode_invalid_entries_ignored)
+{
+	auto const fs = make_fs(2); // valid indices: 0, 1
+	ltweb::file_history fh(make_hash(0x11), fs);
+
+	ltweb::frame_t f_before = fh.frame();
+	// index -1 and index 5 are both out of range
+	std::vector<lt::open_file_state> om = {make_open(-1, 0x02), make_open(5, 0x04)};
+	fh.update(nullptr, nullptr, &om);
+
+	// Neither valid file should be reported as changed.
+	auto const masks = fh.query(f_before, 0x20u);
+	BOOST_TEST((masks[0] & 0x20u) == 0u);
+	BOOST_TEST((masks[1] & 0x20u) == 0u);
+}
+
+// Entries supplied in non-sorted order must produce the same result as sorted order.
+BOOST_AUTO_TEST_CASE(open_mode_unsorted_entries)
+{
+	auto const fs = make_fs(3);
+	ltweb::file_history fh(make_hash(0x11), fs);
+
+	ltweb::frame_t f_before = fh.frame();
+	// Pass files in reverse index order.
+	std::vector<lt::open_file_state> om = {make_open(2, 0x04), make_open(0, 0x02)};
+	fh.update(nullptr, nullptr, &om);
+
+	auto const masks = fh.query(f_before, 0x20u);
+	BOOST_TEST((masks[0] & 0x20u) != 0u); // opened
+	BOOST_TEST((masks[1] & 0x20u) == 0u); // never opened
+	BOOST_TEST((masks[2] & 0x20u) != 0u); // opened
 }
 
 // Only the bits set in requested_mask are ever returned.

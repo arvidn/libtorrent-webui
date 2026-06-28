@@ -1187,7 +1187,7 @@ bool libtorrent_webui::get_file_updates(websocket_conn* st, function_call f)
 
 		if (fmask & 0x10) write_uint8(static_cast<std::uint8_t>(fh.priority(i)), ptr);
 
-		if (fmask & 0x20) write_uint8(fh.open_mode(i), ptr);
+		if (fmask & 0x20) write_uint8(static_cast<std::uint8_t>(fh.open_mode(i)), ptr);
 	}
 	l.unlock();
 
