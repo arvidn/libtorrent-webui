@@ -158,5 +158,5 @@ BOOST_AUTO_TEST_CASE(non_torrent_ignored)
 	al.set_auto_load_dir(dir.path.string());
 
 	BOOST_TEST(wait_for_add(ses, handler, std::chrono::seconds(5)));
-	BOOST_TEST(ses.get_torrents().size() == 1);
+	BOOST_TEST(ses.get_torrents().size() == 1u);
 }

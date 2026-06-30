@@ -107,7 +107,7 @@ BOOST_AUTO_TEST_CASE(integration)
 	// All three torrents must appear in the history
 	{
 		auto const r = history.query(0);
-		BOOST_TEST(r.updated.size() == 3);
+		BOOST_TEST(r.updated.size() == 3u);
 	}
 
 	// v1-only lookup by sha1 hash
@@ -154,14 +154,14 @@ BOOST_AUTO_TEST_CASE(integration)
 		wait_for(ses, handler, 1, lt::torrent_removed_alert::alert_type);
 
 		auto const r = history.query(f);
-		BOOST_TEST(r.removed.size() == 1);
+		BOOST_TEST(r.removed.size() == 1u);
 		if (!r.removed.empty()) BOOST_TEST((r.removed[0] == v1_hash));
 	}
 
 	// After removal the torrent no longer shows up in query
 	{
 		auto const r = history.query(0);
-		BOOST_TEST(r.updated.size() == 2);
+		BOOST_TEST(r.updated.size() == 2u);
 		for (auto const& e : r.updated)
 			BOOST_TEST((e.status.info_hashes != lt::info_hash_t(v1_hash)));
 	}
@@ -205,7 +205,7 @@ BOOST_AUTO_TEST_CASE(removed_before_client_saw_add)
 	// A client at f1 (after the add) should receive the removal.
 	{
 		auto const r = history.query(f1);
-		BOOST_TEST(r.removed.size() == 1);
+		BOOST_TEST(r.removed.size() == 1u);
 		if (!r.removed.empty()) BOOST_TEST((r.removed[0] == make_v1(0xbb)));
 	}
 }

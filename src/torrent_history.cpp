@@ -298,7 +298,11 @@ bool torrent_history::set_tag(
 	auto tag_it = m_tags.find(h);
 	std::uint64_t const old_tag = (tag_it != m_tags.end()) ? tag_it->second : 0;
 	std::uint64_t const new_tag = (old_tag & ~mask) | (value & mask);
-	if (new_tag == old_tag) return false;
+	// also proceed when frame[tag] == ~frame_t{0}: the sentinel set by the
+	// entry constructor means this is the first delivery. bump the frame so
+	// subsequent queries don't keep re-sending an unchanged value.
+	bool const first_delivery = (it->first.frame[torrent_history_entry::tag] == ~frame_t{0});
+	if (new_tag == old_tag && !first_delivery) return false;
 
 	// Drop the entry from m_tags when the value goes back to 0 (the default).
 	// Keeps the map sparse and matches the "absent == 0" convention used by

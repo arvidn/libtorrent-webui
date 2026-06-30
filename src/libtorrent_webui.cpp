@@ -32,6 +32,7 @@ see LICENSE file.
 #include "save_settings.hpp"
 #include "torrent_history.hpp"
 #include "websocket_conn.hpp"
+#include "wire_flags.hpp"
 
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/core/multi_buffer.hpp>
@@ -230,6 +231,11 @@ struct add_torrent_user_data {
 	std::shared_ptr<websocket_conn> st;
 	int function_id;
 	std::uint16_t transaction_id;
+	// Initial tag bitfield, already AND-masked against the caller's
+	// allow_set_tag permission. The alert handler calls set_tag with this
+	// value unconditionally (even when zero) to clear the ~frame_t{0}
+	// sentinel so untagged torrents appear stable in the first delta query.
+	std::uint64_t initial_tag = 0;
 };
 
 enum error_t {
@@ -246,6 +252,71 @@ enum error_t {
 };
 
 } // anonymous namespace
+
+namespace aux {
+
+// Mask of every protocol flag bit accepted by add-torrent (see
+// docs/libtorrent-webui.rst). Callers reject requests with any other
+// bit set.
+constexpr wire_flags_t add_torrent_known_flags = wire::stopped | wire::auto_managed
+	| wire::sequential_download | wire::seed_mode | wire::upload_mode | wire::share_mode
+	| wire::super_seeding | wire::disable_pex | wire::disable_dht | wire::disable_lsd
+	| wire::disable_v1_hashes | wire::i2p_torrent | wire::default_dont_download
+	| wire::metadata_only;
+
+// Translate add-torrent's protocol flag bitmask into the matching
+// libtorrent torrent_flags_t. The caller must verify proto has no bits
+// outside add_torrent_known_flags before calling.
+inline lt::torrent_flags_t translate_add_torrent_flags(wire_flags_t const proto)
+{
+	lt::torrent_flags_t f = {};
+	if (proto & wire::stopped) f |= lt::torrent_flags::paused;
+	if (proto & wire::auto_managed) f |= lt::torrent_flags::auto_managed;
+	if (proto & wire::sequential_download) f |= lt::torrent_flags::sequential_download;
+	if (proto & wire::seed_mode) f |= lt::torrent_flags::seed_mode;
+	if (proto & wire::upload_mode) f |= lt::torrent_flags::upload_mode;
+	if (proto & wire::share_mode) f |= lt::torrent_flags::share_mode;
+	if (proto & wire::super_seeding) f |= lt::torrent_flags::super_seeding;
+	if (proto & wire::disable_pex) f |= lt::torrent_flags::disable_pex;
+	if (proto & wire::disable_dht) f |= lt::torrent_flags::disable_dht;
+	if (proto & wire::disable_lsd) f |= lt::torrent_flags::disable_lsd;
+	if (proto & wire::disable_v1_hashes) f |= lt::torrent_flags::disable_v1_hashes;
+	if (proto & wire::i2p_torrent) f |= lt::torrent_flags::i2p_torrent;
+	if (proto & wire::default_dont_download) f |= lt::torrent_flags::default_dont_download;
+	if (proto & wire::metadata_only) f |= lt::torrent_flags::stop_when_ready;
+	return f;
+}
+
+// Translate torrent_status into the wire-protocol flags bitmask sent in
+// get-torrent-updates field 0. Write-only add-torrent bits are never set here.
+inline wire_flags_t wire_flags_from_status(lt::torrent_status const& s)
+{
+	using namespace wire;
+	wire_flags_t f = {};
+	if (s.flags & lt::torrent_flags::paused) f |= stopped;
+	if (s.flags & lt::torrent_flags::auto_managed) f |= auto_managed;
+	if (s.flags & lt::torrent_flags::sequential_download) f |= sequential_download;
+	if (s.is_seeding) f |= seeding;
+	if (s.is_finished) f |= finished;
+	if (s.has_metadata) f |= has_metadata;
+	if (s.has_incoming) f |= has_incoming;
+	if (s.flags & lt::torrent_flags::seed_mode) f |= seed_mode;
+	if (s.flags & lt::torrent_flags::upload_mode) f |= upload_mode;
+	if (s.flags & lt::torrent_flags::share_mode) f |= share_mode;
+	if (s.flags & lt::torrent_flags::super_seeding) f |= super_seeding;
+	if (s.moving_storage) f |= moving_storage;
+	if (s.announcing_to_trackers) f |= announcing_to_trackers;
+	if (s.announcing_to_lsd) f |= announcing_to_lsd;
+	if (s.announcing_to_dht) f |= announcing_to_dht;
+	if (s.flags & lt::torrent_flags::disable_pex) f |= disable_pex;
+	if (s.flags & lt::torrent_flags::disable_dht) f |= disable_dht;
+	if (s.flags & lt::torrent_flags::disable_lsd) f |= disable_lsd;
+	if (s.flags & lt::torrent_flags::disable_v1_hashes) f |= disable_v1_hashes;
+	if (s.flags & lt::torrent_flags::i2p_torrent) f |= i2p_torrent;
+	return f;
+}
+
+} // namespace aux
 
 struct function_call {
 	int function_id;
@@ -431,25 +502,8 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 			// write field f to buffer
 			switch (f) {
 				case 0: // flags
-				{
-					std::uint64_t const flags = ((s.flags & lt::torrent_flags::paused) ? 0x001 : 0)
-						| ((s.flags & lt::torrent_flags::auto_managed) ? 0x002 : 0)
-						| ((s.flags & lt::torrent_flags::sequential_download) ? 0x004 : 0)
-						| (s.is_seeding ? 0x008 : 0)
-						| (s.is_finished ? 0x010 : 0)
-						// 0x20 is unused
-						| (s.has_metadata ? 0x040 : 0) | (s.has_incoming ? 0x080 : 0)
-						| ((s.flags & lt::torrent_flags::seed_mode) ? 0x100 : 0)
-						| ((s.flags & lt::torrent_flags::upload_mode) ? 0x200 : 0)
-						| ((s.flags & lt::torrent_flags::share_mode) ? 0x400 : 0)
-						| ((s.flags & lt::torrent_flags::super_seeding) ? 0x800 : 0)
-						| (s.moving_storage ? 0x1000 : 0) | (s.announcing_to_trackers ? 0x2000 : 0)
-						| (s.announcing_to_lsd ? 0x4000 : 0) | (s.announcing_to_dht ? 0x8000 : 0)
-						| (s.has_metadata ? 0x10000 : 0);
-
-					write_uint64(flags, ptr);
+					write_uint64(static_cast<std::uint32_t>(aux::wire_flags_from_status(s)), ptr);
 					break;
-				}
 				case 1: // name
 				{
 					std::string name = s.name;
@@ -982,6 +1036,18 @@ void libtorrent_webui::handle_alert(lt::alert const* a)
 		if (ud == nullptr) return;
 
 		std::unique_ptr<add_torrent_user_data> deleter(ud);
+
+		// Permission masking already happened in add_torrent(); ud->initial_tag
+		// is the effective value the caller is allowed to set. Call set_tag
+		// unconditionally so the sentinel frame[tag] is bumped even when the
+		// effective tag is 0 (permission denied), making the true effective tag
+		// visible in the first get-torrent-updates response. Requires
+		// torrent_history to have subscribed to add_torrent_alert first so the
+		// entry already exists when we arrive here.
+		if (!at->error) {
+			lt::sha1_hash const ih = at->handle.info_hashes().get_best();
+			m_hist.set_tag(ih, ud->initial_tag, ~std::uint64_t{0});
+		}
 
 		auto response =
 			make_rpc_response(ud->function_id, ud->transaction_id, at->error ? failed : no_error);
@@ -1778,11 +1844,26 @@ bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
 	// magnet:?xt=urn:btih:<40 bytes info-hash>
 	if (len < 62) return error(st, f, truncated_message);
 
-	int magnet_len = read_uint16(iptr);
+	int const magnet_len = read_uint16(iptr);
 	len -= 2;
 	if (len < magnet_len) return error(st, f, truncated_message);
 
-	lt::string_view magnet_link(iptr, magnet_len);
+	lt::string_view const magnet_link(iptr, magnet_len);
+	iptr += magnet_len;
+	len -= magnet_len;
+
+	// 12-byte trailer: uint32 protocol-flags + uint64 tag.
+	if (len != 12) return error(st, f, truncated_message);
+	aux::wire_flags_t proto_flags{read_uint32(iptr)};
+	std::uint64_t const requested_tag = read_uint64(iptr);
+
+	// Reserved bits must be zero -- a client that does not understand a
+	// bit it sets cannot reason about the resulting torrent's behavior, so
+	// refuse rather than silently dropping it.
+	if (proto_flags & ~aux::add_torrent_known_flags) return error(st, f, invalid_argument);
+
+	// Silently drop flag bits the user is not permitted to set.
+	proto_flags &= st->perms()->allow_set_flags();
 
 	lt::add_torrent_params atp;
 
@@ -1791,14 +1872,33 @@ bool libtorrent_webui::add_torrent(websocket_conn* st, function_call f)
 	if (ec) return error(st, f, parse_error);
 
 	atp.save_path = m_settings.get_str("save_path", "./downloads");
-	if (m_settings.get_int("start_paused", 0))
-		atp.flags = (atp.flags & ~lt::torrent_flags::auto_managed) | lt::torrent_flags::paused;
-	else
-		atp.flags = (atp.flags & ~lt::torrent_flags::paused) | lt::torrent_flags::auto_managed;
+
+	// Clear the protocol-controlled flag bits from the magnet-derived
+	// defaults, then set exactly the bits the client requested. The
+	// start_paused server setting is not consulted here; the client
+	// controls the initial paused/auto_managed state via the stopped
+	// and auto_managed wire bits.
+	constexpr lt::torrent_flags_t protocol_controlled = lt::torrent_flags::paused
+		| lt::torrent_flags::auto_managed | lt::torrent_flags::sequential_download
+		| lt::torrent_flags::seed_mode | lt::torrent_flags::upload_mode
+		| lt::torrent_flags::share_mode | lt::torrent_flags::super_seeding
+		| lt::torrent_flags::disable_pex | lt::torrent_flags::disable_dht
+		| lt::torrent_flags::disable_lsd | lt::torrent_flags::disable_v1_hashes
+		| lt::torrent_flags::i2p_torrent | lt::torrent_flags::default_dont_download
+		| lt::torrent_flags::stop_when_ready;
+	atp.flags = (atp.flags & ~protocol_controlled) | aux::translate_add_torrent_flags(proto_flags);
+
 	atp.flags |= lt::torrent_flags::duplicate_is_error;
 
-	atp.userdata =
-		new add_torrent_user_data{st->shared_from_this(), f.function_id, f.transaction_id};
+	// Apply the per-bit tag permission policy at call time, while the
+	// permissions object is still reachable through `st`. The alert
+	// handler that ultimately writes the tag (see handle_alert below)
+	// runs on the alert thread and cannot safely revisit `st->perms()`.
+	std::uint64_t const effective_tag = requested_tag & st->perms()->allow_set_tag();
+
+	atp.userdata = new add_torrent_user_data{
+		st->shared_from_this(), f.function_id, f.transaction_id, effective_tag
+	};
 	m_ses.async_add_torrent(atp);
 	return true;
 }

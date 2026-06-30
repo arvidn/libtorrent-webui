@@ -178,23 +178,27 @@ The fields on torrents, in bitmask bit-order (LSB is bit 0), are:
 | 0        | uint64_t            | ``flags`` bitmask with the following     |
 |          |                     | bits:                                    |
 |          |                     |                                          |
-|          |                     |  | 0x00001. stopped                      |
-|          |                     |  | 0x00002. auto-managed                 |
-|          |                     |  | 0x00004. sequential-downloads         |
-|          |                     |  | 0x00008. seeding                      |
-|          |                     |  | 0x00010. finished                     |
-|          |                     |  | 0x00020. -- unused --                 |
-|          |                     |  | 0x00040. has-metadata                 |
-|          |                     |  | 0x00080. has-incoming-connections     |
-|          |                     |  | 0x00100. seed-mode                    |
-|          |                     |  | 0x00200. upload-mode                  |
-|          |                     |  | 0x00400. share-mode                   |
-|          |                     |  | 0x00800. super-seeding                |
-|          |                     |  | 0x01000. moving storage               |
-|          |                     |  | 0x02000. announcing to trackers       |
-|          |                     |  | 0x04000. announcing to lsd            |
-|          |                     |  | 0x08000. announcing to dht            |
-|          |                     |  | 0x10000. has metadata                 |
+|          |                     |  | 0x000001. stopped                     |
+|          |                     |  | 0x000002. auto-managed                |
+|          |                     |  | 0x000004. sequential-downloads        |
+|          |                     |  | 0x000008. seeding                     |
+|          |                     |  | 0x000010. finished                    |
+|          |                     |  | 0x000020. -- unused --                |
+|          |                     |  | 0x000040. has-metadata                |
+|          |                     |  | 0x000080. has-incoming-connections    |
+|          |                     |  | 0x000100. seed-mode                   |
+|          |                     |  | 0x000200. upload-mode                 |
+|          |                     |  | 0x000400. share-mode                  |
+|          |                     |  | 0x000800. super-seeding               |
+|          |                     |  | 0x001000. moving storage              |
+|          |                     |  | 0x002000. announcing to trackers      |
+|          |                     |  | 0x004000. announcing to lsd           |
+|          |                     |  | 0x008000. announcing to dht           |
+|          |                     |  | 0x010000. disable-pex                 |
+|          |                     |  | 0x020000. disable-dht                 |
+|          |                     |  | 0x040000. disable-lsd                 |
+|          |                     |  | 0x080000. disable-v1-hashes           |
+|          |                     |  | 0x100000. i2p-torrent                 |
 |          |                     |                                          |
 +----------+---------------------+------------------------------------------+
 | 1        | uint16_t, uint8_t[] | ``name``. This is a variable length      |
@@ -654,7 +658,10 @@ add-torrent
 
 function id 20.
 
-This function adds a torrent from a magnet link.
+This function adds a torrent from a magnet link, along with the new
+torrent's initial ``add_torrent_params``. At present those parameters
+are a flag bitmask and a tag bitfield; further parameters may be added
+in future revisions of the protocol.
 
 +----------+---------------------+------------------------------------------+
 | offset   | type                | name                                     |
@@ -662,11 +669,72 @@ This function adds a torrent from a magnet link.
 | 3        | uint16_t, uint8_t[] | Magnet link to add. 16 bit string length |
 |          |                     | followed by the string itself.           |
 +----------+---------------------+------------------------------------------+
+| ...      | uint32_t            | ``flags`` configuration bitmask applied  |
+|          |                     | to the torrent at creation. Bits 0-15    |
+|          |                     | share positions with the ``flags`` field |
+|          |                     | of `get-torrent-updates`_ (field 0);     |
+|          |                     | bits 17 and above are add-torrent-only:  |
+|          |                     |                                          |
+|          |                     |  | 0x000001. stopped                     |
+|          |                     |  | 0x000002. auto-managed                |
+|          |                     |  | 0x000004. sequential-download         |
+|          |                     |  | 0x000100. seed-mode                   |
+|          |                     |  | 0x000200. upload-mode                 |
+|          |                     |  | 0x000400. share-mode                  |
+|          |                     |  | 0x000800. super-seeding               |
+|          |                     |  | 0x010000. disable-pex                 |
+|          |                     |  | 0x020000. disable-dht                 |
+|          |                     |  | 0x040000. disable-lsd                 |
+|          |                     |  | 0x080000. disable-v1-hashes           |
+|          |                     |  | 0x100000. i2p-torrent                 |
+|          |                     |  | 0x200000. default-dont-download       |
+|          |                     |  | 0x400000. metadata-only               |
+|          |                     |                                          |
+|          |                     | Bits not listed are reserved; servers    |
+|          |                     | may reject calls with unknown bits set.  |
++----------+---------------------+------------------------------------------+
+| ...      | uint64_t            | ``tag``. Initial value of the torrent's  |
+|          |                     | tag bitfield -- the same field reported  |
+|          |                     | as field 23 of                           |
+|          |                     | `get-torrent-updates`_ and modified by   |
+|          |                     | the `set-tag`_ RPC.                      |
++----------+---------------------+------------------------------------------+
 
-ERROR, more options from add_torrent_params
+The ``flags`` bit values above use the same bit positions as the
+``flags`` field returned by `get-torrent-updates`_ (field 0), so a
+client can pass a saved ``flags`` value directly to ``add-torrent``
+without re-mapping bits. Read-only status bits from ``get-torrent-updates``
+(``seeding``, ``finished``, ``has-metadata``, etc.) are absent because
+they describe observed state rather than initial configuration; they are
+reserved and must be zero.
 
-The standard response indicates whether adding the torrent was successful or
-not. If the torrent already exists in the session, the call will fail.
+``stopped`` starts the torrent in the paused state. ``auto-managed``
+lets the session scheduler start and stop the torrent automatically;
+setting both ``stopped`` and ``auto-managed`` is valid and means "start
+paused but become auto-managed". ``seed-mode`` skips hash-checking and
+trusts that all pieces are already present. ``upload-mode`` suppresses
+downloading (only uploads). ``share-mode`` enables the share-ratio
+seeding mode. ``super-seeding`` enables super-seeding.
+
+The add-torrent-only flags (bits 17+) have no corresponding observable
+status in ``get-torrent-updates``. ``disable-pex``, ``disable-dht``,
+and ``disable-lsd`` suppress the respective peer-discovery mechanisms
+for this torrent only. ``disable-v1-hashes`` prevents the torrent from
+announcing with v1 hashes. ``i2p-torrent`` restricts the torrent to the
+I2P network. ``default-dont-download`` sets the initial file priority to
+0 (skip) for all files instead of the usual default priority.
+``metadata-only`` (libtorrent's ``stop_when_ready``) pauses the torrent
+automatically once metadata has been fetched.
+
+Unlike `set-tag`_, this call does not take a mask for ``tag``. The
+torrent is being created, so there are no prior bits to preserve; every
+bit of the torrent's tag is set directly from the supplied value. The
+per-bit permission policy described under `set-tag`_ still applies:
+bits the authenticated user is not permitted to write are silently
+cleared from the supplied value before the tag is stored.
+
+The standard response indicates whether adding the torrent was successful
+or not. If the torrent already exists in the session, the call will fail.
 
 get-peers-updates
 .................
@@ -1370,7 +1438,7 @@ Function IDs
 +-----+---------------------------+-----------------------------------------+
 |  19 | get-file-updates          | info-hash, frame-number, field-mask     |
 +-----+---------------------------+-----------------------------------------+
-|  20 | add-torrent               | uint16_t, char[]                        |
+|  20 | add-torrent               | magnet-link, flags+tag                  |
 +-----+---------------------------+-----------------------------------------+
 |  21 | get-peers-updates         | info-hash, frame-number, bitmask        |
 |     |                           | indicating which fields to return       |
