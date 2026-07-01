@@ -64,6 +64,12 @@ std::string etag_for_mtime(fs::file_time_type mtime)
 	return str.str();
 }
 
+static std::string_view cache_control_for_extension(std::string_view ext)
+{
+	if (ext == ".html") return "no-cache";
+	return "max-age=3600";
+}
+
 bool etag_matches(std::string_view if_none_match, std::string_view etag)
 {
 	if (etag.empty()) return false;
@@ -105,6 +111,7 @@ void serve_local_file(
 	// Content-Type: application/gzip for a request that asked for a
 	// .css/.html/.js etc.
 	std::string const& extension = resolved->content_type_extension;
+	std::string_view const cache_ctrl = cache_control_for_extension(extension);
 
 	auto const inm_it = request.find(http::field::if_none_match);
 	std::string_view const if_none_match = (inm_it != request.end())
@@ -117,7 +124,7 @@ void serve_local_file(
 		// for a 304, and the matching ETag already pins the variant.
 		http::response<http::empty_body> res{http::status::not_modified, request.version()};
 		apply_static_response_headers(
-			res, mime_type(extension), etag, size, request.keep_alive(), false
+			res, mime_type(extension), etag, cache_ctrl, size, request.keep_alive(), false
 		);
 		return send_http(socket, std::move(done), std::move(res));
 	}
@@ -126,7 +133,13 @@ void serve_local_file(
 		// HEAD must mirror GET's headers, so forward gzip_encoded.
 		http::response<http::empty_body> res{http::status::ok, request.version()};
 		apply_static_response_headers(
-			res, mime_type(extension), etag, size, request.keep_alive(), resolved->gzip_encoded
+			res,
+			mime_type(extension),
+			etag,
+			cache_ctrl,
+			size,
+			request.keep_alive(),
+			resolved->gzip_encoded
 		);
 		return send_http(socket, std::move(done), std::move(res));
 	}
@@ -137,7 +150,13 @@ void serve_local_file(
 		std::make_tuple(http::status::ok, request.version())
 	};
 	apply_static_response_headers(
-		res, mime_type(extension), etag, size, request.keep_alive(), resolved->gzip_encoded
+		res,
+		mime_type(extension),
+		etag,
+		cache_ctrl,
+		size,
+		request.keep_alive(),
+		resolved->gzip_encoded
 	);
 	send_http(socket, std::move(done), std::move(res));
 }

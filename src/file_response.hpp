@@ -65,9 +65,12 @@ std::string etag_for_mtime(std::filesystem::file_time_type mtime);
 bool etag_matches(std::string_view if_none_match, std::string_view etag);
 
 // Apply the headers shared by every successful and revalidation
-// response from serve_local_file: Content-Type, ETag, Content-Length,
-// keep-alive, Vary: Accept-Encoding, and (when gzip_encoded is true)
-// Content-Encoding: gzip.
+// response from serve_local_file: Content-Type, ETag, Cache-Control,
+// Content-Length, keep-alive, Vary: Accept-Encoding, and (when
+// gzip_encoded is true) Content-Encoding: gzip.
+//
+// cache_control is caller-supplied so .html files can use "no-cache"
+// while static assets (.js, .css, .svg) use "max-age=3600".
 //
 // Vary is required so HTTP caches treat the gzip-encoded and
 // identity variants of a URL as separate cache entries -- without
@@ -86,6 +89,7 @@ void apply_static_response_headers(
 	Response& res,
 	std::string_view content_type,
 	std::string_view etag,
+	std::string_view cache_control,
 	std::uint64_t content_length,
 	bool keep_alive,
 	bool gzip_encoded
@@ -93,6 +97,7 @@ void apply_static_response_headers(
 {
 	res.set(http::field::content_type, content_type);
 	res.set(http::field::etag, etag);
+	res.set(http::field::cache_control, cache_control);
 	res.set(http::field::vary, "Accept-Encoding");
 	if (gzip_encoded) res.set(http::field::content_encoding, "gzip");
 	res.content_length(content_length);
