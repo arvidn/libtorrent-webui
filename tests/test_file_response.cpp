@@ -123,7 +123,7 @@ BOOST_AUTO_TEST_CASE(wildcard_is_not_implemented)
 BOOST_AUTO_TEST_SUITE_END()
 
 // ---------------------------------------------------------------------------
-// resolve_gzip_alternate
+// resolve_encoded_alternate
 //
 // Touches the real filesystem. Each test creates files inside a unique
 // temp directory and removes them on teardown.
@@ -160,141 +160,174 @@ struct tmp_root {
 
 } // anonymous namespace
 
-BOOST_AUTO_TEST_SUITE(resolve_gzip_alternate_suite)
+BOOST_AUTO_TEST_SUITE(resolve_encoded_alternate_suite)
 
-BOOST_AUTO_TEST_CASE(prefers_gz_when_accept_encoding_allows)
+BOOST_AUTO_TEST_CASE(prefers_zstd_when_both_siblings_exist)
+{
+	// zstd is tried before gzip; when both siblings exist and the client
+	// accepts both, the .zst sibling wins.
+	tmp_root td;
+	auto const plain = td.touch("both.txt");
+	td.touch("both.txt.gz");
+	auto const zst = td.touch("both.txt.zst");
+
+	auto const resolved = resolve_encoded_alternate(plain, "gzip, zstd");
+	BOOST_REQUIRE(resolved.has_value());
+	BOOST_TEST(resolved->content_encoding == "zstd");
+	BOOST_TEST(resolved->path == zst);
+}
+
+BOOST_AUTO_TEST_CASE(falls_back_to_gzip_when_no_zst_sibling)
+{
+	// No .zst exists; falls back to .gz when client accepts gzip.
+	tmp_root td;
+	auto const plain = td.touch("both.txt");
+	auto const gz = td.touch("both.txt.gz");
+
+	auto const resolved = resolve_encoded_alternate(plain, "gzip, zstd");
+	BOOST_REQUIRE(resolved.has_value());
+	BOOST_TEST(resolved->content_encoding == "gzip");
+	BOOST_TEST(resolved->path == gz);
+}
+
+BOOST_AUTO_TEST_CASE(prefers_gz_when_accept_encoding_has_only_gzip)
 {
 	tmp_root td;
 	auto const plain = td.touch("both.txt");
 	auto const gz = td.touch("both.txt.gz");
 
-	auto const resolved = resolve_gzip_alternate(plain, "gzip");
+	auto const resolved = resolve_encoded_alternate(plain, "gzip");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->gzip_encoded == true);
+	BOOST_TEST(resolved->content_encoding == "gzip");
 	BOOST_TEST(resolved->path == gz);
 }
 
-BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_no_gzip_in_accept_encoding)
+BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_no_encoding_in_accept_encoding)
 {
 	tmp_root td;
 	auto const plain = td.touch("both.txt");
 	td.touch("both.txt.gz");
+	td.touch("both.txt.zst");
 
-	auto const resolved = resolve_gzip_alternate(plain, "");
+	auto const resolved = resolve_encoded_alternate(plain, "");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->gzip_encoded == false);
+	BOOST_TEST(resolved->content_encoding.empty());
 	BOOST_TEST(resolved->path == plain);
 }
 
-BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_gz_sibling_missing)
+BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_compressed_siblings_missing)
 {
-	// Client says it accepts gzip, but no .gz file exists. We should
-	// still serve the plain file uncompressed.
+	// Client says it accepts both encodings, but no siblings exist.
 	tmp_root td;
 	auto const plain = td.touch("only_plain.txt");
 
-	auto const resolved = resolve_gzip_alternate(plain, "gzip, deflate");
+	auto const resolved = resolve_encoded_alternate(plain, "gzip, zstd");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->gzip_encoded == false);
+	BOOST_TEST(resolved->content_encoding.empty());
 	BOOST_TEST(resolved->path == plain);
+}
+
+BOOST_AUTO_TEST_CASE(serves_zst_even_when_plain_missing)
+{
+	// The .zst lookup happens before the plain stat, so a request for a
+	// path that only exists compressed still works.
+	tmp_root td;
+	fs::path const requested = td.path / "only_zst.txt";
+	auto const zst = td.touch("only_zst.txt.zst");
+
+	auto const resolved = resolve_encoded_alternate(requested, "zstd");
+	BOOST_REQUIRE(resolved.has_value());
+	BOOST_TEST(resolved->content_encoding == "zstd");
+	BOOST_TEST(resolved->path == zst);
 }
 
 BOOST_AUTO_TEST_CASE(serves_gz_even_when_plain_missing)
 {
-	// The .gz lookup happens before the plain stat, so a request for
-	// a path that only exists in compressed form still works as long
-	// as the client accepts gzip.
 	tmp_root td;
 	fs::path const requested = td.path / "only_gz.txt";
 	auto const gz = td.touch("only_gz.txt.gz");
 
-	auto const resolved = resolve_gzip_alternate(requested, "gzip");
+	auto const resolved = resolve_encoded_alternate(requested, "gzip");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->gzip_encoded == true);
+	BOOST_TEST(resolved->content_encoding == "gzip");
 	BOOST_TEST(resolved->path == gz);
 }
 
-BOOST_AUTO_TEST_CASE(returns_nullopt_when_neither_exists)
+BOOST_AUTO_TEST_CASE(returns_nullopt_when_nothing_exists)
 {
 	tmp_root td;
 	fs::path const requested = td.path / "missing.txt";
 
-	BOOST_TEST(!resolve_gzip_alternate(requested, "gzip").has_value());
-	BOOST_TEST(!resolve_gzip_alternate(requested, "").has_value());
+	BOOST_TEST(!resolve_encoded_alternate(requested, "gzip, zstd").has_value());
+	BOOST_TEST(!resolve_encoded_alternate(requested, "").has_value());
 }
 
-BOOST_AUTO_TEST_CASE(only_gz_exists_but_client_does_not_accept)
+BOOST_AUTO_TEST_CASE(only_compressed_exists_but_client_does_not_accept)
 {
-	// Without "gzip" in Accept-Encoding we are not allowed to serve
-	// the .gz file, so this resolves to nullopt.
+	// Without matching tokens in Accept-Encoding we must not serve the
+	// compressed sibling; only the plain file is acceptable, and it does
+	// not exist, so the result is nullopt.
 	tmp_root td;
 	fs::path const requested = td.path / "only_gz.txt";
 	td.touch("only_gz.txt.gz");
 
-	BOOST_TEST(!resolve_gzip_alternate(requested, "").has_value());
-	BOOST_TEST(!resolve_gzip_alternate(requested, "deflate").has_value());
+	BOOST_TEST(!resolve_encoded_alternate(requested, "").has_value());
+	BOOST_TEST(!resolve_encoded_alternate(requested, "deflate").has_value());
 }
 
-BOOST_AUTO_TEST_CASE(content_type_extension_uses_requested_not_resolved_when_gzip)
+BOOST_AUTO_TEST_CASE(content_type_extension_uses_requested_not_resolved)
 {
-	// Regression guard: when gzip negotiation routes us to a .gz
-	// sibling, the resolved file's extension is ".gz" -- but the
-	// response's Content-Type must describe the UNDERLYING media
-	// type (e.g. text/css for a styles.css request). Using
-	// resolved->path.extension() would yield Content-Type:
-	// application/gzip, which is wrong. Per RFC 9110 sec. 8.4:
-	// Content-Type names the underlying media type; Content-Encoding
-	// (set separately) names the gzip wrapper.
+	// Regression guard: when a compressed sibling is selected, the
+	// resolved file's extension is ".gz" or ".zst" -- but the response's
+	// Content-Type must describe the UNDERLYING media type (e.g. text/css
+	// for a styles.css request). Per RFC 9110 sec. 8.4: Content-Type
+	// names the underlying media type; Content-Encoding names the wrapper.
 	tmp_root td;
 	auto const plain = td.touch("styles.css");
 	td.touch("styles.css.gz");
+	td.touch("styles.css.zst");
 
-	auto const resolved = resolve_gzip_alternate(plain, "gzip");
-	BOOST_REQUIRE(resolved.has_value());
-	BOOST_REQUIRE(resolved->gzip_encoded);
+	auto const resolved_gz = resolve_encoded_alternate(plain, "gzip");
+	BOOST_REQUIRE(resolved_gz.has_value());
+	BOOST_TEST(resolved_gz->path.extension().string() == ".gz");
+	BOOST_TEST(resolved_gz->content_type_extension == ".css");
 
-	// The trap: resolved->path.extension() is ".gz" -- the WRONG
-	// thing to feed to mime_type() lookup.
-	BOOST_TEST(resolved->path.extension().string() == ".gz");
-
-	// The fix: content_type_extension is the requested path's
-	// extension, regardless of which sibling we resolved.
-	BOOST_TEST(resolved->content_type_extension == ".css");
+	auto const resolved_zst = resolve_encoded_alternate(plain, "zstd");
+	BOOST_REQUIRE(resolved_zst.has_value());
+	BOOST_TEST(resolved_zst->path.extension().string() == ".zst");
+	BOOST_TEST(resolved_zst->content_type_extension == ".css");
 }
 
 BOOST_AUTO_TEST_CASE(content_type_extension_for_identity_response)
 {
-	// Non-gzip branch must also set content_type_extension so
+	// Identity branch must also set content_type_extension so
 	// callers can use a single field unconditionally.
 	tmp_root td;
 	auto const plain = td.touch("page.html");
 
-	auto const resolved = resolve_gzip_alternate(plain, "");
+	auto const resolved = resolve_encoded_alternate(plain, "");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(!resolved->gzip_encoded);
+	BOOST_TEST(resolved->content_encoding.empty());
 	BOOST_TEST(resolved->content_type_extension == ".html");
 }
 
 BOOST_AUTO_TEST_CASE(mtime_is_for_the_chosen_file)
 {
-	// When we serve the .gz, the returned mtime must be the .gz file's
-	// mtime, not the plain file's. This matters for ETag consistency.
+	// When we serve the compressed sibling, the returned mtime must be
+	// that sibling's mtime, not the plain file's.
 	tmp_root td;
 	auto const plain = td.touch("both.txt");
 	auto const gz = td.touch("both.txt.gz");
 
-	// Stamp the .gz a known interval in the past so its mtime
-	// differs from the plain file's by more than filesystem
-	// resolution would normally allow.
 	auto const plain_mtime = fs::last_write_time(plain);
 	auto const expected_gz_mtime = plain_mtime - std::chrono::hours(2);
 	std::error_code ec;
 	fs::last_write_time(gz, expected_gz_mtime, ec);
 	BOOST_REQUIRE(!ec);
 
-	auto const resolved = resolve_gzip_alternate(plain, "gzip");
+	auto const resolved = resolve_encoded_alternate(plain, "gzip");
 	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->gzip_encoded == true);
+	BOOST_TEST(resolved->content_encoding == "gzip");
 	BOOST_TEST((resolved->mtime == expected_gz_mtime));
 	BOOST_TEST((resolved->mtime != plain_mtime));
 }
@@ -307,8 +340,8 @@ BOOST_AUTO_TEST_SUITE_END()
 // Verifies the headers set on every success/revalidation response from
 // serve_local_file. The most important guarantee here is that Vary:
 // Accept-Encoding is always present, because without it a shared HTTP
-// cache could serve a gzip-encoded response to a client that does not
-// support gzip.
+// cache could serve a compressed response to a client that does not
+// support that encoding.
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -333,73 +366,90 @@ BOOST_AUTO_TEST_SUITE(apply_static_response_headers_suite)
 
 BOOST_AUTO_TEST_CASE(sets_vary_accept_encoding)
 {
-	// Vary must be set so caches keep gzip-encoded and identity
-	// variants in separate cache entries -- regardless of whether
-	// THIS particular response is the gzip-encoded one.
+	// Vary must be set so caches keep encoded and identity variants in
+	// separate cache entries -- regardless of whether this particular
+	// response is the compressed one.
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/html", "\"abc\"", 1234u, true, false);
+	apply_static_response_headers(res, "text/html", "\"abc\"", "no-cache", 1234u, true, {});
 	BOOST_TEST(header_value(res, http::field::vary) == "Accept-Encoding");
 }
 
-BOOST_AUTO_TEST_CASE(sets_vary_on_gzip_response_too)
+BOOST_AUTO_TEST_CASE(sets_vary_on_compressed_response_too)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/html", "\"abc\"", 1234u, true, true);
+	apply_static_response_headers(res, "text/html", "\"abc\"", "no-cache", 1234u, true, "gzip");
 	BOOST_TEST(header_value(res, http::field::vary) == "Accept-Encoding");
 }
 
 BOOST_AUTO_TEST_CASE(sets_content_type)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "image/png", "\"abc\"", 0u, true, false);
+	apply_static_response_headers(res, "image/png", "\"abc\"", "max-age=3600", 0u, true, {});
 	BOOST_TEST(header_value(res, http::field::content_type) == "image/png");
 }
 
 BOOST_AUTO_TEST_CASE(sets_etag)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"deadbeef\"", 0u, true, false);
+	apply_static_response_headers(res, "text/css", "\"deadbeef\"", "max-age=3600", 0u, true, {});
 	BOOST_TEST(header_value(res, http::field::etag) == "\"deadbeef\"");
+}
+
+BOOST_AUTO_TEST_CASE(sets_cache_control)
+{
+	auto res = make_blank_response();
+	apply_static_response_headers(res, "text/html", "\"x\"", "no-cache", 0u, true, {});
+	BOOST_TEST(header_value(res, http::field::cache_control) == "no-cache");
+
+	auto res2 = make_blank_response();
+	apply_static_response_headers(res2, "text/css", "\"x\"", "max-age=3600", 0u, true, {});
+	BOOST_TEST(header_value(res2, http::field::cache_control) == "max-age=3600");
 }
 
 BOOST_AUTO_TEST_CASE(sets_content_length)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"x\"", 4096u, true, false);
+	apply_static_response_headers(res, "text/css", "\"x\"", "max-age=3600", 4096u, true, {});
 	BOOST_TEST(header_value(res, http::field::content_length) == "4096");
 }
 
 BOOST_AUTO_TEST_CASE(keep_alive_true_on_http11)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"x\"", 0u, true, false);
+	apply_static_response_headers(res, "text/css", "\"x\"", "max-age=3600", 0u, true, {});
 	BOOST_TEST(res.keep_alive() == true);
 }
 
 BOOST_AUTO_TEST_CASE(keep_alive_false_on_http11)
 {
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"x\"", 0u, false, false);
+	apply_static_response_headers(res, "text/css", "\"x\"", "max-age=3600", 0u, false, {});
 	BOOST_TEST(res.keep_alive() == false);
 }
 
-BOOST_AUTO_TEST_CASE(sets_content_encoding_when_gzip_encoded_true)
+BOOST_AUTO_TEST_CASE(sets_content_encoding_gzip)
 {
-	// HEAD and GET both forward gzip_encoded=true when serving the
-	// .gz variant. This guarantees both branches advertise the
-	// encoding identically: the original bug was that HEAD did not.
+	// HEAD and GET both forward the encoding when serving a compressed
+	// sibling. This guarantees both branches advertise it identically.
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"x\"", 0u, true, true);
+	apply_static_response_headers(res, "text/css", "\"x\"", "max-age=3600", 0u, true, "gzip");
 	BOOST_TEST(header_value(res, http::field::content_encoding) == "gzip");
 }
 
-BOOST_AUTO_TEST_CASE(does_not_set_content_encoding_when_gzip_encoded_false)
+BOOST_AUTO_TEST_CASE(sets_content_encoding_zstd)
 {
-	// 304 Not Modified passes false here: per RFC 9110 sec. 15.4.5
-	// Content-Encoding is not in the required header set for a 304,
-	// and the matching ETag already pins the variant the cache has.
 	auto res = make_blank_response();
-	apply_static_response_headers(res, "text/css", "\"x\"", 0u, true, false);
+	apply_static_response_headers(res, "text/css", "\"x\"", "max-age=3600", 0u, true, "zstd");
+	BOOST_TEST(header_value(res, http::field::content_encoding) == "zstd");
+}
+
+BOOST_AUTO_TEST_CASE(does_not_set_content_encoding_when_empty)
+{
+	// 304 Not Modified passes an empty string here: per RFC 9110 sec.
+	// 15.4.5 Content-Encoding is not in the required header set for a
+	// 304, and the matching ETag already pins the variant the cache has.
+	auto res = make_blank_response();
+	apply_static_response_headers(res, "text/css", "\"x\"", "no-cache", 0u, true, {});
 	BOOST_TEST(header_value(res, http::field::content_encoding) == "");
 }
 
@@ -409,7 +459,7 @@ BOOST_AUTO_TEST_CASE(works_with_other_body_types)
 	// applies headers on a different body type too. serve_local_file
 	// uses both http::empty_body (304/HEAD) and http::file_body (GET).
 	http::response<http::string_body> res{http::status::ok, 11};
-	apply_static_response_headers(res, "text/plain", "\"y\"", 7u, true, true);
+	apply_static_response_headers(res, "text/plain", "\"y\"", "max-age=3600", 7u, true, "gzip");
 	auto const vary = res.find(http::field::vary);
 	BOOST_REQUIRE(vary != res.end());
 	BOOST_TEST(vary->value() == "Accept-Encoding");

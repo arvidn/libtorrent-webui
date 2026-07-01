@@ -26,31 +26,38 @@ std::string_view strip_query(std::string_view target)
 	return target;
 }
 
-std::optional<gzip_resolution>
-resolve_gzip_alternate(fs::path const& requested, std::string_view accept_encoding)
+std::optional<encoding_resolution>
+resolve_encoded_alternate(fs::path const& requested, std::string_view accept_encoding)
 {
-	// content_type_extension is taken from `requested` in both
-	// branches: when we serve the .gz sibling, requested.extension()
-	// (e.g. ".css") names the underlying media type. resolved.path's
-	// extension would be ".gz" -- the wrong thing to feed to
-	// mime_type(). See comment on gzip_resolution.
+	// content_type_extension is always taken from `requested`, never from
+	// the compressed sibling's path -- the sibling's extension is ".zst"
+	// or ".gz", which would mislabel the Content-Type. See comment on
+	// encoding_resolution.
 	// TODO: parse Accept-Encoding per RFC 9110 sec. 12.5.3 instead of
-	// substring-matching. Current check wrongly serves the .gz for
-	// "gzip;q=0" (explicit refusal) and ignores the "*" wildcard.
+	// substring-matching. Current checks wrongly serve compressed variants
+	// for "zstd;q=0" / "gzip;q=0" (explicit refusal) and ignore "*".
+	std::string const ext = requested.extension().string();
+
+	if (boost::algorithm::contains(accept_encoding, "zstd")) {
+		std::error_code ec;
+		fs::path zst_path = requested;
+		zst_path += ".zst";
+		auto const mtime = fs::last_write_time(zst_path, ec);
+		if (!ec) return encoding_resolution{std::move(zst_path), mtime, "zstd", ext};
+	}
+
 	if (boost::algorithm::contains(accept_encoding, "gzip")) {
 		std::error_code ec;
 		fs::path gz_path = requested;
 		gz_path += ".gz";
 		auto const mtime = fs::last_write_time(gz_path, ec);
-		if (!ec) {
-			return gzip_resolution{std::move(gz_path), mtime, true, requested.extension().string()};
-		}
+		if (!ec) return encoding_resolution{std::move(gz_path), mtime, "gzip", ext};
 	}
 
 	std::error_code ec;
 	auto const mtime = fs::last_write_time(requested, ec);
 	if (ec) return std::nullopt;
-	return gzip_resolution{requested, mtime, false, requested.extension().string()};
+	return encoding_resolution{requested, mtime, {}, ext};
 }
 
 std::string etag_for_mtime(fs::file_time_type mtime)
@@ -94,7 +101,7 @@ void serve_local_file(
 		? std::string_view(enc_it->value().data(), enc_it->value().size())
 		: std::string_view{};
 
-	auto const resolved = resolve_gzip_alternate(full_path, accept_enc);
+	auto const resolved = resolve_encoded_alternate(full_path, accept_enc);
 	if (!resolved)
 		return send_http(socket, std::move(done), http_error(request, http::status::not_found));
 
@@ -106,10 +113,9 @@ void serve_local_file(
 	auto const size = body.size();
 	std::string const etag = etag_for_mtime(resolved->mtime);
 	// Use resolved->content_type_extension, NOT resolved->path.extension():
-	// when resolved->gzip_encoded is true, resolved->path is the .gz
-	// sibling and its extension is ".gz", which would yield
-	// Content-Type: application/gzip for a request that asked for a
-	// .css/.html/.js etc.
+	// when a compressed sibling is selected, resolved->path's extension
+	// is ".gz" or ".zst", which would yield the wrong Content-Type for a
+	// .css/.html/.js etc. request.
 	std::string const& extension = resolved->content_type_extension;
 	std::string_view const cache_ctrl = cache_control_for_extension(extension);
 
@@ -119,18 +125,18 @@ void serve_local_file(
 		: std::string_view{};
 
 	if (etag_matches(if_none_match, etag)) {
-		// 304 deliberately omits Content-Encoding (gzip_encoded=false):
+		// 304 deliberately omits Content-Encoding (empty string):
 		// per RFC 9110 sec. 15.4.5 it is not in the required header set
 		// for a 304, and the matching ETag already pins the variant.
 		http::response<http::empty_body> res{http::status::not_modified, request.version()};
 		apply_static_response_headers(
-			res, mime_type(extension), etag, cache_ctrl, size, request.keep_alive(), false
+			res, mime_type(extension), etag, cache_ctrl, size, request.keep_alive(), {}
 		);
 		return send_http(socket, std::move(done), std::move(res));
 	}
 
 	if (request.method() == http::verb::head) {
-		// HEAD must mirror GET's headers, so forward gzip_encoded.
+		// HEAD must mirror GET's headers, so forward content_encoding.
 		http::response<http::empty_body> res{http::status::ok, request.version()};
 		apply_static_response_headers(
 			res,
@@ -139,7 +145,7 @@ void serve_local_file(
 			cache_ctrl,
 			size,
 			request.keep_alive(),
-			resolved->gzip_encoded
+			resolved->content_encoding
 		);
 		return send_http(socket, std::move(done), std::move(res));
 	}
@@ -156,7 +162,7 @@ void serve_local_file(
 		cache_ctrl,
 		size,
 		request.keep_alive(),
-		resolved->gzip_encoded
+		resolved->content_encoding
 	);
 	send_http(socket, std::move(done), std::move(res));
 }
