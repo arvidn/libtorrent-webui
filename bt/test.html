@@ -116,6 +116,7 @@
             break;
           case "total-uploaded":
           case "total-downloaded":
+          case "total-size":
             cell.innerText = scale_si(t[field], "B");
             break;
           default:
@@ -158,6 +159,7 @@
         fields.progress |
         fields.total_uploaded |
         fields.total_downloaded |
+        fields.total_size |
         fields.state |
         fields.connected_peers,
       redraw,
@@ -244,6 +246,7 @@
       <td style="width: 7em">Progress</td>
       <td style="width: 5em">Uploaded</td>
       <td style="width: 5em">Downloaded</td>
+      <td style="width: 5em">Total size</td>
       <td>Up rate</td>
       <td>Down rate</td>
       <td>Peers</td>
@@ -277,6 +280,7 @@
     </td>
     <td id="total-uploaded" class="counter"></td>
     <td id="total-downloaded" class="counter"></td>
+    <td id="total-size" class="counter"></td>
     <td id="upload-rate" class="counter"></td>
     <td id="download-rate" class="counter"></td>
     <td id="connected-peers" class="counter"></td>

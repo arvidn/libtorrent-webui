@@ -552,6 +552,38 @@
               torrent["tag_low"] = view.getUint32(offset);
               offset += 4;
               break;
+            case 24: {
+              // info-hash-v1 (20 bytes, hex string)
+              var hex = "";
+              for (var j = 0; j < 20; ++j) {
+                var b = view.getUint8(offset + j);
+                if (b < 16) hex += "0";
+                hex += b.toString(16);
+              }
+              torrent["info-hash-v1"] = hex;
+              offset += 20;
+              break;
+            }
+            case 25: {
+              // info-hash-v2 (32 bytes, hex string)
+              var hex = "";
+              for (var j = 0; j < 32; ++j) {
+                var b = view.getUint8(offset + j);
+                if (b < 16) hex += "0";
+                hex += b.toString(16);
+              }
+              torrent["info-hash-v2"] = hex;
+              offset += 32;
+              break;
+            }
+            case 26: // piece-size (uint32, bytes)
+              torrent["piece-size"] = view.getUint32(offset);
+              offset += 4;
+              break;
+            case 27: // total-size (uint64, bytes)
+              torrent["total-size"] = read_uint64(view, offset);
+              offset += 8;
+              break;
           }
         }
         updates[infohash] = torrent;
@@ -1704,6 +1736,10 @@
     failed_bytes: 1 << 21,
     redundant_bytes: 1 << 22,
     tag: 1 << 23,
+    info_hash_v1: 1 << 24,
+    info_hash_v2: 1 << 25,
+    piece_size: 1 << 26,
+    total_size: 1 << 27,
   };
 
   var file_fields = {
@@ -1753,10 +1789,10 @@
     total_upload: 1 << 19,
   };
 
-  // Initial-state bits for the add_torrent options.flags field. Bits
-  // 0-15 share positions with the flags field of get-torrent-updates;
-  // bits 17+ are add-torrent-only (no observable get-torrent-updates
-  // counterpart).
+  // Bit positions shared by add-torrent, set-flags, and get-torrent-updates
+  // field 0. Bits 0-20 are writable via both add-torrent and set-flags;
+  // bits 21+ are add-torrent-only; read-only status bits are set by the
+  // server and silently ignored when passed to set-flags.
   var add_torrent_flags = {
     stopped: 0x000001,
     auto_managed: 0x000002,
@@ -1770,8 +1806,65 @@
     disable_lsd: 0x040000,
     disable_v1_hashes: 0x080000,
     i2p_torrent: 0x100000,
+    // add-torrent-only (no set-flags equivalent):
     default_dont_download: 0x200000,
     metadata_only: 0x400000,
+    // read-only status bits from get-torrent-updates; ignored by set-flags:
+    seeding: 0x000008,
+    finished: 0x000010,
+    has_metadata: 0x000040,
+    has_incoming: 0x000080,
+    moving_storage: 0x001000,
+    announcing_to_trackers: 0x002000,
+    announcing_to_lsd: 0x004000,
+    announcing_to_dht: 0x008000,
+  };
+
+  libtorrent_connection.prototype["set_flags"] = function (entries, callback) {
+    if (this._socket.readyState != WebSocket.OPEN) {
+      window.setTimeout(function () {
+        callback("socket closed");
+      }, 0);
+      return;
+    }
+
+    var tid = this._tid++;
+    if (this._tid > 65535) this._tid = 0;
+
+    this._transactions[tid] = function (view, fun, e) {
+      if (_check_error(e, callback)) return;
+      var num_success = view.getUint16(4);
+      if (typeof callback !== "undefined") callback(num_success);
+    };
+
+    // 3 header + 2 num-entries + entries.length * 36 (20 ih + 8 value + 8 mask)
+    var call = new ArrayBuffer(3 + 2 + entries.length * 36);
+    var view = new DataView(call);
+    // function 27
+    view.setUint8(0, 27);
+    view.setUint16(1, tid);
+    view.setUint16(3, entries.length);
+
+    var offset = 5;
+    for (var i = 0; i < entries.length; ++i) {
+      var ih = entries[i]["infohash"];
+      for (var j = 0; j < 40; j += 2) {
+        view.setUint8(offset, parseInt(ih.substring(j, j + 2), 16));
+        offset += 1;
+      }
+      // value (8 bytes: high then low)
+      view.setUint32(offset, entries[i]["value_high"] || 0);
+      offset += 4;
+      view.setUint32(offset, entries[i]["value_low"]);
+      offset += 4;
+      // mask (8 bytes: high then low)
+      view.setUint32(offset, entries[i]["mask_high"] || 0);
+      offset += 4;
+      view.setUint32(offset, entries[i]["mask_low"]);
+      offset += 4;
+    }
+
+    this._socket.send(call);
   };
 
   // prevent the compiler from optimizing these away
@@ -1781,4 +1874,5 @@
   window["peer_fields"] = peer_fields;
   window["tracker_fields"] = tracker_fields;
   window["add_torrent_flags"] = add_torrent_flags;
+  window["torrent_flag_bits"] = add_torrent_flags;
 })();

@@ -175,8 +175,9 @@ The fields on torrents, in bitmask bit-order (LSB is bit 0), are:
 +----------+---------------------+------------------------------------------+
 | field-id | type                | name                                     |
 +==========+=====================+==========================================+
-| 0        | uint64_t            | ``flags`` bitmask with the following     |
-|          |                     | bits:                                    |
+| 0        | uint64_t            | ``flags`` bitmask. Writable bits use     |
+|          |                     | the same positions as ``add-torrent``    |
+|          |                     | and ``set-flags``:                       |
 |          |                     |                                          |
 |          |                     |  | 0x000001. stopped                     |
 |          |                     |  | 0x000002. auto-managed                |
@@ -265,6 +266,22 @@ The fields on torrents, in bitmask bit-order (LSB is bit 0), are:
 |          |                     | application chooses what each bit means  |
 |          |                     | (eg. labels, categories). A torrent with |
 |          |                     | no tag set reports 0.                    |
++----------+---------------------+------------------------------------------+
+| 24       | uint8_t[20]         | ``info-hash-v1``. The SHA-1 info-hash.   |
+|          |                     | Only present for v1 and hybrid torrents. |
+|          |                     | Sent once on the first update the client |
+|          |                     | sees for this torrent.                   |
++----------+---------------------+------------------------------------------+
+| 25       | uint8_t[32]         | ``info-hash-v2``. The SHA-256 info-hash  |
+|          |                     | (truncated to 32 bytes). Only present    |
+|          |                     | for v2 and hybrid torrents. Sent once on |
+|          |                     | the first update the client sees for     |
+|          |                     | this torrent.                            |
++----------+---------------------+------------------------------------------+
+| 26       | uint32_t            | ``piece-size``. Piece length in bytes.   |
+|          |                     | Only present when ``has-metadata`` is    |
+|          |                     | set in the ``flags`` field. Sent when    |
+|          |                     | metadata first becomes available.        |
 +----------+---------------------+------------------------------------------+
 
 For example, an update with the bitmask ``0x1`` means that the only thing that
@@ -670,10 +687,10 @@ in future revisions of the protocol.
 |          |                     | followed by the string itself.           |
 +----------+---------------------+------------------------------------------+
 | ...      | uint32_t            | ``flags`` configuration bitmask applied  |
-|          |                     | to the torrent at creation. Bits 0-15    |
+|          |                     | to the torrent at creation. Bits 0-20    |
 |          |                     | share positions with the ``flags`` field |
 |          |                     | of `get-torrent-updates`_ (field 0);     |
-|          |                     | bits 17 and above are add-torrent-only:  |
+|          |                     | bits 21 and above are add-torrent-only:  |
 |          |                     |                                          |
 |          |                     |  | 0x000001. stopped                     |
 |          |                     |  | 0x000002. auto-managed                |
@@ -716,15 +733,19 @@ trusts that all pieces are already present. ``upload-mode`` suppresses
 downloading (only uploads). ``share-mode`` enables the share-ratio
 seeding mode. ``super-seeding`` enables super-seeding.
 
-The add-torrent-only flags (bits 17+) have no corresponding observable
-status in ``get-torrent-updates``. ``disable-pex``, ``disable-dht``,
-and ``disable-lsd`` suppress the respective peer-discovery mechanisms
-for this torrent only. ``disable-v1-hashes`` prevents the torrent from
-announcing with v1 hashes. ``i2p-torrent`` restricts the torrent to the
-I2P network. ``default-dont-download`` sets the initial file priority to
-0 (skip) for all files instead of the usual default priority.
-``metadata-only`` (libtorrent's ``stop_when_ready``) pauses the torrent
-automatically once metadata has been fetched.
+``disable-pex``, ``disable-dht``, and ``disable-lsd`` suppress the
+respective peer-discovery mechanisms for this torrent only.
+``disable-v1-hashes`` prevents the torrent from announcing with v1
+hashes. ``i2p-torrent`` restricts the torrent to the I2P network.
+These flags (bits 16-20) are also accepted by `set-flags`_ and can be
+changed after the torrent has been added.
+
+The add-torrent-only flags (bits 21+) have no corresponding observable
+status in ``get-torrent-updates`` and are ignored by `set-flags`_.
+``default-dont-download`` sets the initial file priority to 0 (skip)
+for all files instead of the usual default priority. ``metadata-only``
+(libtorrent's ``stop_when_ready``) pauses the torrent automatically
+once metadata has been fetched.
 
 Unlike `set-tag`_, this call does not take a mask for ``tag``. The
 torrent is being created, so there are no prior bits to preserve; every
@@ -1384,6 +1405,85 @@ in ``num-success``. A successful tag change is reflected in the next
 Tag values are persisted across server restarts alongside each torrent's
 add-torrent parameters.
 
+set-flags
+.........
+
+function id 27.
+
+Sets or clears one or more torrent flags on one or more torrents. The flag
+bits use the same encoding as the ``flags`` field (field 0) of
+`get-torrent-updates`_; read-only status bits (seeding, finished, moving
+storage, etc.) have no effect when included in a mask and are silently
+ignored.
+
+The settable bits (same positions as ``add-torrent`` where applicable) are:
+
++----------+------------------------------+
+| bit      | flag                         |
++==========+==============================+
+| 0x000001 | stopped                      |
++----------+------------------------------+
+| 0x000002 | auto-managed                 |
++----------+------------------------------+
+| 0x000004 | sequential-download          |
++----------+------------------------------+
+| 0x000100 | seed-mode                    |
++----------+------------------------------+
+| 0x000200 | upload-mode                  |
++----------+------------------------------+
+| 0x000400 | share-mode                   |
++----------+------------------------------+
+| 0x000800 | super-seeding                |
++----------+------------------------------+
+| 0x010000 | disable-pex                  |
++----------+------------------------------+
+| 0x020000 | disable-dht                  |
++----------+------------------------------+
+| 0x040000 | disable-lsd                  |
++----------+------------------------------+
+| 0x080000 | disable-v1-hashes            |
++----------+------------------------------+
+| 0x100000 | i2p-torrent                  |
++----------+------------------------------+
+
+The resulting flag state is computed per bit as::
+
+   new_flags = (old_flags & ~mask) | (value & mask)
+
+where ``value`` and ``mask`` use the wire-protocol bit positions above.
+
+The call arguments (offset includes RPC call header):
+
++----------+--------------------+-------------------------------------------+
+| offset   | type               | name                                      |
++==========+====================+===========================================+
+| 3        | uint16_t           | ``num-entries`` the number of entries to  |
+|          |                    | follow.                                   |
++----------+--------------------+-------------------------------------------+
+| 5        | uint8_t[20]        | ``info-hash`` of the torrent.             |
++----------+--------------------+-------------------------------------------+
+| 25       | uint64_t           | ``value`` the desired flag bit values.    |
++----------+--------------------+-------------------------------------------+
+| 33       | uint64_t           | ``mask`` selects which bits to modify.    |
+|          |                    | ``mask = 0`` is a deliberate no-op.       |
++----------+--------------------+-------------------------------------------+
+
+The ``info-hash``, ``value``, ``mask`` triple is repeated ``num-entries``
+times (stride 36 bytes per entry).
+
+The return value is:
+
++----------+--------------------+-----------------------------------------+
+| offset   | type               | name                                    |
++==========+====================+=========================================+
+| 4        | uint16_t           | ``num-success`` the number of entries   |
+|          |                    | whose flag state was actually modified. |
++----------+--------------------+-----------------------------------------+
+
+Entries with an unknown info-hash or ``mask == 0`` are not counted in
+``num-success``. Flag changes are visible in the next `get-torrent-updates`_
+response as a delta on field 0.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -1456,6 +1556,9 @@ Function IDs
 +-----+---------------------------+-----------------------------------------+
 |  26 | set-tag                   | num-tags, info-hash, value (uint64_t),  |
 |     |                           | mask (uint64_t), ...                    |
++-----+---------------------------+-----------------------------------------+
+|  27 | set-flags                 | num-entries, info-hash, value           |
+|     |                           | (uint64_t), mask (uint64_t), ...        |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf

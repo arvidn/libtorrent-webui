@@ -84,6 +84,7 @@ struct libtorrent_webui
 	bool get_tracker_updates(websocket_conn* st, function_call f);
 	bool get_piece_states(websocket_conn* st, function_call f);
 	bool set_tag(websocket_conn* st, function_call f);
+	bool set_flags(websocket_conn* st, function_call f);
 
 	bool on_websocket_read(websocket_conn* st, lt::span<char const> data);
 

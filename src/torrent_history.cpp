@@ -362,6 +362,8 @@ void torrent_history_entry::update_status(lt::torrent_status const& s, frame_t c
 	CMP_SET(is_seeding);
 	CMP_SET(is_finished);
 	CMP_SET(has_metadata);
+	if (s.has_metadata != status.has_metadata) frame[int(piece_length)] = f;
+	if (s.has_metadata != status.has_metadata) frame[int(total)] = f;
 	CMP_SET(progress);
 	CMP_SET(progress_ppm);
 	CMP_SET(errc);
