@@ -2,7 +2,10 @@
   "name": "libtorrent-webui",
   "private": true,
   "devDependencies": {
+    "esbuild": "0.28.1",
     "eslint": "^9.0.0",
-    "eslint-plugin-html": "^8.0.0"
+    "eslint-plugin-html": "^8.0.0",
+    "html-minifier-terser": "7.2.0",
+    "svgo": "4.0.1"
   }
 }
