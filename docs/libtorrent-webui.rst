@@ -1498,6 +1498,32 @@ denied by permissions are not counted in ``num-success``. Flag changes
 are visible in the next `get-torrent-updates`_ response as a delta on
 field 0.
 
+get-free-space
+..............
+
+function id 28.
+
+Returns the amount of free space, in bytes, on the volume backing the
+save path new torrents are added to (the server's ``save_path`` setting).
+The server resolves the save path to its containing volume itself --
+``statfs()`` on Linux and macOS, ``GetDiskFreeSpaceExW()`` on Windows --
+so the call takes no arguments.
+
+The call has no arguments beyond the RPC header.
+
+The return value is:
+
++----------+--------------------+-----------------------------------------+
+| offset   | type               | name                                    |
++==========+====================+=========================================+
+| 4        | uint64_t           | ``free-bytes`` bytes available on the   |
+|          |                    | save path's volume.                     |
++----------+--------------------+-----------------------------------------+
+
+If the free space cannot be determined (for example the save path does
+not resolve to an existing directory), the call fails with error code 9
+(operation failed) instead of returning a value.
+
 .. raw:: pdf
 
    PageBreak oneColumn
@@ -1573,6 +1599,8 @@ Function IDs
 +-----+---------------------------+-----------------------------------------+
 |  27 | set-flags                 | num-entries, info-hash, value           |
 |     |                           | (uint64_t), mask (uint64_t), ...        |
++-----+---------------------------+-----------------------------------------+
+|  28 | get-free-space            |                                         |
 +-----+---------------------------+-----------------------------------------+
 
 .. raw:: pdf

@@ -1867,6 +1867,37 @@
     this._socket.send(call);
   };
 
+  // Free space, in bytes, on the volume backing the server's save path
+  // for new torrents. callback receives either an error string or the
+  // free-byte count as a Number.
+  libtorrent_connection.prototype["get_free_space"] = function (callback) {
+    if (this._socket.readyState != WebSocket.OPEN) {
+      window.setTimeout(function () {
+        callback("socket closed");
+      }, 0);
+      return;
+    }
+
+    var tid = this._tid++;
+    if (this._tid > 65535) this._tid = 0;
+
+    this._transactions[tid] = function (view, fun, e) {
+      if (_check_error(e, callback)) return;
+      var free = read_uint64(view, 4);
+      if (typeof callback !== "undefined") callback(free);
+    };
+
+    var call = new ArrayBuffer(3);
+    var view = new DataView(call);
+    // function 28
+    view.setUint8(0, 28);
+    // transaction-id
+    view.setUint16(1, tid);
+
+    //	console.log('CALL get_free_space() tid = ' + tid);
+    this._socket.send(call);
+  };
+
   // prevent the compiler from optimizing these away
   window["libtorrent_connection"] = libtorrent_connection;
   window["fields"] = fields;

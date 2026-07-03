@@ -28,6 +28,7 @@ see LICENSE file.
 #include "libtorrent/hasher.hpp"
 #include "libtorrent/announce_entry.hpp"
 
+#include "disk_space.hpp"
 #include "parse_http_auth.hpp"
 #include "save_settings.hpp"
 #include "torrent_history.hpp"
@@ -159,7 +160,7 @@ struct rpc_entry {
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
 };
 
-static std::array<rpc_entry, 28> const functions = {{
+static std::array<rpc_entry, 29> const functions = {{
 	{"get-torrent-updates", &libtorrent_webui::get_torrent_updates},
 	{"start", &libtorrent_webui::start},
 	{"stop", &libtorrent_webui::stop},
@@ -188,6 +189,7 @@ static std::array<rpc_entry, 28> const functions = {{
 	{"get-piece-states", &libtorrent_webui::get_piece_states},
 	{"set-tag", &libtorrent_webui::set_tag},
 	{"set-flags", &libtorrent_webui::set_flags},
+	{"get-free-space", &libtorrent_webui::get_free_space},
 }};
 
 // maps torrent field to RPC field. These fields are the ones defined in
@@ -2112,6 +2114,25 @@ bool libtorrent_webui::set_flags(websocket_conn* st, function_call f)
 	if (attempted > 0 && attempted == denied) return error(st, f, permission_denied);
 
 	return respond(st, f, no_error, counter);
+}
+
+bool libtorrent_webui::get_free_space(websocket_conn* st, function_call f)
+{
+	if (!st->perms()->allow_session_status()) return error(st, f, permission_denied);
+
+	// Query the filesystem backing the save path new torrents are added
+	// to. free_disk_space() resolves the (possibly relative) path to its
+	// containing volume itself -- statfs() on POSIX and
+	// GetDiskFreeSpaceExW() on Windows both do this natively.
+	std::string const save_path = m_settings.get_str("save_path", "./downloads");
+	std::int64_t const free_bytes = free_disk_space(save_path);
+	if (free_bytes < 0) return error(st, f, failed);
+
+	auto response = make_rpc_response(f.function_id, f.transaction_id, no_error, 8);
+	auto ptr = std::back_inserter(response);
+	write_uint64(std::uint64_t(free_bytes), ptr);
+
+	return st->send_packet(std::move(response));
 }
 
 } // namespace ltweb
