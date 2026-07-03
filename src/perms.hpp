@@ -76,10 +76,14 @@ struct permissions_interface {
 	virtual std::uint64_t allow_set_tag() const = 0;
 
 	// Returns the bitmask of wire-protocol torrent flag bits this user is
-	// permitted to set via add-torrent. The handler silently clears any
-	// request bits absent from this mask before applying them. Bits
-	// correspond to the aux::wire::* constants in wire_flags.hpp.
-	// wire_flags_t{} denies all; wire_flags_t::all() allows every bit.
+	// permitted to set via add-torrent and set-flags. Both handlers AND
+	// the request's bits against this mask before applying them. Not
+	// every bit in wire_flags_t is settable regardless of this mask --
+	// read-only status bits (seeding, finished, has-metadata, etc.) have
+	// no corresponding torrent_flags_t bit, so granting them here has no
+	// effect. Bits correspond to the aux::wire::* constants in
+	// wire_flags.hpp. wire_flags_t{} denies all; wire_flags_t::all()
+	// allows every settable bit.
 	virtual aux::wire_flags_t allow_set_flags() const = 0;
 };
 

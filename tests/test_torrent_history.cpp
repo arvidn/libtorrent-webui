@@ -537,6 +537,41 @@ BOOST_AUTO_TEST_CASE(status_bits_projection)
 	BOOST_TEST(ltweb::status_bits(s) & 0x08);
 }
 
+// name, total, and piece_length are read from the .torrent file, so they
+// should only be treated as changed on the has_metadata false->true
+// transition -- not on every update, even one that (e.g. via a stale or
+// duplicate alert) reports a different value.
+BOOST_AUTO_TEST_CASE(update_status_metadata_fields_change_once)
+{
+	using ltweb::torrent_history_entry;
+
+	lt::torrent_status s0;
+	s0.has_metadata = false;
+	s0.name = "magnet-placeholder";
+	s0.total = 0;
+
+	torrent_history_entry e(s0, 1);
+
+	lt::torrent_status s1 = s0;
+	s1.has_metadata = true;
+	s1.name = "real-name";
+	s1.total = 12345;
+	e.update_status(s1, 2);
+
+	BOOST_TEST(e.frame[torrent_history_entry::name] == 2u);
+	BOOST_TEST(e.frame[torrent_history_entry::total] == 2u);
+	BOOST_TEST(e.frame[torrent_history_entry::piece_length] == 2u);
+
+	lt::torrent_status s2 = s1;
+	s2.name = "renamed-somehow";
+	s2.total = 99999;
+	e.update_status(s2, 3);
+
+	BOOST_TEST(e.frame[torrent_history_entry::name] == 2u);
+	BOOST_TEST(e.frame[torrent_history_entry::total] == 2u);
+	BOOST_TEST(e.frame[torrent_history_entry::piece_length] == 2u);
+}
+
 // query_filtered with two empty filter specs must return the same shape as
 // the plain query() at the same frame.
 BOOST_AUTO_TEST_CASE(query_filtered_empty_degenerates_to_query)

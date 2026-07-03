@@ -101,6 +101,8 @@ struct torrent_history_entry {
 		errc,
 		error_file,
 		save_path,
+		// Comes from the .torrent file; see piece_length below for the
+		// has_metadata-gated change rule this field follows.
 		name,
 		next_announce,
 		current_tracker,
@@ -123,6 +125,8 @@ struct torrent_history_entry {
 		connect_candidates,
 		num_pieces,
 		total_done,
+		// Torrent size from the .torrent file; see piece_length below for
+		// the has_metadata-gated change rule this field follows.
 		total,
 		total_wanted_done,
 		total_wanted,
@@ -161,6 +165,21 @@ struct torrent_history_entry {
 		// is tracked here, so tag changes participate in the normal delta-update
 		// machinery (relocate-on-update in m_queue).
 		tag,
+
+		// Static info-hash fields. Frame is set once at added_frame and never
+		// updated (info-hashes never change). The serializer suppresses v1 if
+		// !has_v1() and v2 if !has_v2().
+		info_hash_v1,
+		info_hash_v2,
+
+		// Piece length from torrent_info, like name and total above: these
+		// fields are immutable once read from the .torrent file, so their
+		// frame is only bumped on the has_metadata false->true transition,
+		// not on every update -- a post-metadata diff would just be
+		// re-observing the same value. The serializer additionally
+		// suppresses piece_length and total while !has_metadata so the
+		// client only sees them once real data is available.
+		piece_length,
 
 		num_fields,
 	};
