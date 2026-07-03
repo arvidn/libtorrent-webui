@@ -122,6 +122,38 @@ std::vector<char> make_rpc_response(
 	return response;
 }
 
+enum wire_field {
+	wire_flags = 0,
+	wire_name = 1,
+	wire_total_uploaded = 2,
+	wire_total_downloaded = 3,
+	wire_added_time = 4,
+	wire_completed_time = 5,
+	wire_upload_rate = 6,
+	wire_download_rate = 7,
+	wire_progress = 8,
+	wire_error = 9,
+	wire_connected_peers = 10,
+	wire_connected_seeds = 11,
+	wire_downloaded_pieces = 12,
+	wire_total_done = 13,
+	wire_distributed_copies = 14,
+	wire_all_time_upload = 15,
+	wire_all_time_download = 16,
+	wire_unchoked_peers = 17,
+	wire_num_connections = 18,
+	wire_queue_position = 19,
+	wire_state = 20,
+	wire_failed_bytes = 21,
+	wire_redundant_bytes = 22,
+	wire_tag = 23,
+	wire_info_hash_v1 = 24,
+	wire_info_hash_v2 = 25,
+	wire_piece_size = 26,
+	wire_total_size = 27,
+	num_wire_fields
+};
+
 struct rpc_entry {
 	char const* name;
 	bool (libtorrent_webui::*handler)(websocket_conn*, function_call);
@@ -161,74 +193,74 @@ static std::array<rpc_entry, 28> const functions = {{
 // maps torrent field to RPC field. These fields are the ones defined in
 // torrent_history_entry
 std::array<int const, torrent_history_entry::num_fields> const torrent_field_map = {{
-	20, // state,
-	0, // status_flags,
-	0, // other_flags,
-	0, // is_seeding,
-	0, // is_finished,
-	0, // has_metadata,
+	wire_state, // state,
+	wire_flags, // status_flags,
+	wire_flags, // other_flags,
+	wire_flags, // is_seeding,
+	wire_flags, // is_finished,
+	wire_flags, // has_metadata,
 	-1, // progress,
-	8, // progress_ppm,
-	9, // errc,
+	wire_progress, // progress_ppm,
+	wire_error, // errc,
 	-1, // error_file
 	-1, // save_path,
-	1, // name,
+	wire_name, // name,
 	-1, // next_announce,
 	-1, // current_tracker,
-	3, // total_download,
-	2, // total_upload,
-	-1, // total_payload_download,
-	-1, // total_payload_upload,
-	21, // total_failed_bytes,
-	22, // total_redundant_bytes,
-	7, // download_rate,
-	6, // upload_rate,
-	-1, // download_payload_rate,
-	-1, // upload_payload_rate,
-	11, // num_seeds,
-	10, // num_peers,
+	-1, // total_download,
+	-1, // total_upload,
+	wire_total_downloaded, // total_payload_download,
+	wire_total_uploaded, // total_payload_upload,
+	wire_failed_bytes, // total_failed_bytes,
+	wire_redundant_bytes, // total_redundant_bytes,
+	-1, // download_rate,
+	-1, // upload_rate,
+	wire_download_rate, // download_payload_rate,
+	wire_upload_rate, // upload_payload_rate,
+	wire_connected_seeds, // num_seeds,
+	wire_connected_peers, // num_peers,
 	-1, // num_complete,
 	-1, // num_incomplete,
 	-1, // list_seeds,
 	-1, // list_peers,
 	-1, // connect_candidates,
-	12, // num_pieces,
+	wire_downloaded_pieces, // num_pieces,
 	-1, // total_done,
-	27, // total,
-	13, // total_wanted_done,
+	wire_total_size, // total,
+	wire_total_done, // total_wanted_done,
 	-1, // total_wanted,
-	14, // distributed_full_copies,
-	14, // distributed_fraction,
+	wire_distributed_copies, // distributed_full_copies,
+	wire_distributed_copies, // distributed_fraction,
 	-1, // block_size,
-	17, // num_uploads,
-	18, // num_connections,
+	wire_unchoked_peers, // num_uploads,
+	wire_num_connections, // num_connections,
 	-1, // num_undead_peers,
 	-1, // uploads_limit,
 	-1, // connections_limit,
 	-1, // storage_mode,
 	-1, // up_bandwidth_queue,
 	-1, // down_bandwidth_queue,
-	15, // all_time_upload,
-	16, // all_time_download,
+	wire_all_time_upload, // all_time_upload,
+	wire_all_time_download, // all_time_download,
 	-1, // active_duration,
 	-1, // finished_duration,
 	-1, // seeding_duration,
 	-1, // seed_rank,
-	0, // has_incoming,
-	4, // added_time,
-	5, // completed_time,
+	wire_flags, // has_incoming,
+	wire_added_time, // added_time,
+	wire_completed_time, // completed_time,
 	-1, // last_seen_complete,
 	-1, // last_upload,
 	-1, // last_download,
-	19, // queue_position,
-	0, // moving_storage,
-	0, // announcing_to_trackers,
-	0, // announcing_to_lsd,
-	0, // announcing_to_dht,
-	23, // tag
-	24, // info_hash_v1
-	25, // info_hash_v2
-	26, // piece_length
+	wire_queue_position, // queue_position,
+	wire_flags, // moving_storage,
+	wire_flags, // announcing_to_trackers,
+	wire_flags, // announcing_to_lsd,
+	wire_flags, // announcing_to_dht,
+	wire_tag, // tag
+	wire_info_hash_v1, // info_hash_v1
+	wire_info_hash_v2, // info_hash_v2
+	wire_piece_size, // piece_length
 }};
 
 struct add_torrent_user_data {
@@ -520,10 +552,10 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 
 		// suppress fields whose backing data is not yet available
 		lt::torrent_status const& s = entry.status;
-		if (!s.info_hashes.has_v1()) bitmask &= ~(1ULL << 24);
-		if (!s.info_hashes.has_v2()) bitmask &= ~(1ULL << 25);
-		if (!s.has_metadata) bitmask &= ~(1ULL << 26);
-		if (!s.has_metadata) bitmask &= ~(1ULL << 27);
+		if (!s.info_hashes.has_v1()) bitmask &= ~(1ULL << wire_info_hash_v1);
+		if (!s.info_hashes.has_v2()) bitmask &= ~(1ULL << wire_info_hash_v2);
+		if (!s.has_metadata) bitmask &= ~(1ULL << wire_piece_size);
+		if (!s.has_metadata) bitmask &= ~(1ULL << wire_total_size);
 
 		if (bitmask == 0) continue;
 
@@ -535,84 +567,81 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 		// are included in the update for this torrent
 		write_uint64(bitmask, ptr);
 
-		for (int f = 0; f < 28; ++f) {
+		for (int f = 0; f < num_wire_fields; ++f) {
 			if ((bitmask & (1ULL << f)) == 0) continue;
 
 			// write field f to buffer
 			switch (f) {
-				case 0: // flags
+				case wire_flags:
 					write_uint64(static_cast<std::uint32_t>(aux::wire_flags_from_status(s)), ptr);
 					break;
-				case 1: // name
-				{
+				case wire_name: {
 					std::string name = s.name;
 					if (name.size() > 65535) name.resize(65535);
 					write_uint16(name.size(), ptr);
 					std::copy(name.begin(), name.end(), ptr);
 					break;
 				}
-				case 2: // total-uploaded
-					write_uint64(s.total_upload, ptr);
+				case wire_total_uploaded:
+					write_uint64(s.total_payload_upload, ptr);
 					break;
-				case 3: // total-downloaded
-					write_uint64(s.total_download, ptr);
+				case wire_total_downloaded:
+					write_uint64(s.total_payload_download, ptr);
 					break;
-				case 4: // added-time
+				case wire_added_time:
 					write_uint64(s.added_time, ptr);
 					break;
-				case 5: // completed_time
+				case wire_completed_time:
 					write_uint64(s.completed_time, ptr);
 					break;
-				case 6: // upload-rate
-					write_uint32(s.upload_rate, ptr);
+				case wire_upload_rate:
+					write_uint32(s.upload_payload_rate, ptr);
 					break;
-				case 7: // download-rate
-					write_uint32(s.download_rate, ptr);
+				case wire_download_rate:
+					write_uint32(s.download_payload_rate, ptr);
 					break;
-				case 8: // progress
+				case wire_progress:
 					write_uint32(s.progress_ppm, ptr);
 					break;
-				case 9: // error
-				{
+				case wire_error: {
 					std::string e = s.errc.message();
 					if (e.size() > 65535) e.resize(65535);
 					write_uint16(e.size(), ptr);
 					std::copy(e.begin(), e.end(), ptr);
 					break;
 				}
-				case 10: // connected-peers
+				case wire_connected_peers:
 					write_uint32(s.num_peers, ptr);
 					break;
-				case 11: // connected-seeds
+				case wire_connected_seeds:
 					write_uint32(s.num_seeds, ptr);
 					break;
-				case 12: // downloaded-pieces
+				case wire_downloaded_pieces:
 					write_uint32(s.num_pieces, ptr);
 					break;
-				case 13: // total-done
+				case wire_total_done:
 					write_uint64(s.total_wanted_done, ptr);
 					break;
-				case 14: // distributed-copies
+				case wire_distributed_copies:
 					write_uint32(s.distributed_full_copies, ptr);
 					write_uint32(s.distributed_fraction, ptr);
 					break;
-				case 15: // all-time-upload
+				case wire_all_time_upload:
 					write_uint64(s.all_time_upload, ptr);
 					break;
-				case 16: // all-time-download
+				case wire_all_time_download:
 					write_uint64(s.all_time_download, ptr);
 					break;
-				case 17: // unchoked-peers
+				case wire_unchoked_peers:
 					write_uint32(s.num_uploads, ptr);
 					break;
-				case 18: // num-connections
+				case wire_num_connections:
 					write_uint32(s.num_connections, ptr);
 					break;
-				case 19: // queue-position
+				case wire_queue_position:
 					write_uint32(static_cast<int>(s.queue_position), ptr);
 					break;
-				case 20: // state
-				{
+				case wire_state: {
 					int state;
 					switch (s.state) {
 						case lt::torrent_status::checking_files:
@@ -634,34 +663,31 @@ bool libtorrent_webui::get_torrent_updates(websocket_conn* st, function_call f)
 					write_uint8(state, ptr);
 					break;
 				}
-				case 21: // failed-bytes
+				case wire_failed_bytes:
 					write_uint64(s.total_failed_bytes, ptr);
 					break;
-				case 22: // redundant-bytes
+				case wire_redundant_bytes:
 					write_uint64(s.total_redundant_bytes, ptr);
 					break;
-				case 23: // tag (application-defined per-torrent 64-bit bitfield)
+				case wire_tag:
 					write_uint64(m_hist.get_tag(s.handle), ptr);
 					break;
-				case 24: // info-hash-v1 (20 bytes; only sent when has_v1())
-				{
+				case wire_info_hash_v1: {
 					auto const& v1 = s.info_hashes.v1;
 					ptr = std::copy(v1.begin(), v1.end(), ptr);
 					break;
 				}
-				case 25: // info-hash-v2 (32 bytes; only sent when has_v2())
-				{
+				case wire_info_hash_v2: {
 					auto const& v2 = s.info_hashes.v2;
 					ptr = std::copy(v2.begin(), v2.end(), ptr);
 					break;
 				}
-				case 26: // piece-size (uint32; only sent when has_metadata)
-				{
+				case wire_piece_size: {
 					auto const ti = s.handle.torrent_file();
 					write_uint32(ti ? static_cast<std::uint32_t>(ti->piece_length()) : 0u, ptr);
 					break;
 				}
-				case 27: // total-size (uint64; only sent when has_metadata)
+				case wire_total_size:
 					write_uint64(static_cast<std::uint64_t>(s.total), ptr);
 					break;
 				default:
