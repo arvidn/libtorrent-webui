@@ -45,9 +45,10 @@ struct encoding_resolution {
 // preference order: zstd (.zst sibling) then gzip (.gz sibling) then
 // the uncompressed original. Returns the first match whose sibling
 // exists on disk, or nullopt if no file exists at all.
-// The check against accept_encoding is a literal substring match
-// (e.g. "zstd, gzip" matches both; "gzip;q=0" also matches, preserving
-// the previous behaviour).
+// accept_encoding is parsed per RFC 9110 sec. 12.5.3: a coding is
+// selected only if its q-value is greater than zero, so an explicit
+// refusal like "zstd;q=0" is honoured, and a "*" entry's weight
+// applies to codings not explicitly listed.
 std::optional<encoding_resolution>
 resolve_encoded_alternate(std::filesystem::path const& requested, std::string_view accept_encoding);
 

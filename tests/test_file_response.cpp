@@ -6,6 +6,7 @@
 
 #define BOOST_TEST_MODULE file_response
 #include <boost/test/included/unit_test.hpp>
+#include <boost/test/tools/context.hpp>
 
 #include "file_response.hpp"
 
@@ -162,19 +163,57 @@ struct tmp_root {
 
 BOOST_AUTO_TEST_SUITE(resolve_encoded_alternate_suite)
 
-BOOST_AUTO_TEST_CASE(prefers_zstd_when_both_siblings_exist)
+BOOST_AUTO_TEST_CASE(accept_encoding_selects_expected_encoding)
 {
-	// zstd is tried before gzip; when both siblings exist and the client
-	// accepts both, the .zst sibling wins.
-	tmp_root td;
-	auto const plain = td.touch("both.txt");
-	td.touch("both.txt.gz");
-	auto const zst = td.touch("both.txt.zst");
+	// Every case below shares the same filesystem layout (plain + .gz +
+	// .zst all present), which isolates Accept-Encoding parsing (RFC
+	// 9110 sec. 12.5.3 -- tokens, q-values, "*", malformed input) from
+	// the file-existence fallback behaviour covered by the tests below
+	// this one.
+	struct case_t {
+		std::string_view header;
+		std::string_view expected;
+	};
+	static constexpr case_t cases[] = {
+		{"gzip, zstd", "zstd"}, // zstd preferred when both accepted
+		{"gzip", "gzip"}, // gzip alone; zstd unmentioned -> not implied
+		{"", ""}, // no Accept-Encoding -> identity
+		{"zstd;q=0, gzip", "gzip"}, // explicit refusal of zstd
+		{"zstd;q=0, gzip;q=0.000", ""}, // both explicitly refused
+		{"*", "zstd"}, // wildcard accepts zstd
+		{"*, zstd;q=0", "gzip"}, // explicit refusal overrides wildcard
+		{"GZIP;Q=0, ZsTd", "zstd"}, // case-insensitive coding/param names
+		{"  zstd ; q = 0  ,  gzip  ", "gzip"}, // whitespace around tokens/params
+		{"\tzstd\t;\tq=0\t,\tgzip\t", "gzip"}, // tab is OWS too (RFC 9110 sec. 5.6.3)
+		{"gzip;foo=bar;q=0", ""}, // q found when not the first param
+		{"gzip;q=0.000", ""}, // trailing zero digits still mean zero
+		{"gzip;q=0.001", "gzip"}, // nonzero fraction is accepted
+		{"gzip;q=banana", "gzip"}, // malformed q defaults to accepted
+		{"gzip;q=", "gzip"}, // empty q value defaults to accepted
+		{",,gzip,,", "gzip"}, // empty entries between commas skipped
+		{" ; ;;, ;q=1 , ", ""}, // garbage/bare separators ignored
+		{"br, identity;q=0.5", ""}, // unlisted coding not implied
+		{"*;q=0", ""}, // wildcard refusal rejects everything
+	};
 
-	auto const resolved = resolve_encoded_alternate(plain, "gzip, zstd");
-	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->content_encoding == "zstd");
-	BOOST_TEST(resolved->path == zst);
+	for (auto const& c : cases) {
+		BOOST_TEST_CONTEXT("Accept-Encoding: " << c.header)
+		{
+			tmp_root td;
+			auto const plain = td.touch("both.txt");
+			auto const gz = td.touch("both.txt.gz");
+			auto const zst = td.touch("both.txt.zst");
+
+			auto const resolved = resolve_encoded_alternate(plain, c.header);
+			BOOST_REQUIRE(resolved.has_value());
+			BOOST_TEST(resolved->content_encoding == c.expected);
+
+			fs::path const expected_path = c.expected == "zstd" ? zst
+				: c.expected == "gzip"							? gz
+																: plain;
+			BOOST_TEST(resolved->path == expected_path);
+		}
+	}
 }
 
 BOOST_AUTO_TEST_CASE(falls_back_to_gzip_when_no_zst_sibling)
@@ -188,31 +227,6 @@ BOOST_AUTO_TEST_CASE(falls_back_to_gzip_when_no_zst_sibling)
 	BOOST_REQUIRE(resolved.has_value());
 	BOOST_TEST(resolved->content_encoding == "gzip");
 	BOOST_TEST(resolved->path == gz);
-}
-
-BOOST_AUTO_TEST_CASE(prefers_gz_when_accept_encoding_has_only_gzip)
-{
-	tmp_root td;
-	auto const plain = td.touch("both.txt");
-	auto const gz = td.touch("both.txt.gz");
-
-	auto const resolved = resolve_encoded_alternate(plain, "gzip");
-	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->content_encoding == "gzip");
-	BOOST_TEST(resolved->path == gz);
-}
-
-BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_no_encoding_in_accept_encoding)
-{
-	tmp_root td;
-	auto const plain = td.touch("both.txt");
-	td.touch("both.txt.gz");
-	td.touch("both.txt.zst");
-
-	auto const resolved = resolve_encoded_alternate(plain, "");
-	BOOST_REQUIRE(resolved.has_value());
-	BOOST_TEST(resolved->content_encoding.empty());
-	BOOST_TEST(resolved->path == plain);
 }
 
 BOOST_AUTO_TEST_CASE(falls_back_to_plain_when_compressed_siblings_missing)

@@ -26,6 +26,91 @@ std::string_view strip_query(std::string_view target)
 	return target;
 }
 
+namespace {
+
+// Returns whether a q-value token is exactly zero, per the RFC 9110
+// sec. 12.4.2 grammar: ("0" ["." 0*3DIGIT]) / ("1" ["." 0*3("0")]).
+// Whitespace (RFC 9110 sec. 5.6.3 OWS: space or tab) and '.' are
+// ignored wherever they appear, so surrounding or embedded whitespace
+// never needs trimming separately -- a value is zero iff every
+// non-ignored character in it is '0'. Malformed input (a digit other
+// than '0', or no digit at all) is treated as the default weight
+// (q=1, i.e. not zero) since we only need to distinguish "explicitly
+// refused" from everything else.
+bool is_zero_qvalue(std::string_view value)
+{
+	bool seen_zero = false;
+	for (char const c : value) {
+		if (c == ' ' || c == '\t' || c == '.') continue;
+		if (c != '0') return false;
+		seen_zero = true;
+	}
+	return seen_zero;
+}
+
+// Scans accept_encoding once for an entry whose name matches `token`
+// (case-insensitively) and returns whether that entry's q-value is
+// nonzero, or nullopt if `token` is not mentioned at all. Returns the
+// first matching entry's weight; RFC 9110 does not define which one
+// wins when a token is listed more than once.
+std::optional<bool> entry_accept(std::string_view accept_encoding, std::string_view token)
+{
+	std::string_view remaining = accept_encoding;
+	while (!remaining.empty()) {
+		auto const comma = remaining.find(',');
+		std::string_view entry = remaining.substr(0, comma);
+		remaining =
+			(comma == std::string_view::npos) ? std::string_view{} : remaining.substr(comma + 1);
+
+		auto const semi = entry.find(';');
+		std::string_view name = entry.substr(0, semi);
+		while (!name.empty() && (name.front() == ' ' || name.front() == '\t'))
+			name.remove_prefix(1);
+		while (!name.empty() && (name.back() == ' ' || name.back() == '\t'))
+			name.remove_suffix(1);
+		if (name.empty() || !boost::algorithm::iequals(name, token)) continue;
+
+		bool accept = true;
+		if (semi != std::string_view::npos) {
+			std::string_view params = entry.substr(semi + 1);
+			while (!params.empty()) {
+				auto const semi2 = params.find(';');
+				std::string_view param = params.substr(0, semi2);
+				params = (semi2 == std::string_view::npos) ? std::string_view{}
+														   : params.substr(semi2 + 1);
+
+				auto const eq = param.find('=');
+				if (eq == std::string_view::npos) continue;
+				std::string_view pname = param.substr(0, eq);
+				while (!pname.empty() && (pname.front() == ' ' || pname.front() == '\t'))
+					pname.remove_prefix(1);
+				while (!pname.empty() && (pname.back() == ' ' || pname.back() == '\t'))
+					pname.remove_suffix(1);
+				if (boost::algorithm::iequals(pname, "q")) {
+					accept = !is_zero_qvalue(param.substr(eq + 1));
+					break;
+				}
+			}
+		}
+		return accept;
+	}
+	return std::nullopt;
+}
+
+// Returns whether `accept_encoding` (RFC 9110 sec. 12.5.3) permits
+// `coding`. An explicit "<coding>;q=..." entry always wins over a "*"
+// entry -- including an explicit q=0 refusal, per the spec's
+// precedence rule. A coding mentioned nowhere is not acceptable:
+// unlike identity, gzip/zstd are never implied.
+bool encoding_acceptable(std::string_view accept_encoding, std::string_view coding)
+{
+	if (auto const accept = entry_accept(accept_encoding, coding)) return *accept;
+	if (auto const accept = entry_accept(accept_encoding, "*")) return *accept;
+	return false;
+}
+
+} // namespace
+
 std::optional<encoding_resolution>
 resolve_encoded_alternate(fs::path const& requested, std::string_view accept_encoding)
 {
@@ -33,12 +118,9 @@ resolve_encoded_alternate(fs::path const& requested, std::string_view accept_enc
 	// the compressed sibling's path -- the sibling's extension is ".zst"
 	// or ".gz", which would mislabel the Content-Type. See comment on
 	// encoding_resolution.
-	// TODO: parse Accept-Encoding per RFC 9110 sec. 12.5.3 instead of
-	// substring-matching. Current checks wrongly serve compressed variants
-	// for "zstd;q=0" / "gzip;q=0" (explicit refusal) and ignore "*".
 	std::string const ext = requested.extension().string();
 
-	if (boost::algorithm::contains(accept_encoding, "zstd")) {
+	if (encoding_acceptable(accept_encoding, "zstd")) {
 		std::error_code ec;
 		fs::path zst_path = requested;
 		zst_path += ".zst";
@@ -46,7 +128,7 @@ resolve_encoded_alternate(fs::path const& requested, std::string_view accept_enc
 		if (!ec) return encoding_resolution{std::move(zst_path), mtime, "zstd", ext};
 	}
 
-	if (boost::algorithm::contains(accept_encoding, "gzip")) {
+	if (encoding_acceptable(accept_encoding, "gzip")) {
 		std::error_code ec;
 		fs::path gz_path = requested;
 		gz_path += ".gz";
