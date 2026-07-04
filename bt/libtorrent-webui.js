@@ -699,9 +699,16 @@
       if (_check_error(e, callback)) return;
 
       self._stats_frame = view.getUint32(4);
+      // wall-clock time (ms, unspecified epoch but stable for this
+      // connection's lifetime) that the counters below were actually
+      // sampled at on the server. Use this instead of the local
+      // message-receive time to compute rates, since it isn't skewed
+      // by how long the client took to get around to processing the
+      // response.
+      var sample_time = read_uint64(view, 8);
 
-      var num_updates = view.getUint16(8);
-      var offset = 10;
+      var num_updates = view.getUint16(16);
+      var offset = 18;
 
       // read values
       var ret = {};
@@ -711,7 +718,7 @@
         offset += 10;
         ret[self._stats[id]] = val;
       }
-      if (typeof callback !== "undefined") callback(ret);
+      if (typeof callback !== "undefined") callback(ret, sample_time);
     };
 
     var call = new ArrayBuffer(3 + 4 + 2 + stats.length * 2);
