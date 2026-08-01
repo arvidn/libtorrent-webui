@@ -77,6 +77,15 @@
       case 6:
         error = "resource not found";
         break;
+      case 7:
+        error = "parse error";
+        break;
+      case 8:
+        error = "permission denied";
+        break;
+      case 9:
+        error = "operation failed";
+        break;
     }
 
     console.log("ERROR: " + error);
