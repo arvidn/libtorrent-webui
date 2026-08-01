@@ -41,7 +41,11 @@ bool is_media_file_extension(std::string_view name)
 		"mts",	"oga",	"ogg", "ogv",  "opus", "png",  "rm",  "rmvb", "svg",  "tif",
 		"tiff", "ts",	"vob", "wav",  "webm", "webp", "wma", "wmv",  "wv",
 	};
+#ifdef _GLIBCXX_DEBUG
+	TORRENT_ASSERT(std::is_sorted(std::begin(exts), std::end(exts)));
+#else
 	static_assert(std::is_sorted(std::begin(exts), std::end(exts)));
+#endif
 
 	constexpr std::size_t buf_size = 8;
 	if (e.size() > buf_size) return false;
