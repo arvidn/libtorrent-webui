@@ -571,12 +571,26 @@ The response is:
 +==========+====================+===========================================+
 | 4        | uint32_t           | ``frame-number`` (timestamp)              |
 +----------+--------------------+-------------------------------------------+
-| 8        | uint16_t           | ``num-stats`` The number of updates to    |
-|          |                    | to follow.                                |
+| 8        | uint64_t           | ``sample-time-ms``. Wall-clock time, in   |
+|          |                    | milliseconds, that the counters below     |
+|          |                    | were actually sampled at. The epoch is    |
+|          |                    | unspecified but stable for the lifetime   |
+|          |                    | of the process, so clients should use it, |
+|          |                    | not their own message-receive time, to    |
+|          |                    | compute elapsed time between two          |
+|          |                    | get-stats responses (e.g. for rates).     |
+|          |                    | This may lag the request: the counters    |
+|          |                    | reflect the most recent                   |
+|          |                    | ``session_stats_alert`` seen by the       |
+|          |                    | server, not one freshly triggered by this |
+|          |                    | call.                                     |
 +----------+--------------------+-------------------------------------------+
-| 10       | uint16_t           | ``stats-id``                              |
+| 16       | uint16_t           | ``num-stats`` The number of updates to    |
+|          |                    | follow.                                   |
 +----------+--------------------+-------------------------------------------+
-| 12       | uint64_t           | ``stats-value``                           |
+| 18       | uint16_t           | ``stats-id``                              |
++----------+--------------------+-------------------------------------------+
+| 20       | uint64_t           | ``stats-value``                           |
 +----------+--------------------+-------------------------------------------+
 
 The last two fields are repeated the ``num-stats``  times.

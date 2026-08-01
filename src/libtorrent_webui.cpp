@@ -1108,6 +1108,7 @@ void libtorrent_webui::handle_alert(lt::alert const* a)
 		std::unique_lock<std::mutex> l(m_stats_mutex);
 
 		++m_stats_frame;
+		m_stats_time = ss->timestamp();
 		lt::span<std::int64_t const> stats = ss->counters();
 
 		// first update our copy of the stats, and update their frame counters
@@ -1200,6 +1201,14 @@ bool libtorrent_webui::get_stats(websocket_conn* st, function_call f)
 
 	std::unique_lock<std::mutex> l(m_stats_mutex);
 	write_uint32(m_stats_frame, ptr);
+
+	// milliseconds, epoch is unspecified (same clock as get_tracker_updates)
+	// but consistent across calls within this run. Lets the client compute
+	// rates from the actual sample time rather than message-processing time.
+	auto const stats_time_ms =
+		std::chrono::duration_cast<std::chrono::milliseconds>(m_stats_time.time_since_epoch())
+			.count();
+	write_uint64(static_cast<std::uint64_t>(stats_time_ms), ptr);
 
 	// we'll fill in the counter later
 	int const counter_pos = response.size();

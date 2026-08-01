@@ -23,6 +23,7 @@ see LICENSE file.
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/add_torrent_params.hpp"
 #include "libtorrent/fwd.hpp"
+#include "libtorrent/time.hpp"
 
 #include <atomic>
 #include <list>
@@ -163,6 +164,13 @@ private:
 	// the current stats frame (incremented every time) stats
 	// are requested
 	frame_t m_stats_frame = 0;
+	// timestamp() of the session_stats_alert that populated m_stats, i.e.
+	// when libtorrent actually took the snapshot, not when this handler
+	// got around to processing the alert. Sent to clients alongside the
+	// counters so they can compute rates from the true sample time instead
+	// of their own message-processing time, which drifts whenever the
+	// client's main thread is blocked.
+	lt::clock_type::time_point m_stats_time = lt::clock_type::now();
 };
 } // namespace ltweb
 
