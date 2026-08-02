@@ -38,29 +38,11 @@ int save_file(std::string const& filename, std::vector<char> const& v)
 }
 
 save_settings::save_settings(
-	lt::session& s, lt::settings_pack const& sett, std::string const& settings_file
+	lt::session& s, lt::settings_pack const&, std::string const& settings_file
 )
 	: m_ses(s)
 	, m_settings_file(settings_file)
 {
-	for (int i = lt::settings_pack::string_type_base;
-		 i < lt::settings_pack::string_type_base + lt::settings_pack::num_string_settings;
-		 ++i) {
-		if (!sett.has_val(i)) continue;
-		m_strings[lt::name_for_setting(i)] = sett.get_str(i);
-	}
-	for (int i = lt::settings_pack::bool_type_base;
-		 i < lt::settings_pack::bool_type_base + lt::settings_pack::num_bool_settings;
-		 ++i) {
-		if (!sett.has_val(i)) continue;
-		m_ints[lt::name_for_setting(i)] = sett.get_bool(i);
-	}
-	for (int i = lt::settings_pack::int_type_base;
-		 i < lt::settings_pack::int_type_base + lt::settings_pack::num_int_settings;
-		 ++i) {
-		if (!sett.has_val(i)) continue;
-		m_ints[lt::name_for_setting(i)] = sett.get_int(i);
-	}
 }
 
 save_settings::~save_settings() {}
@@ -102,51 +84,64 @@ void save_settings::save(lt::error_code& ec) const
 }
 
 namespace {
-void load_settings_impl(lt::session_params& params, std::string const& filename, lt::error_code& ec)
+void load_settings_impl(
+	lt::session_params& params,
+	std::string const& filename,
+	lt::error_code& ec,
+	std::map<std::string, int>& custom_ints,
+	std::map<std::string, std::string>& custom_strings
+)
 {
 	ec.clear();
+	custom_ints.clear();
+	custom_strings.clear();
 	std::vector<char> buf = load_file(filename.c_str());
 
 	lt::bdecode_node sett = lt::bdecode(buf, ec);
 	if (ec) return;
 
-	// load the custom int and string keys
 	if (sett.type() != lt::bdecode_node::dict_t) return;
 
+	// read_session_params() understands the on-disk layout libtorrent
+	// itself writes (write_session_params()): real settings and DHT
+	// state live nested under "settings" / "dht state", not as flat
+	// top-level keys.
 	{
 		lt::session_params sp = lt::read_session_params(sett);
 		params.dht_state = std::move(sp.dht_state);
+		params.settings = std::move(sp.settings);
 	}
 
+	// anything else at the top level is one of the webui's own custom
+	// keys (eg. save_path), merged in by save_settings::save().
 	int num_items = sett.dict_size();
 	for (int i = 0; i < num_items; ++i) {
 		lt::bdecode_node item;
 		lt::string_view key;
 		boost::tie(key, item) = sett.dict_at(i);
 
-		int const n = lt::setting_by_name(std::string(key));
-		if (n < 0) continue;
-		if ((n & lt::settings_pack::type_mask) == lt::settings_pack::int_type_base) {
-			if (item.type() != lt::bdecode_node::int_t) continue;
-			params.settings.set_int(n, item.int_value());
-		} else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::bool_type_base) {
-			if (item.type() != lt::bdecode_node::int_t) continue;
-			params.settings.set_bool(n, item.int_value() != 0);
-		} else if ((n & lt::settings_pack::type_mask) == lt::settings_pack::string_type_base) {
-			if (item.type() != lt::bdecode_node::string_t) continue;
-			params.settings.set_str(n, std::string(item.string_value()));
+		if (item.type() == lt::bdecode_node::int_t) {
+			custom_ints[std::string(key)] = int(item.int_value());
+		} else if (item.type() == lt::bdecode_node::string_t) {
+			custom_strings[std::string(key)] = std::string(item.string_value());
 		}
 	}
 }
 } // namespace
 
-void load_settings(lt::session_params& params, std::string const& filename, lt::error_code& ec)
+void load_settings(
+	lt::session_params& params,
+	std::string const& filename,
+	lt::error_code& ec,
+	std::map<std::string, int>& custom_ints,
+	std::map<std::string, std::string>& custom_strings
+)
 {
 	ec.clear();
-	load_settings_impl(params, filename, ec);
+	load_settings_impl(params, filename, ec, custom_ints, custom_strings);
 	if (!ec) return;
 	std::string const backup = filename + ".bak";
-	load_settings_impl(params, backup, ec);
+	load_settings_impl(params, backup, ec, custom_ints, custom_strings);
 }
 
 void save_settings::set_int(char const* key, int val)
