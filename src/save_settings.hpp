@@ -46,7 +46,13 @@ private:
 	std::map<std::string, std::string> m_strings;
 };
 
-void load_settings(lt::session_params& params, std::string const& filename, lt::error_code& ec);
+void load_settings(
+	lt::session_params& params,
+	std::string const& filename,
+	lt::error_code& ec,
+	std::map<std::string, int>& custom_ints,
+	std::map<std::string, std::string>& custom_strings
+);
 
 std::vector<char> load_file(char const* filename);
 int save_file(std::string const& filename, std::vector<char> const& v);

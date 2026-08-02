@@ -28,6 +28,7 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <map>
 
 using namespace std::literals::chrono_literals;
 
@@ -56,7 +57,9 @@ int main(int argc, char *const argv[])
 	session_params s;
 	error_code ec;
 	s.settings.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881");
-	load_settings(s, "settings.dat", ec);
+	std::map<std::string, int> custom_ints;
+	std::map<std::string, std::string> custom_strings;
+	load_settings(s, "settings.dat", ec, custom_ints, custom_strings);
 	if (ec) std::cout << "Failed to load settings: " << ec.message() << '\n';
 
 	if (argc > 0)
@@ -72,6 +75,8 @@ int main(int argc, char *const argv[])
 	alert_handler alerts(ses);
 
 	save_settings sett(ses, s.settings, "settings.dat");
+	for (auto const& i : custom_ints) sett.set_int(i.first.c_str(), i.second);
+	for (auto const& i : custom_strings) sett.set_str(i.first.c_str(), i.second);
 
 	torrent_history hist(&alerts);
 
