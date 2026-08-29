@@ -325,6 +325,9 @@
       // so the horizontal segment preceding each new sample is drawn at
       // the correct level. null after a gap (non-finite sample).
       var prev_line_y = null;
+      // True right after a non-finite sample; the next finite sample starts
+      // a new subpath instead of connecting across the gap.
+      var gap = false;
       ctx.beginPath();
       for (var i = 0; i < data.length; ++i) {
         var time = data[i].time;
@@ -332,6 +335,7 @@
         var y = data[i][g.name] * multiplier;
         if (!Number.isFinite(y)) {
           if (g.step) prev_line_y = null;
+          gap = true;
           continue;
         }
         if (time < visible_start) {
@@ -357,14 +361,16 @@
             ctx.moveTo(x, py);
           }
           first = false;
-          prev_line_y = py;
+        } else if (gap) {
+          ctx.moveTo(x, py);
         } else {
           if (g.step && prev_line_y !== null) {
             ctx.lineTo(x, prev_line_y); // horizontal at old level
           }
           ctx.lineTo(x, py);
-          prev_line_y = py;
         }
+        prev_line_y = py;
+        gap = false;
       }
       // Extend the last step to the right edge so the gauge appears to
       // hold its value up to 'now' rather than ending at the last sample.
