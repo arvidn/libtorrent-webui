@@ -171,7 +171,7 @@ static std::array<rpc_entry, 29> const functions = {{
 	{"queue-top", &libtorrent_webui::queue_top},
 	{"queue-bottom", &libtorrent_webui::queue_bottom},
 	{"remove", &libtorrent_webui::remove},
-	{"remove_and_data", &libtorrent_webui::remove_and_data},
+	{"remove_with_data", &libtorrent_webui::remove_with_data},
 	{"force_recheck", &libtorrent_webui::force_recheck},
 	{"set-sequential-download", &libtorrent_webui::set_sequential_download},
 	{"clear-sequential-download", &libtorrent_webui::clear_sequential_download},
@@ -851,7 +851,7 @@ bool libtorrent_webui::remove(websocket_conn* st, function_call f)
 		m_ses.remove_torrent(handle);
 	});
 }
-bool libtorrent_webui::remove_and_data(websocket_conn* st, function_call f)
+bool libtorrent_webui::remove_with_data(websocket_conn* st, function_call f)
 {
 	if (!st->perms()->allow_remove() || !st->perms()->allow_remove_data())
 		return error(st, f, permission_denied);

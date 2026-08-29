@@ -80,7 +80,7 @@ void websocket_conn::on_send(beast::error_code const& ec, std::size_t)
 	TORRENT_ASSERT(m_send_buffer.size() >= 1);
 	m_send_buffer.pop_front();
 
-	m_conn.next_layer().next_layer().expires_after(10min);
+	beast::get_lowest_layer(m_conn).expires_after(10min);
 	if (!m_send_buffer.empty())
 		do_send();
 	else if (m_stopping)

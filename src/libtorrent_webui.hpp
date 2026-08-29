@@ -68,7 +68,7 @@ struct libtorrent_webui
 	bool queue_top(websocket_conn* st, function_call f);
 	bool queue_bottom(websocket_conn* st, function_call f);
 	bool remove(websocket_conn* st, function_call f);
-	bool remove_and_data(websocket_conn* st, function_call f);
+	bool remove_with_data(websocket_conn* st, function_call f);
 	bool force_recheck(websocket_conn* st, function_call f);
 	bool set_sequential_download(websocket_conn* st, function_call f);
 	bool clear_sequential_download(websocket_conn* st, function_call f);
