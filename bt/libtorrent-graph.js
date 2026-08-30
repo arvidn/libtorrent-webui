@@ -47,6 +47,13 @@
    edge ('now') and slide leftward as 'now' advances, so each tick
    represents a fixed age (30 s ago, 60 s ago, ...) rather than a
    fixed wall-clock time.
+\param nominal_sample_interval is the expected spacing between samples,
+   in units of 'time'. Defaults to 1. Only affects bar graphs (graphs
+   with 'bars' set): a bar's width is capped at this many time units, so
+   an unusually large gap between samples (e.g. a paused poll) shows up
+   as a narrow bar followed by a visible gap rather than one bar
+   stretched to span the gap. Samples closer together than this still
+   produce a correspondingly narrower bar.
 */
 
 "use strict";
@@ -77,12 +84,15 @@
     multiplier,
     use_legend,
     seconds_per_x_tic,
+    nominal_sample_interval,
   ) {
     if (typeof unit == "undefined") unit = "";
     if (typeof scale == "undefined") scale = "auto";
     if (typeof multiplier == "undefined") multiplier = 1;
     if (typeof use_legend == "undefined") use_legend = false;
     if (typeof seconds_per_x_tic == "undefined") seconds_per_x_tic = 30;
+    if (typeof nominal_sample_interval == "undefined")
+      nominal_sample_interval = 1;
 
     var canvas = document.getElementById(canvas);
     var ctx = canvas.getContext("2d");
@@ -203,6 +213,7 @@
     // the buffer holds or how wide the canvas is.
     var scalex = pixels_per_time_unit;
     var scaley = view_height / peak;
+    var max_bar_width = nominal_sample_interval * scalex;
 
     // draw y-axis tics
     for (var i = 0; i < num_tics; ++i) {
@@ -265,6 +276,42 @@
     for (var k in graphs) {
       var g = graphs[k];
 
+      if (g.bars) {
+        ctx.fillStyle = g.color;
+        var prev_bar_x = null;
+        for (var i = 0; i < data.length; ++i) {
+          var time = data[i].time;
+          if (time > now) break;
+          var y = data[i][g.name] * multiplier;
+          if (!Number.isFinite(y)) {
+            prev_bar_x = null;
+            continue;
+          }
+          var x = view_width - (now - time) * scalex;
+          if (time < visible_start) {
+            prev_bar_x = x;
+            continue;
+          }
+          var bar_height = y * scaley;
+          if (prev_bar_x !== null) {
+            // Cap the bar at nominal width so a gap in sampling (e.g. a
+            // paused poll) shows up as a narrow bar plus a visible gap,
+            // rather than one bar stretched to span the whole gap. Samples
+            // closer together than nominal still narrow the bar normally.
+            var left = Math.max(prev_bar_x + 1, x - max_bar_width);
+            if (x - left > 1)
+              ctx.fillRect(
+                left,
+                view_height - bar_height,
+                x - left,
+                bar_height,
+              );
+          }
+          prev_bar_x = x;
+        }
+        continue;
+      }
+
       ctx.strokeStyle = g.color;
       var first = true;
       // Last finite sample seen *before* the visible window. Carrying it
@@ -274,12 +321,19 @@
       var prev_off_x;
       var prev_off_y;
       var has_prev_off = false;
+      // For step mode: y-coordinate of the most recently drawn point,
+      // so the horizontal segment preceding each new sample is drawn at
+      // the correct level. null after a gap (non-finite sample).
+      var prev_line_y = null;
       ctx.beginPath();
       for (var i = 0; i < data.length; ++i) {
         var time = data[i].time;
         if (time > now) break;
         var y = data[i][g.name] * multiplier;
-        if (!Number.isFinite(y)) continue;
+        if (!Number.isFinite(y)) {
+          if (g.step) prev_line_y = null;
+          continue;
+        }
         if (time < visible_start) {
           prev_off_x = view_width - (now - time) * scalex;
           prev_off_y = view_height - y * scaley;
@@ -291,14 +345,31 @@
         if (first) {
           if (has_prev_off) {
             ctx.moveTo(prev_off_x, prev_off_y);
-            ctx.lineTo(x, py);
+            if (g.step) {
+              // horizontal from off-screen to this x at the old level,
+              // then vertical to the new value (canvas clips off-screen)
+              ctx.lineTo(x, prev_off_y);
+              ctx.lineTo(x, py);
+            } else {
+              ctx.lineTo(x, py);
+            }
           } else {
             ctx.moveTo(x, py);
           }
           first = false;
+          prev_line_y = py;
         } else {
+          if (g.step && prev_line_y !== null) {
+            ctx.lineTo(x, prev_line_y); // horizontal at old level
+          }
           ctx.lineTo(x, py);
+          prev_line_y = py;
         }
+      }
+      // Extend the last step to the right edge so the gauge appears to
+      // hold its value up to 'now' rather than ending at the last sample.
+      if (g.step && !first && prev_line_y !== null) {
+        ctx.lineTo(view_width, prev_line_y);
       }
       ctx.stroke();
     }
