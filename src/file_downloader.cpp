@@ -36,6 +36,8 @@ see LICENSE file.
 
 namespace ltweb {
 
+using namespace std::literals::chrono_literals;
+
 namespace fs = std::filesystem;
 
 struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
@@ -112,6 +114,8 @@ struct file_request_conn : std::enable_shared_from_this<file_request_conn> {
 		m_currently_sending = nullptr;
 		if (ec) return abort();
 		if (m_stopped) return;
+
+		m_socket.next_layer().expires_after(10min);
 
 		if (m_next_piece == m_end_piece) {
 			TORRENT_ASSERT(m_left_to_send == 0);
